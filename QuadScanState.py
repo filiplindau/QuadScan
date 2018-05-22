@@ -43,12 +43,15 @@ class StateDispatcher(object):
         self.statehandler_dict[StateSetupAttributes.name] = StateSetupAttributes
         self.statehandler_dict[StateIdle.name] = StateIdle
         self.statehandler_dict[StateScan.name] = StateScan
+        self.statehandler_dict[StateScan.name] = StateAnalyse
+        self.statehandler_dict[StateScan.name] = StateLoad
+        self.statehandler_dict[StateScan.name] = StateSave
         self.statehandler_dict[StateFault] = StateFault
-        self.current_state = StateUnknown.name
+        self.current_state = StateDeviceConnect.name
         self._state_obj = None
         self._state_thread = None
 
-        self.logger = logging.getLogger("QuadScanController.QuadScanControllerStateDispatcher")
+        self.logger = logging.getLogger("QuadScanController.StateDispatcher")
         self.logger.setLevel(logging.DEBUG)
 
     def statehandler_dispatcher(self):
@@ -330,17 +333,7 @@ class StateIdle(State):
         # Start camera:
         self.controller.set_status("Idle")
         # Start looping calls for monitored attributes
-        dev_name = "screen"
-        attr_name = "image"
-        self.stop_looping_calls()
-        self.logger.debug("Starting looping call for {0}".format(attr_name))
-        interval = 1.0 / self.controller.idle_params["reprate"]
-        lc = TangoTwisted.LoopingCall(self.controller.read_attribute, attr_name, dev_name)
-        self.controller.looping_calls.append(lc)
-        d = lc.start(interval)
-        d.addCallbacks(self.update_attribute, self.state_error)
-        lc.loop_deferred.addCallback(self.update_attribute)
-        lc.loop_deferred.addErrback(self.state_error)
+        self.start_looping_calls()
 
     def check_requirements(self, result):
         self.logger.info("Check requirements result: {0}".format(result))
@@ -360,13 +353,31 @@ class StateIdle(State):
                 self.stop_run()
 
     def check_message(self, msg):
-        if msg == "stop":
+        if msg == "load":
+            self.logger.debug("Message load... set next state and stop.")
+            self.controller.idle_params["paused"] = True
+            try:
+                d = self.deferred_list[0]   # type: defer.Deferred
+                d.cancel()
+            except IndexError:
+                self.logger.debug("Empty deferred list when cancelling")
+            self.next_state = "load"
+            self.stop_run()
+        elif msg == "save":
+            self.logger.debug("Message save... set next state and stop.")
+            self.controller.idle_params["paused"] = True
+            try:
+                d = self.deferred_list[0]   # type: defer.Deferred
+                d.cancel()
+            except IndexError:
+                self.logger.debug("Empty deferred list when cancelling")
+            self.next_state = "save"
+            self.stop_run()
+        elif msg == "stop":
             self.logger.debug("Message stop... set next state.")
             for d in self.deferred_list:
                 d.cancel()
             self.stop_looping_calls()
-            self.next_state = "on"
-            self.stop_run()
 
     def stop_looping_calls(self):
         for lc in self.controller.looping_calls:
@@ -377,6 +388,20 @@ class StateIdle(State):
                 self.logger.error("Could not stop looping call: {0}".format(e))
         self.controller.looping_calls = list()
 
+    def start_looping_calls(self):
+        self.stop_looping_calls()
+        dev_name = "screen"
+        attr_name = "image"
+        self.stop_looping_calls()
+        self.logger.debug("Starting looping call for {0}".format(attr_name))
+        interval = 1.0 / self.controller.idle_params["reprate"]
+        lc = TangoTwisted.LoopingCall(self.controller.read_attribute, attr_name, dev_name)
+        self.controller.looping_calls.append(lc)
+        d = lc.start(interval)
+        d.addCallbacks(self.update_attribute, self.state_error)
+        lc.loop_deferred.addCallback(self.update_attribute)
+        lc.loop_deferred.addErrback(self.state_error)
+
     def update_attribute(self, result):
         self.logger.info("Updating result")
         try:
@@ -385,6 +410,203 @@ class StateIdle(State):
             return
         with self.controller.state_lock:
             self.controller.attr_result[result.name.lower()] = result
+
+
+class StateScan(State):
+    """
+    Start a quad scan scan using scan_params parameters dict stored in the controller.
+    scan_params["start_pos"]: initial quad magnet setting
+    scan_params["step_size"]: quad magnet step size
+    scan_params["end_pos"]: quad magnet end position
+    # scan_params["dev_name"]: device name that runs the scan
+    scan_params["scan_attr"]: name of attribute to scan
+    scan_params["average"]: number of averages in each position
+    """
+    name = "scan"
+
+    def __init__(self, controller):
+        State.__init__(self, controller)
+        self.logger.setLevel(logging.INFO)
+
+    def state_enter(self, prev_state=None):
+        State.state_enter(self, prev_state)
+        dev_name = "quad"
+        attr_name = self.controller.scan_params["scan_attr"]
+        start_pos = self.controller.scan_params["start_pos"]
+        end_pos = self.controller.scan_params["end_pos"]
+        step_size = self.controller.scan_params["step_size"]
+        self.logger.info("Starting scan of {0} on {1}".format(attr_name, dev_name))
+        self.controller.set_status("Scanning from {0} to {1} with step size {2}".format(start_pos, end_pos, step_size))
+        scan = QuadScanController.Scan(self.controller, attr_name, dev_name, start_pos, end_pos, step_size,
+                                       "spectrum", "spectrometer")
+        d = scan.start_scan()
+        d.addCallbacks(self.check_requirements, self.state_error)
+        self.deferred_list.append(d)
+
+    def check_requirements(self, result):
+        self.logger.debug("Check requirements result: {0}".format(result))
+        self.controller.scan_result["pos_data"] = result[0]
+        self.controller.scan_result["scan_data"] = result[1]
+        self.controller.scan_result["start_time"] = result[2]
+        self.next_state = "analyse"
+        self.stop_run()
+        return "analyse"
+
+    def state_error(self, err):
+        self.logger.error("Error: {0}".format(err))
+        self.controller.set_status("Error: {0}".format(err))
+        # If the error was DB_DeviceNotDefined, go to UNKNOWN state and reconnect later
+        self.next_state = "unknown"
+        self.stop_run()
+
+    def check_message(self, msg):
+        if msg == "pause":
+            self.logger.debug("Message pause... stop.")
+            self.controller.idle_params["paused"] = True
+            d = self.deferred_list[0]   # type: defer.Deferred
+            d.cancel()
+            self.next_state = "idle"
+            self.stop_run()
+        elif msg == "cancel":
+            self.logger.debug("Message cancel... set next state and stop.")
+            self.controller.idle_params["paused"] = True
+            d = self.deferred_list[0]   # type: defer.Deferred
+            d.cancel()
+            self.next_state = "idle"
+            self.stop_run()
+        elif msg == "scan":
+            self.logger.debug("Message resume... continue scan")
+            d = self.deferred_list[0]   # type: defer.Deferred
+            d.cancel()
+
+
+class StateAnalyse(State):
+    """
+    Start quad analysis of latest scan data. Parameters are stored in controller.analyse_params
+    analyse_params["method"]: FROG method (SHG, TG, ...)
+    analyse_params["size"]: size of FROG trace (128, 256, ...)
+    analyse_params["iterations"]: number of iterations to calculate
+    analyse_params["roi"]: region of interest of the
+    analyse_params["threshold"]: threshold level for the normalized data
+    analyse_params["background_subtract"]: do background subtraction using start pos spectrum
+    """
+    name = "analyse"
+
+    def __init__(self, controller):
+        State.__init__(self, controller)
+        self.quad_analysis = None
+
+    def state_enter(self, prev_state=None):
+        State.state_enter(self, prev_state)
+        self.controller.set_status("Analysing scan")
+        self.logger.debug("Starting quad scan analysis")
+        self.quad_analysis = QuadScanController.QuadScanAnalyse(self.controller)
+        d = self.quad_analysis.start_analysis()
+        self.deferred_list.append(d)
+        d.addCallbacks(self.check_requirements, self.state_error)
+
+    def check_requirements(self, result):
+        self.logger.info("Check requirements result: {0}".format(result))
+        self.next_state = "idle"
+        self.stop_run()
+        return "idle"
+
+    def state_error(self, err):
+        self.logger.error("Error: {0}".format(err))
+        self.controller.set_status("Error: {0}".format(err))
+        # If the error was DB_DeviceNotDefined, go to UNKNOWN state and reconnect later
+        self.next_state = "unknown"
+        self.stop_run()
+
+
+class StateLoad(State):
+    """
+    Load saved quad scan data. Parameters used for loading are stored in controller.load_params
+    The loaded data is stored in controller.scan_result
+    load_params["path"]: Directory path for images
+    load_params["type"]: Source of the data files. "auto", "python", or "matlab". "python" is the current scan program.
+                         "matlab" is the old maxiv quadscan  program. "auto" tries to determine from the directory
+                         file structure which it is.
+    """
+    name = "load"
+
+    def __init__(self, controller):
+        State.__init__(self, controller)
+        self.quad_analysis = None
+
+    def state_enter(self, prev_state=None):
+        State.state_enter(self, prev_state)
+        self.controller.set_status("Load scan data")
+        self.logger.debug("Starting scan load")
+        self.check_requirements(None)
+
+    def check_requirements(self, result):
+        self.logger.info("Check requirements result: {0}".format(result))
+        self.next_state = "idle"
+        self.stop_run()
+        return "idle"
+
+    def state_error(self, err):
+        self.logger.error("Error: {0}".format(err))
+        self.controller.set_status("Error: {0}".format(err))
+        # If the error was DB_DeviceNotDefined, go to UNKNOWN state and reconnect later
+        self.next_state = "unknown"
+        self.stop_run()
+
+    def check_message(self, msg):
+        if msg == "cancel":
+            self.logger.debug("Message cancel... set next state and stop.")
+            self.controller.idle_params["paused"] = True
+            try:
+                d = self.deferred_list[0]   # type: defer.Deferred
+                d.cancel()
+            except IndexError:
+                self.logger.debug("Empty deferred list when cancelling")
+            self.next_state = "idle"
+            self.stop_run()
+
+
+class StateSave(State):
+    """
+    Save quad scan data. Parameters used for saving are stored in controller.save_params
+    save_params["path"]: Directory path for images
+    """
+    name = "save"
+
+    def __init__(self, controller):
+        State.__init__(self, controller)
+        self.quad_analysis = None
+
+    def state_enter(self, prev_state=None):
+        State.state_enter(self, prev_state)
+        self.controller.set_status("Save scan data")
+        self.logger.debug("Starting scan save")
+        self.check_requirements(None)
+
+    def check_requirements(self, result):
+        self.logger.info("Check requirements result: {0}".format(result))
+        self.next_state = "idle"
+        self.stop_run()
+        return "idle"
+
+    def state_error(self, err):
+        self.logger.error("Error: {0}".format(err))
+        self.controller.set_status("Error: {0}".format(err))
+        # If the error was DB_DeviceNotDefined, go to UNKNOWN state and reconnect later
+        self.next_state = "unknown"
+        self.stop_run()
+
+    def check_message(self, msg):
+        if msg == "cancel":
+            self.logger.debug("Message cancel... set next state and stop.")
+            self.controller.idle_params["paused"] = True
+            try:
+                d = self.deferred_list[0]   # type: defer.Deferred
+                d.cancel()
+            except IndexError:
+                self.logger.debug("Empty deferred list when cancelling")
+            self.next_state = "idle"
+            self.stop_run()
 
 
 class StateFault(State):
@@ -408,7 +630,7 @@ class StateUnknown(State):
         State.__init__(self, controller)
         self.deferred_list = list()
         self.start_time = None
-        self.wait_time = 1.0
+        self.wait_time = 5.0
 
     def state_enter(self, prev_state):
         self.logger.info("Starting state {0}".format(self.name.upper()))
@@ -423,6 +645,28 @@ class StateUnknown(State):
         self.logger.info("Check requirements result {0} for state {1}".format(result, self.name.upper()))
         self.next_state = "device_connect"
         self.stop_run()
+
+    def check_message(self, msg):
+        if msg == "load":
+            self.logger.debug("Message load... set next state and stop.")
+            self.controller.idle_params["paused"] = True
+            try:
+                d = self.deferred_list[0]   # type: defer.Deferred
+                d.cancel()
+            except IndexError:
+                self.logger.debug("Empty deferred list when cancelling")
+            self.next_state = "load"
+            self.stop_run()
+        elif msg == "save":
+            self.logger.debug("Message save... set next state and stop.")
+            self.controller.idle_params["paused"] = True
+            try:
+                d = self.deferred_list[0]   # type: defer.Deferred
+                d.cancel()
+            except IndexError:
+                self.logger.debug("Empty deferred list when cancelling")
+            self.next_state = "save"
+            self.stop_run()
 
 
 def test_cb(result):

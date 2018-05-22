@@ -10,7 +10,6 @@ import time
 import logging
 from twisted.internet import reactor, defer, error
 from twisted.python.failure import Failure, reflect
-import PyTango as tango
 import TangoTwisted
 from TangoTwisted import TangoAttributeFactory, TangoAttributeProtocol, \
     LoopingCall, DeferredCondition, ClockReactorless, defer_later
@@ -34,17 +33,19 @@ logger.setLevel(logging.DEBUG)
 
 
 class QuadScanController(object):
-    def __init__(self, quad_name, screen_name, start=False):
+    def __init__(self, quad_name=None, screen_name=None, start=False):
         """
         Controller for running a scanning Frog device. Communicates with a spectrometer and a motor.
 
 
-        :param spectrometer_name:
-        :param motor_name:
+        :param quad_name: Tango device name of the quad used for scanning
+        :param screen_name: Tango device name of the camera used for capturing images of the screen
         """
         self.device_names = dict()
-        self.device_names["quad"] = quad_name
-        self.device_names["screen"] = screen_name
+        if quad_name is not None:
+            self.device_names["quad"] = quad_name
+        if screen_name is not None:
+            self.device_names["screen"] = screen_name
 
         self.device_factory_dict = dict()
 
@@ -66,7 +67,6 @@ class QuadScanController(object):
         self.scan_params["end_pos"] = 8.75
         self.scan_params["average"] = 1
         self.scan_params["scan_attr"] = "current"
-        self.scan_params["reprate"] = 2
         # self.scan_params["dev_name"] = "motor"
 
         self.scan_result = dict()
@@ -114,12 +114,9 @@ class QuadScanController(object):
             factory = self.device_factory_dict[self.device_names[device_name]]
             d = factory.buildProtocol("read", name)
         else:
-            self.logger.error("Device name {0} not found among {1}".format(device_name, self.device_factory_dict))
-            err = tango.DevError(reason="Device {0} not used".format(device_name),
-                                 severety=tango.ErrSeverity.ERR,
-                                 desc="The device is not in the list of devices used by this controller",
-                                 origin="read_attribute")
-            d = Failure(tango.DevFailed(err))
+            er = ValueError("Device name {0} not found among {1}".format(dev_name, self.device_factory_dict))
+            self.logger.error(er)
+            d = Failure(er)
         return d
 
     def write_attribute(self, name, device_name, data):
@@ -128,12 +125,9 @@ class QuadScanController(object):
             factory = self.device_factory_dict[self.device_names[device_name]]
             d = factory.buildProtocol("write", name, data)
         else:
-            self.logger.error("Device name {0} not found among {1}".format(device_name, self.device_factory_dict))
-            err = tango.DevError(reason="Device {0} not used".format(device_name),
-                                 severety=tango.ErrSeverity.ERR,
-                                 desc="The device is not in the list of devices used by this controller",
-                                 origin="write_attribute")
-            d = Failure(tango.DevFailed(err))
+            er = ValueError("Device name {0} not found among {1}".format(dev_name, self.device_factory_dict))
+            self.logger.error(er)
+            d = Failure(er)
         return d
 
     def defer_later(self, delay, delayed_callable, *a, **kw):
@@ -173,12 +167,9 @@ class QuadScanController(object):
             d = factory.buildProtocol("check", attr_name, None, write=write, target_value=target_value,
                                       tolerance=tolerance, period=period, timeout=timeout)
         else:
-            self.logger.error("Device name {0} not found among {1}".format(dev_name, self.device_factory_dict))
-            err = tango.DevError(reason="Device {0} not used".format(dev_name),
-                                 severety=tango.ErrSeverity.ERR,
-                                 desc="The device is not in the list of devices used by this controller",
-                                 origin="write_attribute")
-            d = Failure(tango.DevFailed(err))
+            er = ValueError("Device name {0} not found among {1}".format(dev_name, self.device_factory_dict))
+            self.logger.error(er)
+            d = Failure(er)
         return d
 
     def get_state(self):
@@ -312,7 +303,7 @@ class Scan(object):
         # data frame should be there.
         self.scan_arrive_time = t
         try:
-            wait_time = (self.scan_arrive_time - self.data_time) % self.controller.scan_params["reprate"]
+            wait_time = (self.scan_arrive_time - self.data_time) % self.controller.idle_params["reprate"]
         except KeyError:
             wait_time = 0.1
         d0 = defer_later(wait_time, self.meas_read_issue)

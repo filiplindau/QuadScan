@@ -9,6 +9,8 @@ from PyQt4 import QtGui, QtCore
 
 import pyqtgraph as pq
 import sys
+from QuadScanController import QuadScanController
+from QuadScanState import StateDispatcher
 
 import logging
 
@@ -63,6 +65,17 @@ class QuadScanGui(QtGui.QWidget):
         self.gamma_label = None
         self.alpha_label = None
 
+        self.state_label = None
+        self.status_label = None
+        self.image_path_edit = None
+
+        self.setup_layout()
+        self.controller = QuadScanController()
+        self.controller.add_state_notifier(self.change_state)
+
+        self.state_dispatcher = StateDispatcher(self.controller)
+        self.state_dispatcher.start()
+
     def setup_layout(self):
         """
         Setup GUI layout and set stored settings
@@ -80,6 +93,9 @@ class QuadScanGui(QtGui.QWidget):
         self.roi_widget.sigRegionChangeFinished.connect(self.update_roi)
         self.roi_widget.blockSignals(True)
 
+        self.state_label = QtGui.QLabel("")
+        self.status_label = QtGui.QLabel("")
+
         self.setLocale(QtCore.QLocale(QtCore.QLocale.English))
         main_layout = QtGui.QVBoxLayout(self)
 
@@ -91,6 +107,21 @@ class QuadScanGui(QtGui.QWidget):
         graphics_layout = QtGui.QHBoxLayout()
         main_layout.addLayout(graphics_layout)
         graphics_layout.addWidget(self.raw_image_widget)
+
+        status_layout = QtGui.QGridLayout()
+        status_layout.addWidget(QtGui.QLabel("State"), 0, 0)
+        status_layout.addWidget(self.state_label, 0, 1)
+        status_layout.addWidget(QtGui.QLabel("Status"), 1, 0)
+        status_layout.addWidget(self.status_label)
+        status_layout.addItem(QtGui.QSpacerItem(30, 20, QtGui.QSizePolicy.Minimum, QtGui.QSizePolicy.Expanding), 2, 0)
+        main_layout.addLayout(status_layout)
+
+    def change_state(self, new_state, new_status=None):
+        root.info("Change state: {0}, status {1}".format(new_state, new_status))
+        # Map new_state string to tango state
+        self.state_label.setText(QtCore.QString(new_state))
+        if new_status is not None:
+            self.status_label.setText(QtCore.QString(new_status))
 
     def update_image_threshold(self):
         """
