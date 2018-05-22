@@ -16,7 +16,7 @@ import time
 import logging
 import PyTango as tango
 import numpy as np
-from twisted.internet import reactor, defer, error
+from twisted_cut import defer
 import TangoTwisted
 import QuadScanController
 from TangoTwisted import TangoAttributeFactory, defer_later
@@ -312,7 +312,7 @@ class StateSetupAttributes(State):
         return result
 
     def attr_check_eb(self, err):
-        self.logger.error("Check attribute ERROR: {0}".format(error))
+        self.logger.error("Check attribute ERROR: {0}".format(err))
         return err
 
 

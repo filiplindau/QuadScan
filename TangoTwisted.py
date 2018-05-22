@@ -8,14 +8,10 @@ import threading
 import time
 import logging
 import traceback
-from twisted.internet import reactor, defer, error
-from twisted.internet.protocol import Protocol, ClientFactory, Factory
-from twisted.python.failure import Failure, reflect
+
+from twisted_cut.protocol import Protocol, Factory
+from twisted_cut import reflect, defer, error
 import PyTango.futures as tangof
-# import sys, os, inspect
-# currentdir = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
-# parentdir = os.path.dirname(currentdir)
-# sys.path.insert(0, os.path.join(parentdir, "Frog\src"))
 
 logger = logging.getLogger("TangoTwisted")
 logger.setLevel(logging.DEBUG)

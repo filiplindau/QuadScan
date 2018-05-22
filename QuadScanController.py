@@ -8,15 +8,13 @@ Created on May 18, 2018
 import threading
 import time
 import logging
-from twisted.internet import reactor, defer, error
-from twisted.python.failure import Failure, reflect
+from twisted_cut import defer
+from twisted_cut.failure import Failure
 import TangoTwisted
-from TangoTwisted import TangoAttributeFactory, TangoAttributeProtocol, \
-    LoopingCall, DeferredCondition, ClockReactorless, defer_later
+from TangoTwisted import TangoAttributeFactory, defer_later
 import QuadScanState as qs
 import numpy as np
 from scipy.signal import medfilt2d
-from scipy.interpolate import interp1d
 
 from QuadScanEmittanceCalculation import QuadScanEmittanceCalculation
 
@@ -114,7 +112,7 @@ class QuadScanController(object):
             factory = self.device_factory_dict[self.device_names[device_name]]
             d = factory.buildProtocol("read", name)
         else:
-            er = ValueError("Device name {0} not found among {1}".format(dev_name, self.device_factory_dict))
+            er = ValueError("Device name {0} not found among {1}".format(device_name, self.device_factory_dict))
             self.logger.error(er)
             d = Failure(er)
         return d
@@ -125,7 +123,7 @@ class QuadScanController(object):
             factory = self.device_factory_dict[self.device_names[device_name]]
             d = factory.buildProtocol("write", name, data)
         else:
-            er = ValueError("Device name {0} not found among {1}".format(dev_name, self.device_factory_dict))
+            er = ValueError("Device name {0} not found among {1}".format(device_name, self.device_factory_dict))
             self.logger.error(er)
             d = Failure(er)
         return d
