@@ -1133,16 +1133,13 @@ def gatherResults(deferredList, consumeErrors=False):
     return d
 
 
-
 # Constants for use with DeferredList
 
 SUCCESS = True
 FAILURE = False
 
 
-
 ## deferredGenerator
-@_oldStyle
 class waitForDeferred:
     """
     See L{deferredGenerator}.
@@ -1222,8 +1219,6 @@ def _deferGenerator(g, deferred):
 
 
 
-@deprecated(Version('Twisted', 15, 0, 0),
-            "twisted.internet.defer.inlineCallbacks")
 def deferredGenerator(f):
     """
     L{deferredGenerator} and L{waitForDeferred} help you write

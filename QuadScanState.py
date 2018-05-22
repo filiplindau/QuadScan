@@ -14,7 +14,7 @@ The state name to class table is stored in a dict.
 import threading
 import time
 import logging
-import PyTango as tango
+import tango as tango
 import numpy as np
 from twisted_cut import defer
 import TangoTwisted
@@ -250,14 +250,14 @@ class StateSetupAttributes(State):
         State.state_enter(self, prev_state)
         self.controller.set_status("Setting up device parameters.")
         self.logger.debug("Stopping camera before setting attributes")
-        dl = list()
+        d_list = list()
         d1 = self.controller.send_command("stop", "camera", None)
         d2 = self.controller.check_attribute("state", "camera", tango.DevState.ON, timeout=3.0, write=False)
         d2.addErrback(self.state_error)
-        dl.append(d1)
-        dl.append(d2)
+        d_list.append(d1)
+        d_list.append(d2)
 
-        d = defer.DeferredList(dl)
+        d = defer.DeferredList(d_list)
         d.addCallbacks(self.setup_attr, self.state_error)
         self.deferred_list.append(d)
 
@@ -390,7 +390,7 @@ class StateIdle(State):
 
     def start_looping_calls(self):
         self.stop_looping_calls()
-        dev_name = "screen"
+        dev_name = "camera"
         attr_name = "image"
         self.stop_looping_calls()
         self.logger.debug("Starting looping call for {0}".format(attr_name))
@@ -678,7 +678,7 @@ def test_err(err):
 
 
 if __name__ == "__main__":
-    fc = QuadScanController.QuadScanController("gunlaser/cameras/spectrometer_camera")
+    fc = QuadScanController.QuadScanController()
 
     sh = StateDispatcher(fc)
     sh.start()

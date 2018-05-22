@@ -43,7 +43,7 @@ class QuadScanController(object):
         if quad_name is not None:
             self.device_names["quad"] = quad_name
         if screen_name is not None:
-            self.device_names["screen"] = screen_name
+            self.device_names["camera"] = screen_name
 
         self.device_factory_dict = dict()
 

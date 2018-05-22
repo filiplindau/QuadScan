@@ -11,7 +11,7 @@ import traceback
 
 from twisted_cut.protocol import Protocol, Factory
 from twisted_cut import reflect, defer, error
-import PyTango.futures as tangof
+import tango.futures as tangof
 
 logger = logging.getLogger("TangoTwisted")
 logger.setLevel(logging.DEBUG)
