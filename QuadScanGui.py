@@ -93,10 +93,15 @@ class QuadScanGui(QtGui.QWidget):
         root.info("Updating parameters")
         quad_length = self.controller.get_parameter("scan", "quad_length")
         root.debug("quad_length: {0}".format(quad_length))
-        # self.ui.quad_length_label.setText(str())
-        # self.ui.quad_screen_distance_label.setText(str(self.controller.get_parameter("scan", "quad_screen_distance")))
+        self.ui.quad_length_label.setText(str(quad_length))
+        self.ui.quad_screen_distance_label.setText(str(self.controller.get_parameter("scan", "quad_screen_distance")))
         self.ui.energy_spinbox.setValue(self.controller.get_parameter("scan", "beam_energy"))
-        # self.ui.quad_select_edit.setText(self.controller.get_parameter("scan", "quad_name"))
+        self.ui.k_start_spinbox.setValue(self.controller.get_parameter("scan", "k_min"))
+        self.ui.k_end_spinbox.setValue(self.controller.get_parameter("scan", "k_max"))
+        self.ui.k_number_values_spinbox.setValue(self.controller.get_parameter("scan", "num_k_values"))
+        self.ui.images_number_spinbox.setValue(self.controller.get_parameter("scan", "num_shots"))
+        self.ui.quad_select_edit.setText(self.controller.get_parameter("scan", "quad_name"))
+        self.ui.screen_select_edit.setText(self.controller.get_parameter("scan", "screen_name"))
 
     def update_image_threshold(self):
         """

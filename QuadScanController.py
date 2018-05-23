@@ -50,6 +50,8 @@ class QuadScanController(object):
         self.setup_attr_params = dict()
         # self.setup_attr_params["speed"] = ("motor", "speed", 50.0)
 
+        self.looping_calls = list()
+
         self.attr_result = dict()
         self.attr_result["image"] = None
         self.attr_result["magnet"] = None
