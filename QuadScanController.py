@@ -60,15 +60,22 @@ class QuadScanController(object):
         self.idle_params["paused"] = False
 
         self.scan_params = dict()
-        self.scan_params["start_pos"] = 8.6
-        self.scan_params["step_size"] = 0.002
-        self.scan_params["end_pos"] = 8.75
-        self.scan_params["average"] = 1
-        self.scan_params["scan_attr"] = "current"
+        self.scan_params["k_min"] = 8.6
+        self.scan_params["k_max"] = 8.75
+        self.scan_params["num_k_values"] = 1
+        self.scan_params["num_shots"] = 1
+        self.scan_params["quad_name"] = ""
+        self.scan_params["quad_length"] = 1.0
+        self.scan_params["quad_screen_dist"] = 1.0
+        self.scan_params["screen_name"] = ""
+        self.scan_params["pixel_size"] = 1.0
+        self.scan_params["beam_energy"] = 1.0
+        self.scan_params["roi_center"] = [1.0, 1.0]
+        self.scan_params["roi_dim"] = [1.0, 1.0]
         # self.scan_params["dev_name"] = "motor"
 
         self.scan_result = dict()
-        self.scan_result["pos_data"] = None
+        self.scan_result["k_data"] = None
         self.scan_result["scan_data"] = None
         self.scan_result["start_time"] = None
         self.scan_raw_data = None
@@ -89,7 +96,10 @@ class QuadScanController(object):
         self.analyse_params["median_kernel"] = 1
         self.analyse_params["background_subtract"] = True
 
-        self.emittance_calc = QuadScanEmittanceCalculation()
+        self.load_params = dict()
+        self.load_params["path"] = "."
+
+        self.save_params = dict()
 
         self.logger = logging.getLogger("QuadScanController.Controller")
         self.logger.setLevel(logging.DEBUG)
@@ -114,7 +124,8 @@ class QuadScanController(object):
         else:
             er = ValueError("Device name {0} not found among {1}".format(device_name, self.device_factory_dict))
             self.logger.error(er)
-            d = Failure(er)
+            d = defer.Deferred()
+            d.errback(er)
         return d
 
     def write_attribute(self, name, device_name, data):
@@ -125,7 +136,22 @@ class QuadScanController(object):
         else:
             er = ValueError("Device name {0} not found among {1}".format(device_name, self.device_factory_dict))
             self.logger.error(er)
-            d = Failure(er)
+            d = defer.Deferred()
+            d.errback(er)
+        return d
+
+    def send_command(self, name, device_name, data):
+        self.logger.info("Send command \"{0}\" on \"{1}\"".format(name, device_name))
+        if device_name in self.device_names:
+            factory = self.device_factory_dict[self.device_names[device_name]]
+            d = factory.buildProtocol("command", name, data)
+        else:
+            self.logger.error("Device name {0} not found among {1}".format(device_name, self.device_factory_dict))
+            err = AttributeError("Device {0} not used. "
+                                 "The device is not in the list of devices used by this controller".format(device_name))
+            d = defer.Deferred()
+            d.errback(err)
+
         return d
 
     def defer_later(self, delay, delayed_callable, *a, **kw):
@@ -167,7 +193,8 @@ class QuadScanController(object):
         else:
             er = ValueError("Device name {0} not found among {1}".format(dev_name, self.device_factory_dict))
             self.logger.error(er)
-            d = Failure(er)
+            d = defer.Deferred()
+            d.errback(er)
         return d
 
     def get_state(self):
@@ -175,11 +202,13 @@ class QuadScanController(object):
             st = self.state
         return st
 
-    def set_state(self, state):
+    def set_state(self, state, status=None):
         with self.state_lock:
             self.state = state
-            for m in self.state_notifier_list:
-                m(self.state, self.status)
+            if status is not None:
+                self.status = status
+        for m in self.state_notifier_list:
+            m(state, status)
 
     def get_status(self):
         with self.state_lock:
@@ -201,6 +230,41 @@ class QuadScanController(object):
             self.state_notifier_list.remove(state_notifier_method)
         except ValueError:
             self.logger.warning("Method {0} not in list. Ignoring.".format(state_notifier_method))
+
+    def set_parameter(self, state_name, param_name, value):
+        self.logger.debug("Setting parameter {0}.{1} to {2}".format(state_name, param_name, value))
+        with self.state_lock:
+            if state_name == "load":
+                self.load_params[param_name] = value
+            elif state_name == "save":
+                self.save_params[param_name] = value
+            elif state_name == "analyse":
+                self.analyse_params[param_name] = value
+            elif state_name == "scan":
+                self.scan_params[param_name] = value
+            elif state_name == "idle":
+                self.idle_params[param_name] = value
+
+    def get_parameter(self, state_name, param_name):
+        self.logger.debug("Getting parameter {0}.{1}:".format(state_name, param_name))
+        with self.state_lock:
+            try:
+                if state_name == "load":
+                    value = self.load_params[param_name]
+                elif state_name == "save":
+                    value = self.save_params[param_name]
+                elif state_name == "analyse":
+                    value = self.analyse_params[param_name]
+                elif state_name == "scan":
+                    value = self.scan_params[param_name]
+                elif state_name == "idle":
+                    value = self.idle_params[param_name]
+                else:
+                    value = None
+            except KeyError:
+                value = None
+        self.logger.debug("Value {0}".format(value))
+        return value
 
 
 class Scan(object):

@@ -11,6 +11,7 @@ import pyqtgraph as pq
 import sys
 from QuadScanController import QuadScanController
 from QuadScanState import StateDispatcher
+from quadscan_ui import Ui_QuadScanDialog
 
 import logging
 
@@ -42,32 +43,11 @@ class QuadScanGui(QtGui.QWidget):
         QtGui.QWidget.__init__(self, parent)
         self.settings = QtCore.QSettings('Maxlab', 'QuadScan')
 
-        self.raw_image_widget = None
-        self.proc_image_widget = None
-        self.scan_image_widget = None
-        self.scan_plot_widget = None
-        self.roi_widget = None
+        self.current_state = "unknown"
+        self.last_load_dir = "."
 
-        self.quad_select_combobox = None
-        self.quad_start_spinbox = None
-        self.quad_stop_spinbox = None
-        self.scan_steps_spinbox = None
-        self.screen_select_combobox = None
-        self.roi_x_spinbox = None
-        self.roi_y_spinbox = None
-        self.roi_w_spinbox = None
-        self.roi_h_spinbox = None
-
-        self.image_threshold_spinbox = None
-
-        self.eps_label = None
-        self.beta_label = None
-        self.gamma_label = None
-        self.alpha_label = None
-
-        self.state_label = None
-        self.status_label = None
-        self.image_path_edit = None
+        self.ui = Ui_QuadScanDialog()
+        self.ui.setupUi(self)
 
         self.setup_layout()
         self.controller = QuadScanController()
@@ -83,45 +63,40 @@ class QuadScanGui(QtGui.QWidget):
         """
         # Plotting widgets:
         plt1 = pq.PlotItem(labels={'bottom': ('Spectrum', 'm'), 'left': ('Time delay', 's')})
-        self.raw_image_widget = pq.ImageView(view=plt1)
-        self.raw_image_widget.ui.histogram.gradient.loadPreset('thermalclip')
-        self.raw_image_widget.setSizePolicy(QtGui.QSizePolicy.Preferred, QtGui.QSizePolicy.Expanding)
-        self.raw_image_widget.getView().setAspectLocked(False)
-        h = self.raw_image_widget.getHistogramWidget()
+        self.ui.image_raw_widget = pq.ImageView(view=plt1)
+        # self.ui.image_raw_widget.histogram.gradient.loadPreset('thermalclip')
+        self.ui.image_raw_widget.setSizePolicy(QtGui.QSizePolicy.Preferred, QtGui.QSizePolicy.Expanding)
+        self.ui.image_raw_widget.getView().setAspectLocked(False)
+        h = self.ui.image_raw_widget.getHistogramWidget()
         h.item.sigLevelChangeFinished.connect(self.update_image_threshold)
-        self.roi_widget = pq.RectROI([0, 300], [600, 20], pen=(0, 9))
-        self.roi_widget.sigRegionChangeFinished.connect(self.update_roi)
-        self.roi_widget.blockSignals(True)
-
-        self.state_label = QtGui.QLabel("")
-        self.status_label = QtGui.QLabel("")
+        self.ui.roi_widget = pq.RectROI([0, 300], [600, 20], pen=(0, 9))
+        self.ui.roi_widget.sigRegionChangeFinished.connect(self.update_roi)
+        self.ui.roi_widget.blockSignals(True)
 
         self.setLocale(QtCore.QLocale(QtCore.QLocale.English))
-        main_layout = QtGui.QVBoxLayout(self)
 
-        input_layout = QtGui.QHBoxLayout()
-        main_layout.addLayout(input_layout)
-        device_layout = QtGui.QGridLayout()
-        input_layout.addLayout(device_layout)
+        # Data storage
+        self.ui.load_data_button.clicked.connect(self.load_data)
 
-        graphics_layout = QtGui.QHBoxLayout()
-        main_layout.addLayout(graphics_layout)
-        graphics_layout.addWidget(self.raw_image_widget)
-
-        status_layout = QtGui.QGridLayout()
-        status_layout.addWidget(QtGui.QLabel("State"), 0, 0)
-        status_layout.addWidget(self.state_label, 0, 1)
-        status_layout.addWidget(QtGui.QLabel("Status"), 1, 0)
-        status_layout.addWidget(self.status_label)
-        status_layout.addItem(QtGui.QSpacerItem(30, 20, QtGui.QSizePolicy.Minimum, QtGui.QSizePolicy.Expanding), 2, 0)
-        main_layout.addLayout(status_layout)
+        self.last_load_dir = self.settings.value("load_path", ".", type=str)
 
     def change_state(self, new_state, new_status=None):
         root.info("Change state: {0}, status {1}".format(new_state, new_status))
-        # Map new_state string to tango state
-        self.state_label.setText(QtCore.QString(new_state))
+        self.ui.state_label.setText(QtCore.QString(new_state))
         if new_status is not None:
-            self.status_label.setText(QtCore.QString(new_status))
+            self.ui.status_label.setText(QtCore.QString(new_status))
+        if self.current_state == "load" and new_state != "load":
+            self.update_parameter_data()
+        self.current_state = new_state
+
+    def update_parameter_data(self):
+        root.info("Updating parameters")
+        quad_length = self.controller.get_parameter("scan", "quad_length")
+        root.debug("quad_length: {0}".format(quad_length))
+        # self.ui.quad_length_label.setText(str())
+        # self.ui.quad_screen_distance_label.setText(str(self.controller.get_parameter("scan", "quad_screen_distance")))
+        self.ui.energy_spinbox.setValue(self.controller.get_parameter("scan", "beam_energy"))
+        # self.ui.quad_select_edit.setText(self.controller.get_parameter("scan", "quad_name"))
 
     def update_image_threshold(self):
         """
@@ -136,6 +111,23 @@ class QuadScanGui(QtGui.QWidget):
         :return:
         """
         pass
+
+    def load_data(self):
+        root.info("Loading data")
+        load_dir = QtGui.QFileDialog.getExistingDirectory(self, "Select directory", self.last_load_dir)
+        self.last_load_dir = load_dir
+        root.debug("Loading from directory {0}".format(load_dir))
+        self.controller.set_parameter("load", "path", str(load_dir))
+        self.state_dispatcher.send_command("load")
+
+    def closeEvent(self, event):
+        """
+        Closing the applications. Stopping threads and saving the settings.
+        :param event:
+        :return:
+        """
+        self.state_dispatcher.stop()
+        self.settings.setValue("load_path", self.last_load_dir)
 
 
 if __name__ == "__main__":

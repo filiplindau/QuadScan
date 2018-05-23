@@ -14,6 +14,7 @@ The state name to class table is stored in a dict.
 import threading
 import time
 import logging
+import os
 import tango as tango
 import numpy as np
 from twisted_cut import defer
@@ -21,7 +22,7 @@ import TangoTwisted
 import QuadScanController
 from TangoTwisted import TangoAttributeFactory, defer_later
 
-logger = logging.getLogger("QuadScanController")
+logger = logging.getLogger("QuadScanState")
 logger.setLevel(logging.DEBUG)
 while len(logger.handlers):
     logger.removeHandler(logger.handlers[0])
@@ -43,11 +44,11 @@ class StateDispatcher(object):
         self.statehandler_dict[StateSetupAttributes.name] = StateSetupAttributes
         self.statehandler_dict[StateIdle.name] = StateIdle
         self.statehandler_dict[StateScan.name] = StateScan
-        self.statehandler_dict[StateScan.name] = StateAnalyse
-        self.statehandler_dict[StateScan.name] = StateLoad
-        self.statehandler_dict[StateScan.name] = StateSave
+        self.statehandler_dict[StateAnalyse.name] = StateAnalyse
+        self.statehandler_dict[StateLoad.name] = StateLoad
+        self.statehandler_dict[StateSave.name] = StateSave
         self.statehandler_dict[StateFault] = StateFault
-        self.current_state = StateDeviceConnect.name
+        self.current_state = StateUnknown.name
         self._state_obj = None
         self._state_thread = None
 
@@ -66,7 +67,7 @@ class StateDispatcher(object):
             except KeyError:
                 state_name = "unknown"
                 self.statehandler_dict[StateUnknown.name]
-            self.controller.set_state(state_name)
+            self.controller.set_state(state_name, "")
             # Do the state sequence: enter - run - exit
             self._state_obj.state_enter(prev_state)
             self._state_obj.run()       # <- this should be run in a loop in state object and
@@ -89,7 +90,7 @@ class StateDispatcher(object):
                                                                             state_name.upper()))
             self.current_state = state_name
         except AttributeError:
-            logger.debug("New state unknown. Got {0}, setting to UNKNOWN".format(state_name))
+            self.logger.debug("New state unknown. Got {0}, setting to UNKNOWN".format(state_name))
             self.current_state = "unknown"
 
     def send_command(self, msg):
@@ -245,6 +246,7 @@ class StateSetupAttributes(State):
     def __init__(self, controller):
         State.__init__(self, controller)
         self.deferred_list = list()
+        self.logger.setLevel(logging.DEBUG)
 
     def state_enter(self, prev_state=None):
         State.state_enter(self, prev_state)
@@ -253,11 +255,13 @@ class StateSetupAttributes(State):
         d_list = list()
         d1 = self.controller.send_command("stop", "camera", None)
         d2 = self.controller.check_attribute("state", "camera", tango.DevState.ON, timeout=3.0, write=False)
+        self.logger.debug("Type d2: {0}".format(type(d2)))
         d2.addErrback(self.state_error)
         d_list.append(d1)
         d_list.append(d2)
 
         d = defer.DeferredList(d_list)
+        self.logger.debug("Type deferred list: {0}".format(type(d)))
         d.addCallbacks(self.setup_attr, self.state_error)
         self.deferred_list.append(d)
 
@@ -269,9 +273,9 @@ class StateSetupAttributes(State):
         # When the DeferredList fires, the check_requirements method is called
         # as a callback.
         dl = list()
-        for key in self.controller.setup_params:
+        for key in self.controller.setup_attr_params:
             attr_name = key
-            attr_value = self.controller.setup_params[key]
+            attr_value = self.controller.setup_attr_params[key]
             dev_name = "camera"
             try:
                 self.logger.debug("Setting attribute {0} on device {1} to {2}".format(attr_name.upper(),
@@ -532,13 +536,58 @@ class StateLoad(State):
 
     def __init__(self, controller):
         State.__init__(self, controller)
-        self.quad_analysis = None
+        self.logger.setLevel(logging.DEBUG)
 
     def state_enter(self, prev_state=None):
         State.state_enter(self, prev_state)
         self.controller.set_status("Load scan data")
         self.logger.debug("Starting scan load")
+        self.load_data()
         self.check_requirements(None)
+
+    def load_data(self):
+        old_dir = os.getcwd()
+        load_dir = self.controller.load_params["path"]
+        self.logger.debug("Loading from {0}".format(load_dir))
+        try:
+            os.chdir(load_dir)
+        except OSError as e:
+            e = "Change dir failed: {0}".format(e)
+            os.chdir(old_dir)
+            self.state_error(e)
+
+        # See if there is a file called daq_info.txt
+        filename = "daq_info.txt"
+        if os.path.isfile(filename) is False:
+            e = "daq_info.txt not found in {0}".format(load_dir)
+            os.chdir(old_dir)
+            self.state_error(e)
+
+        self.logger.info("Loading Jason format data")
+        data_dict = dict()
+        with open(filename, "r") as file:
+            while True:
+                line = file.readline()
+                if line == "" or line[0:5] == "*****":
+                    break
+                try:
+                    key, value = line.split(":")
+                    data_dict[key.strip()] = value.strip()
+                except ValueError:
+                    pass
+        self.controller.set_parameter("scan", "beam_energy", np.double(data_dict["beam_energy"]))
+        self.controller.set_parameter("scan", "quad_name", data_dict["quad"])
+        self.controller.set_parameter("scan", "quad_length", np.double(data_dict["quad_length"]))
+        self.controller.set_parameter("scan", "quad_screen_distance", np.double(data_dict["quad_2_screen"]))
+        self.controller.set_parameter("scan", "screen_name", data_dict["screen"])
+        self.controller.set_parameter("scan", "num_k_values", int(data_dict["num_k_values"]))
+        self.controller.set_parameter("scan", "num_shots", int(data_dict["num_shots"]))
+        self.controller.set_parameter("scan", "k_min", np.double(data_dict["k_min"]))
+        self.controller.set_parameter("scan", "k_max", np.double(data_dict["k_max"]))
+        rc = data_dict["roi_center"].split(" ")
+        self.controller.set_parameter("scan", "roi_center", [np.double(rc[0]), np.double(rc[1])])
+        rd = data_dict["roi_dim"].split(" ")
+        self.controller.set_parameter("scan", "roi_dim", [np.double(rd[0]), np.double(rd[1])])
 
     def check_requirements(self, result):
         self.logger.info("Check requirements result: {0}".format(result))
@@ -636,9 +685,9 @@ class StateUnknown(State):
         self.logger.info("Starting state {0}".format(self.name.upper()))
         self.controller.set_status("Waiting {0} s before trying to reconnect".format(self.wait_time))
         self.start_time = time.time()
-        df = defer_later(self.wait_time, self.check_requirements, [None])
-        self.deferred_list.append(df)
-        df.addCallback(test_cb)
+        # df = defer_later(self.wait_time, self.check_requirements, [None])
+        # self.deferred_list.append(df)
+        # df.addCallback(test_cb)
         self.running = True
 
     def check_requirements(self, result):
@@ -650,22 +699,22 @@ class StateUnknown(State):
         if msg == "load":
             self.logger.debug("Message load... set next state and stop.")
             self.controller.idle_params["paused"] = True
-            try:
-                d = self.deferred_list[0]   # type: defer.Deferred
+            for d in self.deferred_list:
                 d.cancel()
-            except IndexError:
-                self.logger.debug("Empty deferred list when cancelling")
             self.next_state = "load"
             self.stop_run()
         elif msg == "save":
             self.logger.debug("Message save... set next state and stop.")
             self.controller.idle_params["paused"] = True
-            try:
-                d = self.deferred_list[0]   # type: defer.Deferred
+            for d in self.deferred_list:
                 d.cancel()
-            except IndexError:
-                self.logger.debug("Empty deferred list when cancelling")
             self.next_state = "save"
+            self.stop_run()
+        elif msg == "connect":
+            self.logger.debug("Message connect... set next state and stop.")
+            for d in self.deferred_list:
+                d.cancel()
+            self.next_state = "connect"
             self.stop_run()
 
 

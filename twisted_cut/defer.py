@@ -476,7 +476,10 @@ class Deferred:
         elif not isinstance(fail, failure.Failure):
             fail = failure.Failure(fail)
 
+        log.debug("Deferred.errback: fail={0}".format(fail))
+        log.debug("Deferred.errback: debug={0}".format(self.debug))
         self._startRunCallbacks(fail)
+        log.debug("Deferred.errback: exiting")
 
     def pause(self):
         """
@@ -910,8 +913,7 @@ class DebugInfo:
         if self.failResult is not None:
             # Note: this is two separate messages for compatibility with
             # earlier tests; arguably it should be a single error message.
-            log.critical("Unhandled error in Deferred:",
-                         isError=True)
+            log.critical("DebugInfo: Unhandled error in Deferred:")
 
             debugInfo = self._getDebugTracebacks()
             if debugInfo:
@@ -919,9 +921,7 @@ class DebugInfo:
             else:
                 format = None
 
-            log.error(format,
-                        self.failResult,
-                        debugInfo=debugInfo)
+            log.error("DebugInfo: {0}, {1}".format(format, self.failResult))
 
 
 class FirstError(Exception):
@@ -1045,10 +1045,9 @@ class DeferredList(Deferred):
         index = 0
         for deferred in self._deferredList:
             deferred.addCallbacks(self._cbDeferred, self._cbDeferred,
-                                  callbackArgs=(index,SUCCESS),
-                                  errbackArgs=(index,FAILURE))
+                                  callbackArgs=(index, SUCCESS),
+                                  errbackArgs=(index, FAILURE))
             index = index + 1
-
 
     def _cbDeferred(self, result, index, succeeded):
         """

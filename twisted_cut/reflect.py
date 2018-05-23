@@ -18,6 +18,7 @@ from io import BytesIO as NativeStringIO
 
 RegexType = type(re.compile(""))
 
+
 def prefixedMethodNames(classObj, prefix):
     """
     Given a class object C{classObj}, returns a list of method names that match
@@ -219,13 +220,11 @@ def qual(clazz):
     return clazz.__module__ + '.' + clazz.__name__
 
 
-
 def _determineClass(x):
     try:
         return x.__class__
     except:
         return type(x)
-
 
 
 def _determineClassName(x):
@@ -237,7 +236,6 @@ def _determineClassName(x):
             return str(c)
         except:
             return '<BROKEN CLASS AT 0x%x>' % id(c)
-
 
 
 def _safeFormat(formatter, o):
@@ -276,6 +274,19 @@ def safe_repr(o):
         return repr(o)
     except:
         return _safeFormat(repr, o)
+
+
+def safe_str(o):
+    """
+    Returns a string representation of an object, or a string containing a
+    traceback, if that object's __str__ raised an exception.
+    @param o: Any object.
+    @rtype: C{str}
+    """
+    try:
+        return str(o)
+    except:
+        return _safeFormat(str, o)
 
 
 class QueueMethod:
