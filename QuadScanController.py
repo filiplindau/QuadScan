@@ -268,6 +268,28 @@ class QuadScanController(object):
         self.logger.debug("Value {0}".format(value))
         return value
 
+    def set_result(self, state_name, result_name, value):
+        self.logger.debug("Setting result {0}.{1}:".format(state_name, result_name))
+        with self.state_lock:
+            if state_name == "analyse":
+                self.analyse_result[result_name] = value
+            elif state_name == "scan":
+                self.scan_result[result_name] = value
+
+    def get_result(self, state_name, result_name):
+        self.logger.debug("Getting result {0}.{1}:".format(state_name, result_name))
+        with self.state_lock:
+            try:
+                if state_name == "analyse":
+                    value = self.analyse_result[result_name]
+                elif state_name == "scan":
+                    value = self.scan_result[result_name]
+                else:
+                    value = None
+            except KeyError:
+                value = None
+        return value
+
 
 class Scan(object):
     """

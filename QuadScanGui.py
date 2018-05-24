@@ -9,6 +9,7 @@ from PyQt4 import QtGui, QtCore
 
 import pyqtgraph as pq
 import sys
+import numpy as np
 from QuadScanController import QuadScanController
 from QuadScanState import StateDispatcher
 from quadscan_ui import Ui_QuadScanDialog
@@ -67,6 +68,7 @@ class QuadScanGui(QtGui.QWidget):
         # self.ui.image_raw_widget.histogram.gradient.loadPreset('thermalclip')
         self.ui.image_raw_widget.setSizePolicy(QtGui.QSizePolicy.Preferred, QtGui.QSizePolicy.Expanding)
         self.ui.image_raw_widget.getView().setAspectLocked(False)
+        self.ui.image_raw_widget.setData(np.random.random((64, 64)))
         h = self.ui.image_raw_widget.getHistogramWidget()
         h.item.sigLevelChangeFinished.connect(self.update_image_threshold)
         self.ui.roi_widget = pq.RectROI([0, 300], [600, 20], pen=(0, 9))
@@ -74,6 +76,10 @@ class QuadScanGui(QtGui.QWidget):
         self.ui.roi_widget.blockSignals(True)
 
         self.setLocale(QtCore.QLocale(QtCore.QLocale.English))
+
+        # Signal connections
+        self.ui.k_slider.valueChanged.connect(self.update_image_selection)
+        self.ui.image_slider.valueChanged.connect(self.update_image_selection)
 
         # Data storage
         self.ui.load_data_button.clicked.connect(self.load_data)
@@ -103,6 +109,10 @@ class QuadScanGui(QtGui.QWidget):
         self.ui.quad_select_edit.setText(self.controller.get_parameter("scan", "quad_name"))
         self.ui.screen_select_edit.setText(self.controller.get_parameter("scan", "screen_name"))
 
+        self.ui.k_slider.setMaximum(self.controller.get_parameter("scan", "num_k_values") - 1)
+        self.ui.image_slider.setMaximum(self.controller.get_parameter("scan", "num_shots") - 1)
+        self.update_image_selection()
+
     def update_image_threshold(self):
         """
         Set the threshold used when processing image for beam emittance calculations
@@ -116,6 +126,19 @@ class QuadScanGui(QtGui.QWidget):
         :return:
         """
         pass
+
+    def update_image_selection(self):
+        """
+        Update the image selected by the sliders.
+        :return:
+        """
+        image_ind = self.ui.image_slider.value()
+        k_ind = self.ui.k_slider.value()
+        raw_data = self.controller.get_result("scan", "raw_data")
+        root.debug("Updating image to {0}:{1} in an array of {2}:{3}".format(k_ind, image_ind,
+                                                                             len(raw_data), len(raw_data[0])))
+        pic = raw_data[k_ind][image_ind]
+        self.ui.image_raw_widget.setImage(pic)
 
     def load_data(self):
         root.info("Loading data")

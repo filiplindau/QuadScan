@@ -546,7 +546,6 @@ class StateLoad(State):
         self.controller.set_status("Load scan data")
         self.logger.debug("Starting scan load")
         self.load_data()
-        self.check_requirements(None)
 
     def load_data(self):
         old_dir = os.getcwd()
@@ -596,24 +595,40 @@ class StateLoad(State):
         for file_name in file_list:
             if file_name.endswith(".png"):
                 self.image_file_list.append(file_name)
+        self.logger.debug("Found {0} images in directory".format(len(self.image_file_list)))
         self.image_file_iterator = iter(self.image_file_list)
         self.controller.scan_raw_data = [list() for i in range(self.controller.get_parameter("scan", "num_k_values"))]
         self.load_next_image(None)
 
     def load_next_image(self, result):
+        self.logger.debug("Result type: {0}".format(type(result)))
         if result is not None:
             self.deferred_list.pop(0)
-            if type(result) == PIL.PngImagePlugin.PngImageFile:
-                name = result.filename.split("_")
-                k_num = int(name[0])
-                self.logger.debug("Storing image {0}_{1}".format(k_num, name[1]))
-                self.controller.scan_raw_data[k_num].append(np.array(result))
+            name = result.filename.split("_")
+            k_num = np.maximum(0, int(name[0]) - 1)
+            self.logger.debug("Loading image {0}_{1}".format(k_num, name[1]))
+            self.controller.set_status("Loading image {0}_{1}".format(k_num, name[1]))
+            pic = np.array(result)
+            self.logger.debug("Image size: {0}".format(pic.shape))
+            try:
+                self.controller.scan_raw_data[k_num].append(pic)
+            except IndexError:
+                self.logger.warning("Image index out of range: {0} out of {1}".format(k_num,
+                                                                                      len(self.controller.scan_raw_data)))
         try:
             filename = self.image_file_iterator.next()
+            self.logger.debug("Loading file {0}".format(filename))
+            d = TangoTwisted.defer_to_thread(PIL.Image.open, filename)
+            d.addCallbacks(self.load_next_image, self.state_error)
+            self.deferred_list = [d]
+            return True
         except StopIteration:
+            self.logger.debug("No more files, stopping image read.")
+            self.logger.debug("scan_raw_data size: {0}:{1}".format(len(self.controller.scan_raw_data),
+                                                                   len(self.controller.scan_raw_data[0])))
+            self.controller.set_result("scan", "raw_data", self.controller.scan_raw_data)
             self.check_requirements(True)
-        self.logger.debug("Loading file {0}".format(filename))
-        self.deferred_list.append(TangoTwisted.defer_to_thread(PIL.Image.open(filename)))
+            return False
 
     def check_requirements(self, result):
         self.logger.info("Check requirements result: {0}".format(result))
@@ -709,7 +724,8 @@ class StateUnknown(State):
 
     def state_enter(self, prev_state):
         self.logger.info("Starting state {0}".format(self.name.upper()))
-        self.controller.set_status("Waiting {0} s before trying to reconnect".format(self.wait_time))
+        # self.controller.set_status("Waiting {0} s before trying to reconnect".format(self.wait_time))
+        self.controller.set_status("Not connected to devices")
         self.start_time = time.time()
         # df = defer_later(self.wait_time, self.check_requirements, [None])
         # self.deferred_list.append(df)
