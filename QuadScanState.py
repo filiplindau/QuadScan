@@ -21,6 +21,7 @@ from twisted_cut import defer
 import TangoTwisted
 import QuadScanController
 from TangoTwisted import TangoAttributeFactory, defer_later
+import PIL
 
 logger = logging.getLogger("QuadScanState")
 logger.setLevel(logging.DEBUG)
@@ -537,6 +538,8 @@ class StateLoad(State):
     def __init__(self, controller):
         State.__init__(self, controller)
         self.logger.setLevel(logging.DEBUG)
+        self.image_file_list = list()
+        self.image_file_iterator = None
 
     def state_enter(self, prev_state=None):
         State.state_enter(self, prev_state)
@@ -588,6 +591,29 @@ class StateLoad(State):
         self.controller.set_parameter("scan", "roi_center", [np.double(rc[0]), np.double(rc[1])])
         rd = data_dict["roi_dim"].split(" ")
         self.controller.set_parameter("scan", "roi_dim", [np.double(rd[0]), np.double(rd[1])])
+
+        file_list = os.listdir(".")
+        for file_name in file_list:
+            if file_name.endswith(".png"):
+                self.image_file_list.append(file_name)
+        self.image_file_iterator = iter(self.image_file_list)
+        self.controller.scan_raw_data = [list() for i in range(self.controller.get_parameter("scan", "num_k_values"))]
+        self.load_next_image(None)
+
+    def load_next_image(self, result):
+        if result is not None:
+            self.deferred_list.pop(0)
+            if type(result) == PIL.PngImagePlugin.PngImageFile:
+                name = result.filename.split("_")
+                k_num = int(name[0])
+                self.logger.debug("Storing image {0}_{1}".format(k_num, name[1]))
+                self.controller.scan_raw_data[k_num].append(np.array(result))
+        try:
+            filename = self.image_file_iterator.next()
+        except StopIteration:
+            self.check_requirements(True)
+        self.logger.debug("Loading file {0}".format(filename))
+        self.deferred_list.append(TangoTwisted.defer_to_thread(PIL.Image.open(filename)))
 
     def check_requirements(self, result):
         self.logger.info("Check requirements result: {0}".format(result))
