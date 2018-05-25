@@ -53,6 +53,7 @@ class QuadScanGui(QtGui.QWidget):
         self.setup_layout()
         self.controller = QuadScanController()
         self.controller.add_state_notifier(self.change_state)
+        self.controller.add_progress_notifier(self.change_progress)
 
         self.state_dispatcher = StateDispatcher(self.controller)
         self.state_dispatcher.start()
@@ -64,16 +65,21 @@ class QuadScanGui(QtGui.QWidget):
         """
         # Plotting widgets:
         plt1 = pq.PlotItem(labels={'bottom': ('Spectrum', 'm'), 'left': ('Time delay', 's')})
-        self.ui.image_raw_widget = pq.ImageView(view=plt1)
-        # self.ui.image_raw_widget.histogram.gradient.loadPreset('thermalclip')
-        self.ui.image_raw_widget.setSizePolicy(QtGui.QSizePolicy.Preferred, QtGui.QSizePolicy.Expanding)
+        # self.ui.image_raw_widget = pq.ImageView(view=plt1)
+        self.ui.image_raw_widget.ui.histogram.gradient.loadPreset('thermalclip')
+        self.ui.image_raw_widget.setSizePolicy(QtGui.QSizePolicy.Expanding, QtGui.QSizePolicy.Expanding)
         self.ui.image_raw_widget.getView().setAspectLocked(False)
-        self.ui.image_raw_widget.setData(np.random.random((64, 64)))
+        self.ui.image_raw_widget.setImage(np.random.random((64, 64)))
         h = self.ui.image_raw_widget.getHistogramWidget()
         h.item.sigLevelChangeFinished.connect(self.update_image_threshold)
         self.ui.roi_widget = pq.RectROI([0, 300], [600, 20], pen=(0, 9))
         self.ui.roi_widget.sigRegionChangeFinished.connect(self.update_roi)
         self.ui.roi_widget.blockSignals(True)
+
+        self.ui.image_proc_widget.ui.histogram.gradient.loadPreset('thermalclip')
+        self.ui.image_proc_widget.setSizePolicy(QtGui.QSizePolicy.Expanding, QtGui.QSizePolicy.Expanding)
+        self.ui.image_proc_widget.getView().setAspectLocked(False)
+        self.ui.image_proc_widget.setImage(np.random.random((64, 64)))
 
         self.setLocale(QtCore.QLocale(QtCore.QLocale.English))
 
@@ -94,6 +100,12 @@ class QuadScanGui(QtGui.QWidget):
         if self.current_state == "load" and new_state != "load":
             self.update_parameter_data()
         self.current_state = new_state
+
+    def change_progress(self, new_progress):
+        root.info("Changing progress to {0}".format(new_progress))
+        p = np.maximum(100, int(100*new_progress))
+        p = np.minimum(0, p)
+        self.ui.operation_progressbar.setValue(p)
 
     def update_parameter_data(self):
         root.info("Updating parameters")

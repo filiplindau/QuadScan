@@ -112,6 +112,8 @@ class QuadScanController(object):
         self.state = "unknown"
         self.state_notifier_list = list()       # Methods in this list will be called when the state
         # or status message is changed
+        self.progress = 0
+        self.progress_notifier_list = list()
 
         if start is True:
             for key in self.device_names:
@@ -221,8 +223,20 @@ class QuadScanController(object):
         self.logger.debug("Status: {0}".format(status_msg))
         with self.state_lock:
             self.status = status_msg
-            for m in self.state_notifier_list:
-                m(self.state, self.status)
+            state = self.state
+        for m in self.state_notifier_list:
+            m(state, status_msg)
+
+    def set_progress(self, progress):
+        with self.state_lock:
+            self.progress = progress
+        for m in self.progress_notifier_list:
+            m(progress)
+
+    def get_progress(self):
+        with self.state_lock:
+            pr = self.progress
+        return pr
 
     def add_state_notifier(self, state_notifier_method):
         self.state_notifier_list.append(state_notifier_method)
@@ -232,6 +246,15 @@ class QuadScanController(object):
             self.state_notifier_list.remove(state_notifier_method)
         except ValueError:
             self.logger.warning("Method {0} not in list. Ignoring.".format(state_notifier_method))
+
+    def add_progress_notifier(self, notifier_method):
+        self.progress_notifier_list.append(notifier_method)
+
+    def remove_progress_notifier(self, notifier_method):
+        try:
+            self.progress_notifier_list.remove(notifier_method)
+        except ValueError:
+            self.logger.warning("Method {0} not in list. Ignoring.".format(notifier_method))
 
     def set_parameter(self, state_name, param_name, value):
         self.logger.debug("Setting parameter {0}.{1} to {2}".format(state_name, param_name, value))
