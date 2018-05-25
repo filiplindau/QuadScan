@@ -78,6 +78,8 @@ class QuadScanController(object):
 
         self.scan_result = dict()
         self.scan_result["k_data"] = None
+        self.scan_result["raw_data"] = None
+        self.scan_result["proc_data"] = None
         self.scan_result["scan_data"] = None
         self.scan_result["start_time"] = None
         self.scan_raw_data = None
@@ -228,6 +230,7 @@ class QuadScanController(object):
             m(state, status_msg)
 
     def set_progress(self, progress):
+        self.logger.debug("Setting progress to {0}".format(progress))
         with self.state_lock:
             self.progress = progress
         for m in self.progress_notifier_list:
@@ -312,6 +315,18 @@ class QuadScanController(object):
             except KeyError:
                 value = None
         return value
+
+    def process_image(self, image):
+        self.logger.info("Processing image")
+        th = self.get_parameter("analyse", "threshold")
+        roi_cent = self.get_parameter("scan", "roi_center")
+        roi_dim = self.get_parameter("scan", "roi_dim")
+        x = np.array([int(roi_cent[0] - roi_dim[0]), int(roi_cent[0] + roi_dim[1])])
+        y = np.array([int(roi_cent[1] - roi_dim[0]), int(roi_cent[1] + roi_dim[1])])
+        self.logger.debug("Threshold: {0}\nROI: {1}-{2}, {3}-{4}".format(th, x[0], x[1], y[0], y[1]))
+        pic_roi = image[x[0]:x[1], y[0]:y[1]]
+        pic_roi[pic_roi < th] = 0
+        return pic_roi
 
 
 class Scan(object):

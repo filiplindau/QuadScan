@@ -103,8 +103,8 @@ class QuadScanGui(QtGui.QWidget):
 
     def change_progress(self, new_progress):
         root.info("Changing progress to {0}".format(new_progress))
-        p = np.maximum(100, int(100*new_progress))
-        p = np.minimum(0, p)
+        p = np.minimum(100, int(100*new_progress))
+        p = np.maximum(0, p)
         self.ui.operation_progressbar.setValue(p)
 
     def update_parameter_data(self):
@@ -147,10 +147,13 @@ class QuadScanGui(QtGui.QWidget):
         image_ind = self.ui.image_slider.value()
         k_ind = self.ui.k_slider.value()
         raw_data = self.controller.get_result("scan", "raw_data")
+        proc_data = self.controller.get_result("scan", "proc_data")
         root.debug("Updating image to {0}:{1} in an array of {2}:{3}".format(k_ind, image_ind,
                                                                              len(raw_data), len(raw_data[0])))
-        pic = raw_data[k_ind][image_ind]
-        self.ui.image_raw_widget.setImage(pic)
+        raw_pic = raw_data[k_ind][image_ind]
+        proc_pic = proc_data[k_ind][image_ind]
+        self.ui.image_raw_widget.setImage(raw_pic)
+        self.ui.image_proc_widget.setImage(proc_pic)
 
     def load_data(self):
         root.info("Loading data")

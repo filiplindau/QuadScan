@@ -25,7 +25,7 @@ except AttributeError:
 class Ui_QuadScanDialog(object):
     def setupUi(self, QuadScanDialog):
         QuadScanDialog.setObjectName(_fromUtf8("QuadScanDialog"))
-        QuadScanDialog.resize(1680, 1296)
+        QuadScanDialog.resize(1265, 881)
         sizePolicy = QtGui.QSizePolicy(QtGui.QSizePolicy.Fixed, QtGui.QSizePolicy.Preferred)
         sizePolicy.setHorizontalStretch(0)
         sizePolicy.setVerticalStretch(0)
