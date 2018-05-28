@@ -13,6 +13,7 @@ import numpy as np
 from QuadScanController import QuadScanController
 from QuadScanState import StateDispatcher
 from quadscan_ui import Ui_QuadScanDialog
+import threading
 
 import logging
 
@@ -47,13 +48,18 @@ class QuadScanGui(QtGui.QWidget):
         self.current_state = "unknown"
         self.last_load_dir = "."
 
+        self.line_x_plot = None
+        self.line_y_plot = None
+
+        self.gui_lock = threading.Lock()
+
         self.ui = Ui_QuadScanDialog()
         self.ui.setupUi(self)
 
-        self.setup_layout()
         self.controller = QuadScanController()
         self.controller.add_state_notifier(self.change_state)
         self.controller.add_progress_notifier(self.change_progress)
+        self.setup_layout()
 
         self.state_dispatcher = StateDispatcher(self.controller)
         self.state_dispatcher.start()
@@ -70,22 +76,38 @@ class QuadScanGui(QtGui.QWidget):
         self.ui.image_raw_widget.setSizePolicy(QtGui.QSizePolicy.Expanding, QtGui.QSizePolicy.Expanding)
         self.ui.image_raw_widget.getView().setAspectLocked(False)
         self.ui.image_raw_widget.setImage(np.random.random((64, 64)))
+        self.ui.image_raw_widget.ui.roiBtn.hide()
+        self.ui.image_raw_widget.ui.menuBtn.hide()
         h = self.ui.image_raw_widget.getHistogramWidget()
         h.item.sigLevelChangeFinished.connect(self.update_image_threshold)
-        self.ui.roi_widget = pq.RectROI([0, 300], [600, 20], pen=(0, 9))
-        self.ui.roi_widget.sigRegionChangeFinished.connect(self.update_roi)
-        self.ui.roi_widget.blockSignals(True)
+        self.ui.image_raw_widget.roi.show()
+        self.ui.image_raw_widget.roi.sigRegionChangeFinished.connect(self.update_roi)
+        self.ui.image_raw_widget.roi.blockSignals(True)
+        self.ui.image_raw_widget.roi.setPos((0, 0))
+        self.ui.image_raw_widget.roi.setSize((64, 64))
+        self.ui.image_raw_widget.roi.blockSignals(False)
 
         self.ui.image_proc_widget.ui.histogram.gradient.loadPreset('thermalclip')
         self.ui.image_proc_widget.setSizePolicy(QtGui.QSizePolicy.Expanding, QtGui.QSizePolicy.Expanding)
         self.ui.image_proc_widget.getView().setAspectLocked(False)
         self.ui.image_proc_widget.setImage(np.random.random((64, 64)))
+        self.ui.image_proc_widget.ui.roiBtn.hide()
+        self.ui.image_proc_widget.ui.menuBtn.hide()
+
+        self.line_x_plot = self.ui.lineout_widget.plot()
+        self.line_x_plot.setPen((200, 25, 10))
+        self.line_y_plot = self.ui.lineout_widget.plot()
+        self.line_y_plot.setPen((10, 200, 25))
+        self.ui.lineout_widget.setLabel("bottom", "Line coord", "px")
+        self.ui.lineout_widget.showGrid(True)
 
         self.setLocale(QtCore.QLocale(QtCore.QLocale.English))
 
         # Signal connections
+        self.ui.threshold_spinbox.editingFinished.connect(self.update_image_threshold)
         self.ui.k_slider.valueChanged.connect(self.update_image_selection)
         self.ui.image_slider.valueChanged.connect(self.update_image_selection)
+        self.controller.progress_signal.connect(self.change_progress)
 
         # Data storage
         self.ui.load_data_button.clicked.connect(self.load_data)
@@ -106,24 +128,35 @@ class QuadScanGui(QtGui.QWidget):
         p = np.minimum(100, int(100*new_progress))
         p = np.maximum(0, p)
         root.debug("p: {0}".format(p))
-        self.ui.operation_progressbar.setValue(p)
+        with self.gui_lock:
+            self.ui.operation_progressbar.setValue(p)
+        # QtGui.QApplication.processEvents()
 
     def update_parameter_data(self):
         root.info("Updating parameters")
         quad_length = self.controller.get_parameter("scan", "quad_length")
         root.debug("quad_length: {0}".format(quad_length))
-        self.ui.quad_length_label.setText(str(quad_length))
-        self.ui.quad_screen_distance_label.setText(str(self.controller.get_parameter("scan", "quad_screen_distance")))
-        self.ui.energy_spinbox.setValue(self.controller.get_parameter("scan", "beam_energy"))
-        self.ui.k_start_spinbox.setValue(self.controller.get_parameter("scan", "k_min"))
-        self.ui.k_end_spinbox.setValue(self.controller.get_parameter("scan", "k_max"))
-        self.ui.k_number_values_spinbox.setValue(self.controller.get_parameter("scan", "num_k_values"))
-        self.ui.images_number_spinbox.setValue(self.controller.get_parameter("scan", "num_shots"))
-        self.ui.quad_select_edit.setText(self.controller.get_parameter("scan", "quad_name"))
-        self.ui.screen_select_edit.setText(self.controller.get_parameter("scan", "screen_name"))
+        with self.gui_lock:
+            self.ui.quad_length_label.setText(str(quad_length))
+            self.ui.quad_screen_distance_label.setText(str(self.controller.get_parameter("scan", "quad_screen_distance")))
+            self.ui.energy_spinbox.setValue(self.controller.get_parameter("scan", "beam_energy"))
+            self.ui.k_start_spinbox.setValue(self.controller.get_parameter("scan", "k_min"))
+            self.ui.k_end_spinbox.setValue(self.controller.get_parameter("scan", "k_max"))
+            self.ui.k_number_values_spinbox.setValue(self.controller.get_parameter("scan", "num_k_values"))
+            self.ui.images_number_spinbox.setValue(self.controller.get_parameter("scan", "num_shots"))
+            self.ui.quad_select_edit.setText(self.controller.get_parameter("scan", "quad_name"))
+            self.ui.screen_select_edit.setText(self.controller.get_parameter("scan", "screen_name"))
 
-        self.ui.k_slider.setMaximum(self.controller.get_parameter("scan", "num_k_values") - 1)
-        self.ui.image_slider.setMaximum(self.controller.get_parameter("scan", "num_shots") - 1)
+            self.ui.k_slider.setMaximum(self.controller.get_parameter("scan", "num_k_values") - 1)
+            self.ui.image_slider.setMaximum(self.controller.get_parameter("scan", "num_shots") - 1)
+
+            rc = self.controller.get_parameter("scan", "roi_center")
+            rd = self.controller.get_parameter("scan", "roi_dim")
+            self.ui.image_raw_widget.roi.blockSignals(True)
+            self.ui.image_raw_widget.roi.setPos((rc[0] - rd[0]/2, rc[1] - rd[1]/2))
+            self.ui.image_raw_widget.roi.setSize((rd[0], rd[1]))
+            self.ui.image_raw_widget.roi.show()
+            self.ui.image_raw_widget.roi.blockSignals(False)
         self.update_image_selection()
 
     def update_image_threshold(self):
@@ -131,16 +164,28 @@ class QuadScanGui(QtGui.QWidget):
         Set the threshold used when processing image for beam emittance calculations
         :return:
         """
-        pass
+        th = self.ui.threshold_spinbox.value()
+        root.info("Setting image threshold to {0}".format(th))
+        self.controller.set_parameter("analyse", "threshold", th)
+        image_ind = self.ui.image_slider.value()
+        k_ind = self.ui.k_slider.value()
+        self.controller.process_image(k_ind, image_ind)
+        self.update_image_selection()
 
     def update_roi(self):
         """
         Update the roi in the raw image used for beam emittance calculations
         :return:
         """
-        pass
+        root.info("Update roi")
+        rs = self.ui.image_raw_widget.roi.size()
+        rp = self.ui.image_raw_widget.roi.pos()
+        self.controller.set_parameter("scan", "roi_center", [rp[0] + rs[0]/2, rp[1] + rs[1]/2])
+        self.controller.set_parameter("scan", "roi_dim", [rs[0], rs[1]])
+        d = self.controller.process_all_images()
+        d.addCallback(self.update_image_selection)
 
-    def update_image_selection(self):
+    def update_image_selection(self, result=None):
         """
         Update the image selected by the sliders.
         :return:
@@ -149,12 +194,27 @@ class QuadScanGui(QtGui.QWidget):
         k_ind = self.ui.k_slider.value()
         raw_data = self.controller.get_result("scan", "raw_data")
         proc_data = self.controller.get_result("scan", "proc_data")
+        if raw_data is None:
+            # Exit if there is no data
+            return
         root.debug("Updating image to {0}:{1} in an array of {2}:{3}".format(k_ind, image_ind,
                                                                              len(raw_data), len(raw_data[0])))
-        raw_pic = raw_data[k_ind][image_ind]
-        proc_pic = proc_data[k_ind][image_ind]
+        try:
+            raw_pic = raw_data[k_ind][image_ind]
+            proc_pic = proc_data[k_ind][image_ind]
+            line_x = self.controller.get_result("scan", "line_data_x")[k_ind][image_ind]
+            line_y = self.controller.get_result("scan", "line_data_y")[k_ind][image_ind]
+        except IndexError:
+            root.error("IndexError")
+            raw_pic = np.random.random((64, 64))
+            proc_pic = np.random.random((64, 64))
+            line_x = np.random.random(64)
+            line_y = np.random.random(64)
         self.ui.image_raw_widget.setImage(raw_pic)
         self.ui.image_proc_widget.setImage(proc_pic)
+        self.line_x_plot.setData(y=line_x)
+        self.line_y_plot.setData(y=line_y)
+        self.ui.image_raw_widget.roi.show()
 
     def load_data(self):
         root.info("Loading data")

@@ -15,22 +15,23 @@ from TangoTwisted import TangoAttributeFactory, defer_later
 import QuadScanState as qs
 import numpy as np
 from scipy.signal import medfilt2d
+from PyQt4 import QtCore
 
-from QuadScanEmittanceCalculation import QuadScanEmittanceCalculation
-
-logger = logging.getLogger("QuadScanController")
-while len(logger.handlers):
-    logger.removeHandler(logger.handlers[0])
+# logger = logging.getLogger("QuadScanController")
+# while len(logger.handlers):
+#     logger.removeHandler(logger.handlers[0])
 
 # f = logging.Formatter("%(asctime)s - %(module)s.   %(funcName)s - %(levelname)s - %(message)s")
-f = logging.Formatter("%(asctime)s - %(name)s.   %(funcName)s - %(levelname)s - %(message)s")
-fh = logging.StreamHandler()
-fh.setFormatter(f)
-logger.addHandler(fh)
-logger.setLevel(logging.DEBUG)
+# f = logging.Formatter("%(asctime)s - %(name)s.   %(funcName)s - %(levelname)s - %(message)s")
+# fh = logging.StreamHandler()
+# fh.setFormatter(f)
+# logger.addHandler(fh)
+# logger.setLevel(logging.DEBUG)
 
 
-class QuadScanController(object):
+class QuadScanController(QtCore.QObject):
+    progress_signal = QtCore.Signal(float)
+
     def __init__(self, quad_name=None, screen_name=None, start=False):
         """
         Controller for running a scanning Frog device. Communicates with a spectrometer and a motor.
@@ -39,6 +40,7 @@ class QuadScanController(object):
         :param quad_name: Tango device name of the quad used for scanning
         :param screen_name: Tango device name of the camera used for capturing images of the screen
         """
+        QtCore.QObject.__init__(self)
         self.device_names = dict()
         if quad_name is not None:
             self.device_names["quad"] = quad_name
@@ -81,6 +83,8 @@ class QuadScanController(object):
         self.scan_result["raw_data"] = None
         self.scan_result["proc_data"] = None
         self.scan_result["scan_data"] = None
+        self.scan_result["line_data_x"] = None
+        self.scan_result["line_data_y"] = None
         self.scan_result["start_time"] = None
         self.scan_raw_data = None
         self.scan_proc_data = None
@@ -234,8 +238,9 @@ class QuadScanController(object):
         with self.state_lock:
             self.progress = progress
         self.logger.debug("Notifying progress listeners")
-        for m in self.progress_notifier_list:
-            m(progress)
+        self.progress_signal.emit(progress)
+        # for m in self.progress_notifier_list:
+        #     m(progress)
 
     def get_progress(self):
         with self.state_lock:
@@ -317,18 +322,80 @@ class QuadScanController(object):
                 value = None
         return value
 
-    def process_image(self, image):
-        self.logger.info("Processing image")
+    def process_image(self, k_ind, image_ind):
+        """
+        Process an image in the stored scan raw_data. Put the process image back in the scan proc_data.
+
+        Image processing consists of cropping, background subtracting, and filtering
+
+        :param k_ind: index into the list k values of images
+        :param image_ind: index into the list of images for each k value
+        :return: processed image
+        """
+        self.logger.info("Processing image {0}, {1}".format(k_ind, image_ind))
+        t0 = time.time()
         th = self.get_parameter("analyse", "threshold")
         roi_cent = self.get_parameter("scan", "roi_center")
         roi_dim = self.get_parameter("scan", "roi_dim")
-        x = np.array([int(roi_cent[0] - roi_dim[0]), int(roi_cent[0] + roi_dim[1])])
-        y = np.array([int(roi_cent[1] - roi_dim[0]), int(roi_cent[1] + roi_dim[1])])
-        self.logger.debug("Threshold: {0}\nROI: {1}-{2}, {3}-{4}".format(th, x[0], x[1], y[0], y[1]))
-        pic_roi = image[x[0]:x[1], y[0]:y[1]]
-        # pic_roi[pic_roi < th] = 0
+        x = np.array([int(roi_cent[0] - roi_dim[0]/2.0), int(roi_cent[0] + roi_dim[1]/2.0)])
+        y = np.array([int(roi_cent[1] - roi_dim[1]/2.0), int(roi_cent[1] + roi_dim[1]/2.0)])
+        self.logger.debug("Threshold: {0}".format(th))
+        self.logger.debug("ROI: {0}-{1}, {2}-{3}".format(x[0], x[1], y[0], y[1]))
+        with self.state_lock:
+            image_list = self.scan_result["raw_data"]
+            # image_list = self.get_result("scan", "raw_data")
+            self.logger.debug("Image list size: {0} x {1}".format(len(image_list), len(image_list[0])))
+            self.logger.debug("Image type: {0}".format(image_list[0][0].dtype))
+            try:
+                pic = image_list[k_ind][image_ind]
+            except IndexError as e:
+                self.logger.warning("Could not get image {0}, {1}: {2}".format(k_ind, image_ind, e))
+                return
+            except TypeError as e:
+                self.logger.warning("Could not get image {0}, {1}: {2}".format(k_ind, image_ind, e))
+                return
+            self.logger.debug("pic size: {0}".format(pic.shape))
+            pic_roi = pic[x[0]:x[1], y[0]:y[1]]
+            pic_roi[pic_roi < th] = 0
+            proc_list = self.scan_result["proc_data"]
+            line_data_x = self.scan_result["line_data_x"]
+            line_data_y = self.scan_result["line_data_y"]
+
+            # proc_list = self.get_result("scan", "proc_data")
+            # line_data_x = self.get_result("scan", "line_data_x")
+            # line_data_y = self.get_result("scan", "line_data_y")
+            try:
+                proc_list[k_ind][image_ind] = pic_roi
+                line_data_x[k_ind][image_ind] = pic_roi.sum(0)
+                line_data_y[k_ind][image_ind] = pic_roi.sum(1)
+            except IndexError:
+                proc_list[k_ind].append(pic_roi)
+                line_data_x[k_ind].append(pic_roi.sum(0))
+                line_data_y[k_ind].append(pic_roi.sum(1))
+        self.logger.debug("Image process time: {0}".format(time.time() - t0))
         return pic_roi
 
+    def process_all_images(self):
+        d_list = []
+        k_num = self.get_parameter("scan", "num_k_values")
+        im_num = self.get_parameter("scan", "num_shots")
+        total = np.double(k_num * im_num)
+        for k_ind in range(k_num):
+            for i_ind in range(im_num):
+                d = TangoTwisted.defer_to_thread(self.process_image, k_ind, i_ind)
+                d_list.append(d)
+        dl = defer.DeferredList(d_list)
+        return dl
+
+    def add_raw_image(self, k_num, image):
+        self.logger.info("Adding new image with k index {0}".format(k_num))
+        with self.state_lock:
+            im_list = self.scan_result["raw_data"]
+            try:
+                im_list[int(k_num)].append(image)
+            except IndexError:
+                self.logger.warning("Image index out of range: {0}/{1}, skipping".format(k_num,
+                                                                                         len(self.controller.scan_raw_data)))
 
 class Scan(object):
     """

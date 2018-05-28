@@ -23,7 +23,7 @@ f = logging.Formatter("%(asctime)s - %(name)s.   %(funcName)s - %(levelname)s - 
 fh = logging.StreamHandler()
 fh.setFormatter(f)
 logger.addHandler(fh)
-logger.setLevel(logging.DEBUG)
+logger.setLevel(logging.WARNING)
 
 
 def deferred_from_future(future):

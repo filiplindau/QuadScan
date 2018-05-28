@@ -33,7 +33,7 @@
   </property>
   <property name="windowIcon">
    <iconset>
-    <normaloff>Bitcoin-icon.png</normaloff>Bitcoin-icon.png</iconset>
+    <normaloff>eps.png</normaloff>eps.png</iconset>
   </property>
   <layout class="QVBoxLayout" name="verticalLayout">
    <item>
@@ -737,7 +737,7 @@
          </property>
          <property name="minimumSize">
           <size>
-           <width>100</width>
+           <width>150</width>
            <height>60</height>
           </size>
          </property>

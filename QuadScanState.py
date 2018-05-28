@@ -128,6 +128,7 @@ class State(object):
         self.logger.info("Entering state {0}".format(self.name.upper()))
         with self.cond_obj:
             self.running = True
+            self.controller.set_progress(0)
 
     def state_exit(self):
         self.logger.info("Exiting state {0}".format(self.name.upper()))
@@ -335,7 +336,6 @@ class StateIdle(State):
 
     def state_enter(self, prev_state=None):
         State.state_enter(self, prev_state)
-        # self.controller.set_progress(0)
         # Start camera:
         self.controller.set_status("Idle")
         # Start looping calls for monitored attributes
@@ -436,7 +436,6 @@ class StateScan(State):
 
     def state_enter(self, prev_state=None):
         State.state_enter(self, prev_state)
-        self.controller.set_progress(0)
         dev_name = "quad"
         attr_name = self.controller.scan_params["scan_attr"]
         start_pos = self.controller.scan_params["start_pos"]
@@ -507,7 +506,6 @@ class StateAnalyse(State):
         State.state_enter(self, prev_state)
         self.controller.set_status("Analysing scan")
         self.logger.debug("Starting quad scan analysis")
-        self.controller.set_progress(0)
         self.quad_analysis = QuadScanController.QuadScanAnalyse(self.controller)
         d = self.quad_analysis.start_analysis()
         self.deferred_list.append(d)
@@ -544,11 +542,13 @@ class StateLoad(State):
         self.image_file_list = list()
         self.image_file_iterator = None
 
+        self.old_raw_data = None
+        self.old_proc_data = None
+
     def state_enter(self, prev_state=None):
         State.state_enter(self, prev_state)
         self.controller.set_status("Load scan data")
         self.logger.debug("Starting scan load")
-        self.controller.set_progress(0)
         self.load_data()
 
     def load_data(self):
@@ -591,9 +591,9 @@ class StateLoad(State):
         self.controller.set_parameter("scan", "k_min", np.double(data_dict["k_min"]))
         self.controller.set_parameter("scan", "k_max", np.double(data_dict["k_max"]))
         rc = data_dict["roi_center"].split(" ")
-        self.controller.set_parameter("scan", "roi_center", [np.double(rc[0]), np.double(rc[1])])
+        self.controller.set_parameter("scan", "roi_center", [np.double(rc[1]), np.double(rc[0])])
         rd = data_dict["roi_dim"].split(" ")
-        self.controller.set_parameter("scan", "roi_dim", [np.double(rd[0]), np.double(rd[1])])
+        self.controller.set_parameter("scan", "roi_dim", [np.double(rd[1]), np.double(rd[0])])
 
         file_list = os.listdir(".")
         for file_name in file_list:
@@ -601,8 +601,18 @@ class StateLoad(State):
                 self.image_file_list.append(file_name)
         self.logger.debug("Found {0} images in directory".format(len(self.image_file_list)))
         self.image_file_iterator = iter(self.image_file_list)
-        self.controller.scan_raw_data = [list() for i in range(self.controller.get_parameter("scan", "num_k_values"))]
-        self.controller.scan_proc_data = [list() for i in range(self.controller.get_parameter("scan", "num_k_values"))]
+        # Save old data:
+        self.old_raw_data = self.controller.get_result("scan", "raw_data")
+        self.old_proc_data = self.controller.get_result("scan", "proc_data")
+        # Init new data structure:
+        self.controller.set_result("scan", "raw_data",
+                                   [list() for i in range(self.controller.get_parameter("scan", "num_k_values"))])
+        self.controller.set_result("scan", "proc_data",
+                                   [list() for i in range(self.controller.get_parameter("scan", "num_k_values"))])
+        self.controller.set_result("scan", "line_data_x",
+                                   [list() for i in range(self.controller.get_parameter("scan", "num_k_values"))])
+        self.controller.set_result("scan", "line_data_y",
+                                   [list() for i in range(self.controller.get_parameter("scan", "num_k_values"))])
         self.load_next_image(None)
 
     def load_next_image(self, result):
@@ -610,23 +620,18 @@ class StateLoad(State):
         if result is not None:
             self.deferred_list.pop(0)
             name = result.filename.split("_")
-            k_num = np.maximum(0, int(name[0]) - 1)
-            image_num = np.maximum(0, float(name[1]) - 1)
+            k_num = np.maximum(0, int(name[0]) - 1).astype(np.int)
+            image_num = np.maximum(0, int(name[1]) - 1).astype(np.int)
             image_total = self.controller.scan_params["num_shots"] * self.controller.scan_params["num_k_values"]
-            p = (k_num * self.controller.scan_params["num_shots"] + image_num + 1) / image_total
+            p = (k_num * self.controller.scan_params["num_shots"] + image_num + 1.0) / image_total
             self.logger.debug("Loading image {0}_{1}".format(k_num, image_num))
             self.controller.set_status("Loading image {0}_{1}".format(k_num, image_num))
             self.controller.set_progress(p)
             pic = np.array(result)
             self.logger.debug("np pic size: {0}".format(pic.shape))
-            pic_proc = self.controller.process_image(pic)
-            self.logger.debug("Image size: {0}, Proc image size: {1}".format(pic.shape, pic_proc.shape))
-            try:
-                self.controller.scan_raw_data[k_num].append(pic)
-                self.controller.scan_proc_data[k_num].append(pic_proc)
-            except IndexError:
-                self.logger.warning("Image index out of range: {0} out of {1}".format(k_num,
-                                                                                      len(self.controller.scan_raw_data)))
+
+            self.controller.add_raw_image(k_num, pic)
+            self.controller.process_image(k_num, image_num)
         try:
             filename = self.image_file_iterator.next()
             self.logger.debug("Loading file {0}".format(filename))
@@ -636,16 +641,13 @@ class StateLoad(State):
             return True
         except StopIteration:
             self.logger.debug("No more files, stopping image read.")
-            self.logger.debug("scan_raw_data size: {0}:{1}".format(len(self.controller.scan_raw_data),
-                                                                   len(self.controller.scan_raw_data[0])))
-            self.controller.set_result("scan", "raw_data", self.controller.scan_raw_data)
-            self.controller.set_result("scan", "proc_data", self.controller.scan_proc_data)
             self.check_requirements(True)
             return False
 
     def check_requirements(self, result):
         self.logger.info("Check requirements result: {0}".format(result))
         self.next_state = "idle"
+        self.controller.set_progress(0)
         self.stop_run()
         return "idle"
 
@@ -665,6 +667,9 @@ class StateLoad(State):
                 d.cancel()
             except IndexError:
                 self.logger.debug("Empty deferred list when cancelling")
+            # Restore data:
+            self.set_result("scan", "raw_data", self.old_raw_data)
+            self.set_result("scan", "proc_data", self.old_proc_data)
             self.next_state = "idle"
             self.stop_run()
 
@@ -684,7 +689,6 @@ class StateSave(State):
         State.state_enter(self, prev_state)
         self.controller.set_status("Save scan data")
         self.logger.debug("Starting scan save")
-        self.controller.set_progress(0)
         self.check_requirements(None)
 
     def check_requirements(self, result):
@@ -740,7 +744,6 @@ class StateUnknown(State):
         self.logger.info("Starting state {0}".format(self.name.upper()))
         # self.controller.set_status("Waiting {0} s before trying to reconnect".format(self.wait_time))
         self.controller.set_status("Not connected to devices")
-        # self.controller.set_progress(0)
         self.start_time = time.time()
         # df = defer_later(self.wait_time, self.check_requirements, [None])
         # self.deferred_list.append(df)
