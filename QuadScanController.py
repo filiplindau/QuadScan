@@ -233,6 +233,7 @@ class QuadScanController(object):
         self.logger.debug("Setting progress to {0}".format(progress))
         with self.state_lock:
             self.progress = progress
+        self.logger.debug("Notifying progress listeners")
         for m in self.progress_notifier_list:
             m(progress)
 
@@ -325,7 +326,7 @@ class QuadScanController(object):
         y = np.array([int(roi_cent[1] - roi_dim[0]), int(roi_cent[1] + roi_dim[1])])
         self.logger.debug("Threshold: {0}\nROI: {1}-{2}, {3}-{4}".format(th, x[0], x[1], y[0], y[1]))
         pic_roi = image[x[0]:x[1], y[0]:y[1]]
-        pic_roi[pic_roi < th] = 0
+        # pic_roi[pic_roi < th] = 0
         return pic_roi
 
 

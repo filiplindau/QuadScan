@@ -335,7 +335,7 @@ class StateIdle(State):
 
     def state_enter(self, prev_state=None):
         State.state_enter(self, prev_state)
-        self.controller.set_progress(0)
+        # self.controller.set_progress(0)
         # Start camera:
         self.controller.set_status("Idle")
         # Start looping calls for monitored attributes
@@ -618,6 +618,7 @@ class StateLoad(State):
             self.controller.set_status("Loading image {0}_{1}".format(k_num, image_num))
             self.controller.set_progress(p)
             pic = np.array(result)
+            self.logger.debug("np pic size: {0}".format(pic.shape))
             pic_proc = self.controller.process_image(pic)
             self.logger.debug("Image size: {0}, Proc image size: {1}".format(pic.shape, pic_proc.shape))
             try:
@@ -739,7 +740,7 @@ class StateUnknown(State):
         self.logger.info("Starting state {0}".format(self.name.upper()))
         # self.controller.set_status("Waiting {0} s before trying to reconnect".format(self.wait_time))
         self.controller.set_status("Not connected to devices")
-        self.controller.set_progress(0)
+        # self.controller.set_progress(0)
         self.start_time = time.time()
         # df = defer_later(self.wait_time, self.check_requirements, [None])
         # self.deferred_list.append(df)

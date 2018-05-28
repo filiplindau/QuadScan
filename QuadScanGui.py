@@ -105,6 +105,7 @@ class QuadScanGui(QtGui.QWidget):
         root.info("Changing progress to {0}".format(new_progress))
         p = np.minimum(100, int(100*new_progress))
         p = np.maximum(0, p)
+        root.debug("p: {0}".format(p))
         self.ui.operation_progressbar.setValue(p)
 
     def update_parameter_data(self):
