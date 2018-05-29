@@ -79,7 +79,7 @@ class QuadScanGui(QtGui.QWidget):
         self.ui.image_raw_widget.ui.roiBtn.hide()
         self.ui.image_raw_widget.ui.menuBtn.hide()
         h = self.ui.image_raw_widget.getHistogramWidget()
-        h.item.sigLevelChangeFinished.connect(self.update_image_threshold)
+        # h.item.sigLevelChangeFinished.connect(self.update_image_threshold)
         self.ui.image_raw_widget.roi.show()
         self.ui.image_raw_widget.roi.sigRegionChangeFinished.connect(self.update_roi)
         self.ui.image_raw_widget.roi.blockSignals(True)
@@ -169,8 +169,10 @@ class QuadScanGui(QtGui.QWidget):
         self.controller.set_parameter("analyse", "threshold", th)
         image_ind = self.ui.image_slider.value()
         k_ind = self.ui.k_slider.value()
-        self.controller.process_image(k_ind, image_ind)
-        self.update_image_selection()
+        # self.controller.process_image(k_ind, image_ind)
+        d = self.controller.process_all_images()
+        d.addCallback(self.update_image_selection)
+        # self.update_image_selection()
 
     def update_roi(self):
         """
@@ -215,6 +217,7 @@ class QuadScanGui(QtGui.QWidget):
         self.line_x_plot.setData(y=line_x)
         self.line_y_plot.setData(y=line_y)
         self.ui.image_raw_widget.roi.show()
+        self.ui.image_proc_widget.updateImage()
 
     def load_data(self):
         root.info("Loading data")

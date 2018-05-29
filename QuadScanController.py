@@ -100,8 +100,8 @@ class QuadScanController(QtCore.QObject):
         self.analyse_params["method"] = "GP"
         self.analyse_params["iterations"] = 70
         self.analyse_params["roi"] = "full"
-        self.analyse_params["threshold"] = 0.02
-        self.analyse_params["median_kernel"] = 1
+        self.analyse_params["threshold"] = 0.0
+        self.analyse_params["median_kernel"] = 3
         self.analyse_params["background_subtract"] = True
 
         self.load_params = dict()
@@ -280,7 +280,7 @@ class QuadScanController(QtCore.QObject):
                 self.idle_params[param_name] = value
 
     def get_parameter(self, state_name, param_name):
-        self.logger.debug("Getting parameter {0}.{1}:".format(state_name, param_name))
+        # self.logger.debug("Getting parameter {0}.{1}:".format(state_name, param_name))
         with self.state_lock:
             try:
                 if state_name == "load":
@@ -297,7 +297,7 @@ class QuadScanController(QtCore.QObject):
                     value = None
             except KeyError:
                 value = None
-        self.logger.debug("Value {0}".format(value))
+        # self.logger.debug("Value {0}".format(value))
         return value
 
     def set_result(self, state_name, result_name, value):
@@ -309,7 +309,7 @@ class QuadScanController(QtCore.QObject):
                 self.scan_result[result_name] = value
 
     def get_result(self, state_name, result_name):
-        self.logger.debug("Getting result {0}.{1}:".format(state_name, result_name))
+        # self.logger.debug("Getting result {0}.{1}:".format(state_name, result_name))
         with self.state_lock:
             try:
                 if state_name == "analyse":
@@ -339,13 +339,13 @@ class QuadScanController(QtCore.QObject):
         roi_dim = self.get_parameter("scan", "roi_dim")
         x = np.array([int(roi_cent[0] - roi_dim[0]/2.0), int(roi_cent[0] + roi_dim[1]/2.0)])
         y = np.array([int(roi_cent[1] - roi_dim[1]/2.0), int(roi_cent[1] + roi_dim[1]/2.0)])
-        self.logger.debug("Threshold: {0}".format(th))
-        self.logger.debug("ROI: {0}-{1}, {2}-{3}".format(x[0], x[1], y[0], y[1]))
+        # self.logger.debug("Threshold: {0}".format(th))
+        # self.logger.debug("ROI: {0}-{1}, {2}-{3}".format(x[0], x[1], y[0], y[1]))
         with self.state_lock:
             image_list = self.scan_result["raw_data"]
             # image_list = self.get_result("scan", "raw_data")
-            self.logger.debug("Image list size: {0} x {1}".format(len(image_list), len(image_list[0])))
-            self.logger.debug("Image type: {0}".format(image_list[0][0].dtype))
+            # self.logger.debug("Image list size: {0} x {1}".format(len(image_list), len(image_list[0])))
+            # self.logger.debug("Image type: {0}".format(image_list[0][0].dtype))
             try:
                 pic = image_list[k_ind][image_ind]
             except IndexError as e:
@@ -354,9 +354,17 @@ class QuadScanController(QtCore.QObject):
             except TypeError as e:
                 self.logger.warning("Could not get image {0}, {1}: {2}".format(k_ind, image_ind, e))
                 return
-            self.logger.debug("pic size: {0}".format(pic.shape))
-            pic_roi = pic[x[0]:x[1], y[0]:y[1]]
-            pic_roi[pic_roi < th] = 0
+            pic_roi = np.double(pic[x[0]:x[1], y[0]:y[1]])
+            # Normalize pic to 0-1 range, where 1 is saturation:
+            if pic.dtype == np.int32:
+                n = 2**16
+            elif pic.dtype == np.uint8:
+                n = 2**8
+            else:
+                n = 1
+            kernel = self.analyse_params["median_kernel"]
+            pic_roi = medfilt2d(pic_roi / n, kernel)
+            pic_roi[pic_roi < th] = 0.0
             proc_list = self.scan_result["proc_data"]
             line_data_x = self.scan_result["line_data_x"]
             line_data_y = self.scan_result["line_data_y"]
@@ -372,7 +380,7 @@ class QuadScanController(QtCore.QObject):
                 proc_list[k_ind].append(pic_roi)
                 line_data_x[k_ind].append(pic_roi.sum(0))
                 line_data_y[k_ind].append(pic_roi.sum(1))
-        self.logger.debug("Image process time: {0}".format(time.time() - t0))
+        # self.logger.debug("Image process time: {0}".format(time.time() - t0))
         return pic_roi
 
     def process_all_images(self):
