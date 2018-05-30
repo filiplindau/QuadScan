@@ -31,6 +31,8 @@ from PyQt4 import QtCore
 
 class QuadScanController(QtCore.QObject):
     progress_signal = QtCore.Signal(float)
+    processing_done_signal = QtCore.Signal()
+    state_change_signal = QtCore.Signal(str)
 
     def __init__(self, quad_name=None, screen_name=None, start=False):
         """
@@ -85,6 +87,10 @@ class QuadScanController(QtCore.QObject):
         self.scan_result["scan_data"] = None
         self.scan_result["line_data_x"] = None
         self.scan_result["line_data_y"] = None
+        self.scan_result["x_cent"] = None
+        self.scan_result["y_cent"] = None
+        self.scan_result["sigma_x"] = None
+        self.scan_result["sigma_y"] = None
         self.scan_result["start_time"] = None
         self.scan_raw_data = None
         self.scan_proc_data = None
@@ -100,7 +106,7 @@ class QuadScanController(QtCore.QObject):
         self.analyse_params["method"] = "GP"
         self.analyse_params["iterations"] = 70
         self.analyse_params["roi"] = "full"
-        self.analyse_params["threshold"] = 0.0
+        self.analyse_params["threshold"] = 0.001
         self.analyse_params["median_kernel"] = 3
         self.analyse_params["background_subtract"] = True
 
@@ -219,6 +225,7 @@ class QuadScanController(QtCore.QObject):
                 self.status = status
         for m in self.state_notifier_list:
             m(state, status)
+        self.state_change_signal.emit(state)
 
     def get_status(self):
         with self.state_lock:
@@ -354,7 +361,10 @@ class QuadScanController(QtCore.QObject):
             except TypeError as e:
                 self.logger.warning("Could not get image {0}, {1}: {2}".format(k_ind, image_ind, e))
                 return
+
+            # Extract ROI and convert to double:
             pic_roi = np.double(pic[x[0]:x[1], y[0]:y[1]])
+
             # Normalize pic to 0-1 range, where 1 is saturation:
             if pic.dtype == np.int32:
                 n = 2**16
@@ -362,24 +372,48 @@ class QuadScanController(QtCore.QObject):
                 n = 2**8
             else:
                 n = 1
+
+            # Median filtering:
             kernel = self.analyse_params["median_kernel"]
             pic_roi = medfilt2d(pic_roi / n, kernel)
+
+            # Threshold image
             pic_roi[pic_roi < th] = 0.0
+
+            line_x = pic_roi.sum(0)
+            line_y = pic_roi.sum(1)
+
             proc_list = self.scan_result["proc_data"]
             line_data_x = self.scan_result["line_data_x"]
             line_data_y = self.scan_result["line_data_y"]
 
-            # proc_list = self.get_result("scan", "proc_data")
-            # line_data_x = self.get_result("scan", "line_data_x")
-            # line_data_y = self.get_result("scan", "line_data_y")
+            cal = self.scan_params["pixel_size"]
+            l_x_n = np.sum(line_x)
+            l_y_n = np.sum(line_y)
+            x_v = cal[0] * np.arange(line_x.shape[0])
+            y_v = cal[1] * np.arange(line_y.shape[0])
+            x_cent = np.sum(x_v * line_x) / l_x_n
+            sigma_x = np.sqrt(np.sum((x_v - x_cent)**2 * line_x) / l_x_n)
+            y_cent = np.sum(y_v * line_y) / l_y_n
+            sigma_y = np.sqrt(np.sum((y_v - y_cent)**2 * line_y) / l_y_n)
+
+            # Store processed data
             try:
                 proc_list[k_ind][image_ind] = pic_roi
-                line_data_x[k_ind][image_ind] = pic_roi.sum(0)
-                line_data_y[k_ind][image_ind] = pic_roi.sum(1)
+                line_data_x[k_ind][image_ind] = line_x
+                line_data_y[k_ind][image_ind] = line_y
+                self.scan_result["x_cent"][k_ind][image_ind] = x_cent
+                self.scan_result["y_cent"][k_ind][image_ind] = y_cent
+                self.scan_result["sigma_x"][k_ind][image_ind] = sigma_x
+                self.scan_result["sigma_y"][k_ind][image_ind] = sigma_y
             except IndexError:
                 proc_list[k_ind].append(pic_roi)
                 line_data_x[k_ind].append(pic_roi.sum(0))
                 line_data_y[k_ind].append(pic_roi.sum(1))
+                self.scan_result["x_cent"][k_ind].append(x_cent)
+                self.scan_result["y_cent"][k_ind].append(y_cent)
+                self.scan_result["sigma_x"][k_ind].append(sigma_x)
+                self.scan_result["sigma_y"][k_ind].append(sigma_y)
         # self.logger.debug("Image process time: {0}".format(time.time() - t0))
         return pic_roi
 
@@ -393,17 +427,36 @@ class QuadScanController(QtCore.QObject):
                 d = TangoTwisted.defer_to_thread(self.process_image, k_ind, i_ind)
                 d_list.append(d)
         dl = defer.DeferredList(d_list)
+        dl.addCallbacks(self.process_images_done, self.process_image_error)
         return dl
 
-    def add_raw_image(self, k_num, image):
+    def process_images_done(self, result):
+        self.logger.info("All images processed.")
+        self.fit_quad_data()
+        self.processing_done_signal.emit()
+
+    def process_image_error(self, error):
+        self.logger.error("Process image error: {0}".format(error))
+
+    def fit_quad_data(self):
+        self.logger.info("Fitting image data")
+        k_data = np.array(self.get_result("scan", "k_data")).flatten()
+        sigma_data = np.array(self.get_result("scan", "sigma_x")).flatten()
+        poly = np.polyfit(k_data, sigma_data, 2)
+        self.logger.debug("Fit coefficients: {0}".format(poly))
+
+    def add_raw_image(self, k_num, k_value, image):
         self.logger.info("Adding new image with k index {0}".format(k_num))
         with self.state_lock:
             im_list = self.scan_result["raw_data"]
+            k_list = self.scan_result["k_data"]
             try:
                 im_list[int(k_num)].append(image)
+                k_list[int(k_num)].append(k_value)
             except IndexError:
                 self.logger.warning("Image index out of range: {0}/{1}, skipping".format(k_num,
                                                                                          len(self.controller.scan_raw_data)))
+
 
 class Scan(object):
     """

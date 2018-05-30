@@ -50,6 +50,8 @@ class QuadScanGui(QtGui.QWidget):
 
         self.line_x_plot = None
         self.line_y_plot = None
+        self.cent_plot = None
+        self.fit_x_plot = None
 
         self.gui_lock = threading.Lock()
 
@@ -57,8 +59,8 @@ class QuadScanGui(QtGui.QWidget):
         self.ui.setupUi(self)
 
         self.controller = QuadScanController()
-        self.controller.add_state_notifier(self.change_state)
-        self.controller.add_progress_notifier(self.change_progress)
+        # self.controller.add_state_notifier(self.change_state)
+        # self.controller.add_progress_notifier(self.change_progress)
         self.setup_layout()
 
         self.state_dispatcher = StateDispatcher(self.controller)
@@ -93,6 +95,8 @@ class QuadScanGui(QtGui.QWidget):
         self.ui.image_proc_widget.setImage(np.random.random((64, 64)))
         self.ui.image_proc_widget.ui.roiBtn.hide()
         self.ui.image_proc_widget.ui.menuBtn.hide()
+        self.cent_plot = pq.PlotDataItem()
+        self.ui.image_proc_widget.addItem(self.cent_plot)
 
         self.line_x_plot = self.ui.lineout_widget.plot()
         self.line_x_plot.setPen((200, 25, 10))
@@ -101,6 +105,12 @@ class QuadScanGui(QtGui.QWidget):
         self.ui.lineout_widget.setLabel("bottom", "Line coord", "px")
         self.ui.lineout_widget.showGrid(True)
 
+        self.fit_x_plot = self.ui.fit_widget.plot()
+        self.fit_x_plot.setPen((10, 200, 25))
+        self.ui.fit_widget.setLabel("bottom", "k", "m")
+        self.ui.fit_widget.setLabel("left", "sigma", "m")
+
+        # This is to make sure . is the decimal character
         self.setLocale(QtCore.QLocale(QtCore.QLocale.English))
 
         # Signal connections
@@ -108,6 +118,9 @@ class QuadScanGui(QtGui.QWidget):
         self.ui.k_slider.valueChanged.connect(self.update_image_selection)
         self.ui.image_slider.valueChanged.connect(self.update_image_selection)
         self.controller.progress_signal.connect(self.change_progress)
+        self.controller.processing_done_signal.connect(self.update_image_selection)
+        self.controller.processing_done_signal.connect(self.update_fit_data)
+        self.controller.state_change_signal.connect(self.change_state)
 
         # Data storage
         self.ui.load_data_button.clicked.connect(self.load_data)
@@ -158,6 +171,7 @@ class QuadScanGui(QtGui.QWidget):
             self.ui.image_raw_widget.roi.show()
             self.ui.image_raw_widget.roi.blockSignals(False)
         self.update_image_selection()
+        self.update_fit_data()
 
     def update_image_threshold(self):
         """
@@ -171,7 +185,8 @@ class QuadScanGui(QtGui.QWidget):
         k_ind = self.ui.k_slider.value()
         # self.controller.process_image(k_ind, image_ind)
         d = self.controller.process_all_images()
-        d.addCallback(self.update_image_selection)
+        # d.addCallback(self.update_image_selection)
+        # d.addCallback(self.update_fit_data)
         # self.update_image_selection()
 
     def update_roi(self):
@@ -185,7 +200,8 @@ class QuadScanGui(QtGui.QWidget):
         self.controller.set_parameter("scan", "roi_center", [rp[0] + rs[0]/2, rp[1] + rs[1]/2])
         self.controller.set_parameter("scan", "roi_dim", [rs[0], rs[1]])
         d = self.controller.process_all_images()
-        d.addCallback(self.update_image_selection)
+        # d.addCallback(self.update_image_selection)
+        # d.addCallback(self.update_fit_data)
 
     def update_image_selection(self, result=None):
         """
@@ -213,11 +229,21 @@ class QuadScanGui(QtGui.QWidget):
             line_x = np.random.random(64)
             line_y = np.random.random(64)
         self.ui.image_raw_widget.setImage(raw_pic)
-        self.ui.image_proc_widget.setImage(proc_pic)
+        self.ui.image_proc_widget.setImage(proc_pic, scale=self.controller.get_parameter("scan", "pixel_size"))
+        x_cent = [self.controller.get_result("scan", "x_cent")[k_ind][image_ind]]
+        y_cent = [self.controller.get_result("scan", "y_cent")[k_ind][image_ind]]
+        self.cent_plot.setData(y_cent, x_cent, symbol="x", symbolBrush="w")
         self.line_x_plot.setData(y=line_x)
         self.line_y_plot.setData(y=line_y)
         self.ui.image_raw_widget.roi.show()
         self.ui.image_proc_widget.updateImage()
+
+    def update_fit_data(self, result=None):
+        root.info("Updating fit data")
+        k_data = np.array(self.controller.get_result("scan", "k_data")).flatten()
+        sigma_data = np.array(self.controller.get_result("scan", "sigma_x")).flatten()
+        self.fit_x_plot.setData(x=k_data, y=sigma_data, symbol="x", symbolBrush=(100, 100, 255), symbolPen=None,
+                                pen=None)
 
     def load_data(self):
         root.info("Loading data")

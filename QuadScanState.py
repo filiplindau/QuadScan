@@ -590,6 +590,9 @@ class StateLoad(State):
         self.controller.set_parameter("scan", "num_shots", int(data_dict["num_shots"]))
         self.controller.set_parameter("scan", "k_min", np.double(data_dict["k_min"]))
         self.controller.set_parameter("scan", "k_max", np.double(data_dict["k_max"]))
+        px = data_dict["pixel_dim"].split(" ")
+        self.logger.debug("pixel_dim: {0}".format(px))
+        self.controller.set_parameter("scan", "pixel_size", [np.double(px[0]), np.double(px[1])])
         rc = data_dict["roi_center"].split(" ")
         self.controller.set_parameter("scan", "roi_center", [np.double(rc[1]), np.double(rc[0])])
         rd = data_dict["roi_dim"].split(" ")
@@ -613,6 +616,16 @@ class StateLoad(State):
                                    [list() for i in range(self.controller.get_parameter("scan", "num_k_values"))])
         self.controller.set_result("scan", "line_data_y",
                                    [list() for i in range(self.controller.get_parameter("scan", "num_k_values"))])
+        self.controller.set_result("scan", "x_cent",
+                                   [list() for i in range(self.controller.get_parameter("scan", "num_k_values"))])
+        self.controller.set_result("scan", "y_cent",
+                                   [list() for i in range(self.controller.get_parameter("scan", "num_k_values"))])
+        self.controller.set_result("scan", "sigma_x",
+                                   [list() for i in range(self.controller.get_parameter("scan", "num_k_values"))])
+        self.controller.set_result("scan", "sigma_y",
+                                   [list() for i in range(self.controller.get_parameter("scan", "num_k_values"))])
+        self.controller.set_result("scan", "k_data",
+                                   [list() for i in range(self.controller.get_parameter("scan", "num_k_values"))])
         self.load_next_image(None)
 
     def load_next_image(self, result):
@@ -620,8 +633,16 @@ class StateLoad(State):
         if result is not None:
             self.deferred_list.pop(0)
             name = result.filename.split("_")
-            k_num = np.maximum(0, int(name[0]) - 1).astype(np.int)
-            image_num = np.maximum(0, int(name[1]) - 1).astype(np.int)
+            try:
+                k_num = np.maximum(0, int(name[0]) - 1).astype(np.int)
+                image_num = np.maximum(0, int(name[1]) - 1).astype(np.int)
+                k_value = np.double(name[2])
+            except ValueError:
+                self.logger.error("Image filename wrong format: {0}".format(name))
+                return False
+            except IndexError:
+                self.logger.error("Image filename wrong format: {0}".format(name))
+                return False
             image_total = self.controller.scan_params["num_shots"] * self.controller.scan_params["num_k_values"]
             p = (k_num * self.controller.scan_params["num_shots"] + image_num + 1.0) / image_total
             self.logger.debug("Loading image {0}_{1}".format(k_num, image_num))
@@ -630,7 +651,7 @@ class StateLoad(State):
             pic = np.array(result)
             self.logger.debug("np pic size: {0}".format(pic.shape))
 
-            self.controller.add_raw_image(k_num, pic)
+            self.controller.add_raw_image(k_num, k_value, pic)
             self.controller.process_image(k_num, image_num)
         try:
             filename = self.image_file_iterator.next()
