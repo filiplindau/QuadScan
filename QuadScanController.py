@@ -32,6 +32,7 @@ from PyQt4 import QtCore
 class QuadScanController(QtCore.QObject):
     progress_signal = QtCore.Signal(float)
     processing_done_signal = QtCore.Signal()
+    fit_done_signal = QtCore.Signal()
     state_change_signal = QtCore.Signal(str)
 
     def __init__(self, quad_name=None, screen_name=None, start=False):
@@ -91,6 +92,7 @@ class QuadScanController(QtCore.QObject):
         self.scan_result["y_cent"] = None
         self.scan_result["sigma_x"] = None
         self.scan_result["sigma_y"] = None
+        self.scan_result["enabled_data"] = None
         self.scan_result["fit_poly"] = None
         self.scan_result["start_time"] = None
         self.scan_raw_data = None
@@ -389,8 +391,12 @@ class QuadScanController(QtCore.QObject):
             line_data_y = self.scan_result["line_data_y"]
 
             cal = self.scan_params["pixel_size"]
+            enabled = True
             l_x_n = np.sum(line_x)
             l_y_n = np.sum(line_y)
+            # Enable point only if there is data:
+            if l_x_n > 0.0:
+                enabled = True
             x_v = cal[0] * np.arange(line_x.shape[0])
             y_v = cal[1] * np.arange(line_y.shape[0])
             x_cent = np.sum(x_v * line_x) / l_x_n
@@ -399,6 +405,7 @@ class QuadScanController(QtCore.QObject):
             sigma_y = np.sqrt(np.sum((y_v - y_cent)**2 * line_y) / l_y_n)
 
             # Store processed data
+            self.scan_result["enabled_data"][k_ind][image_ind] = enabled
             try:
                 proc_list[k_ind][image_ind] = pic_roi
                 line_data_x[k_ind][image_ind] = line_x
@@ -434,12 +441,8 @@ class QuadScanController(QtCore.QObject):
     def process_images_done(self, result):
         self.logger.info("All images processed.")
         self.logger.info("Fitting image data")
-        k_data = np.array(self.get_result("scan", "k_data")).flatten()
-        sigma_data = np.array(self.get_result("scan", "sigma_x")).flatten()
-        poly = np.polyfit(k_data, sigma_data, 2)
-        self.set_result("scan", "fit_poly", poly)
-        self.logger.debug("Fit coefficients: {0}".format(poly))
         self.processing_done_signal.emit()
+        self.fit_quad_data()
 
     def process_image_error(self, error):
         self.logger.error("Process image error: {0}".format(error))
@@ -448,18 +451,22 @@ class QuadScanController(QtCore.QObject):
         self.logger.info("Fitting image data")
         k_data = np.array(self.get_result("scan", "k_data")).flatten()
         sigma_data = np.array(self.get_result("scan", "sigma_x")).flatten()
-        poly = np.polyfit(k_data, sigma_data, 2)
+        en_data = np.array(self.get_result("scan", "enabled_data")).flatten()
+        poly = np.polyfit(k_data[en_data], sigma_data[en_data], 2)
         self.set_result("scan", "fit_poly", poly)
         self.logger.debug("Fit coefficients: {0}".format(poly))
+        self.fit_done_signal.emit()
 
     def add_raw_image(self, k_num, k_value, image):
         self.logger.info("Adding new image with k index {0}".format(k_num))
         with self.state_lock:
             im_list = self.scan_result["raw_data"]
             k_list = self.scan_result["k_data"]
+            en_list = self.scan_result["enabled_data"]
             try:
                 im_list[int(k_num)].append(image)
                 k_list[int(k_num)].append(k_value)
+                en_list[int(k_num)].append(False)
             except IndexError:
                 self.logger.warning("Image index out of range: {0}/{1}, skipping".format(k_num,
                                                                                          len(self.controller.scan_raw_data)))

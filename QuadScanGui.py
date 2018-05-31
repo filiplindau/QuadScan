@@ -14,6 +14,7 @@ from QuadScanController import QuadScanController
 from QuadScanState import StateDispatcher
 from quadscan_ui import Ui_QuadScanDialog
 import threading
+import time
 
 import logging
 
@@ -107,7 +108,7 @@ class QuadScanGui(QtGui.QWidget):
         self.sigma_x_plot = self.ui.fit_widget.plot()
         self.sigma_x_plot.setPen((10, 200, 25))
         self.fit_x_plot = self.ui.fit_widget.plot()
-        self.fit_x_plot.setPen((100, 100, 200))
+        self.fit_x_plot.setPen(pq.mkPen(color=(180, 180, 250), width=2))
         self.ui.fit_widget.setLabel("bottom", "k", "T/m")
         self.ui.fit_widget.setLabel("left", "sigma", "m")
 
@@ -120,13 +121,25 @@ class QuadScanGui(QtGui.QWidget):
         self.ui.image_slider.valueChanged.connect(self.update_image_selection)
         self.controller.progress_signal.connect(self.change_progress)
         self.controller.processing_done_signal.connect(self.update_image_selection)
-        self.controller.processing_done_signal.connect(self.update_fit_data)
+        self.controller.fit_done_signal.connect(self.update_fit_data)
         self.controller.state_change_signal.connect(self.change_state)
+        self.sigma_x_plot.sigPointsClicked.connect(self.points_clicked)
 
         # Data storage
         self.ui.load_data_button.clicked.connect(self.load_data)
 
         self.last_load_dir = self.settings.value("load_path", ".", type=str)
+
+        # Geometry setup
+        window_pos_x = self.settings.value('window_pos_x', 100, type=int)
+        window_pos_y = self.settings.value('window_pos_y', 100, type=int)
+        window_size_w = self.settings.value('window_size_w', 1100, type=int)
+        window_size_h = self.settings.value('window_size_h', 800, type=int)
+        if window_pos_x < 50:
+            window_pos_x = 50
+        if window_pos_y < 50:
+            window_pos_y = 50
+        self.setGeometry(window_pos_x, window_pos_y, window_size_w, window_size_h)
 
     def change_state(self, new_state, new_status=None):
         root.info("Change state: {0}, status {1}".format(new_state, new_status))
@@ -144,7 +157,6 @@ class QuadScanGui(QtGui.QWidget):
         root.debug("p: {0}".format(p))
         with self.gui_lock:
             self.ui.operation_progressbar.setValue(p)
-        # QtGui.QApplication.processEvents()
 
     def update_parameter_data(self):
         root.info("Updating parameters")
@@ -185,9 +197,6 @@ class QuadScanGui(QtGui.QWidget):
         k_ind = self.ui.k_slider.value()
         # self.controller.process_image(k_ind, image_ind)
         d = self.controller.process_all_images()
-        # d.addCallback(self.update_image_selection)
-        # d.addCallback(self.update_fit_data)
-        # self.update_image_selection()
 
     def update_roi(self):
         """
@@ -242,12 +251,63 @@ class QuadScanGui(QtGui.QWidget):
         root.info("Updating fit data")
         k_data = np.array(self.controller.get_result("scan", "k_data")).flatten()
         sigma_data = np.array(self.controller.get_result("scan", "sigma_x")).flatten()
-        self.sigma_x_plot.setData(x=k_data, y=sigma_data, symbol="x", symbolBrush=(150, 150, 255), symbolPen=None,
+        en_data = np.array(self.controller.get_result("scan", "enabled_data")).flatten()
+        symbol_list = list()
+        brush_list = list()
+        o_brush = pq.mkBrush(150, 150, 250, 150)
+        x_brush = pq.mkBrush(250, 150, 150, 190)
+        for en in en_data:
+            if en == False:
+                symbol_list.append("t")
+                brush_list.append(x_brush)
+            else:
+                symbol_list.append("o")
+                brush_list.append(o_brush)
+        self.sigma_x_plot.setData(x=k_data, y=sigma_data, symbol=symbol_list, symbolBrush=brush_list, symbolPen=None,
                                   pen=None)
         poly = self.controller.get_result("scan", "fit_poly")
         x = np.linspace(k_data.min(), k_data.max(), 100)
         y = np.polyval(poly, x)
         self.fit_x_plot.setData(x=x, y=y)
+
+    def points_clicked(self, scatterplotitem, point_list):
+        try:
+            pos = point_list[0].pos()
+            root.info("Point clicked: {0}".format(pos))
+        except IndexError:
+            root.debug("No points in list - exit")
+            return
+        sx = self.controller.get_result("scan", "sigma_x")
+        kd = self.controller.get_result("scan", "k_data")
+        eps = 1e-9
+        k_ind = None
+        image_ind = None
+        for k_i, k_list in enumerate(kd):
+            for im_i, k_val in enumerate(k_list):
+                if abs(pos.x() - k_val) < eps:
+                    if abs(pos.y() - sx[k_i][im_i]) < eps:
+                        k_ind = k_i
+                        image_ind = im_i
+                        break
+        if k_ind is not None:
+            en_data = self.controller.get_result("scan", "enabled_data")
+            enabled = en_data[k_ind][image_ind]
+            en_data[k_ind][image_ind] = not en_data[k_ind][image_ind]
+            if enabled is True:
+                point_list[0].setSymbol("x")
+                point_list[0].setBrush((200, 50, 50))
+            else:
+                point_list[0].setSymbol("o")
+                point_list[0].setBrush((150, 150, 250, 100))
+            self.ui.k_slider.blockSignals(True)
+            self.ui.k_slider.setValue(k_ind)
+            self.ui.image_slider.setValue(image_ind)
+            self.ui.k_slider.blockSignals(False)
+
+            self.update_image_selection()
+            self.controller.fit_quad_data()
+        else:
+            root.debug("No point found")
 
     def load_data(self):
         root.info("Loading data")
@@ -265,6 +325,11 @@ class QuadScanGui(QtGui.QWidget):
         """
         self.state_dispatcher.stop()
         self.settings.setValue("load_path", self.last_load_dir)
+
+        self.settings.setValue('window_size_w', np.int(self.size().width()))
+        self.settings.setValue('window_size_h', np.int(self.size().height()))
+        self.settings.setValue('window_pos_x', np.int(self.pos().x()))
+        self.settings.setValue('window_pos_y', np.int(self.pos().y()))
 
 
 if __name__ == "__main__":

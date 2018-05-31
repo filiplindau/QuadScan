@@ -626,6 +626,8 @@ class StateLoad(State):
                                    [list() for i in range(self.controller.get_parameter("scan", "num_k_values"))])
         self.controller.set_result("scan", "k_data",
                                    [list() for i in range(self.controller.get_parameter("scan", "num_k_values"))])
+        self.controller.set_result("scan", "enabled_data",
+                                   [list() for i in range(self.controller.get_parameter("scan", "num_k_values"))])
         self.load_next_image(None)
 
     def load_next_image(self, result):
