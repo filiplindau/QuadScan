@@ -51,6 +51,7 @@ class QuadScanGui(QtGui.QWidget):
         self.line_x_plot = None
         self.line_y_plot = None
         self.cent_plot = None
+        self.sigma_x_plot = None
         self.fit_x_plot = None
 
         self.gui_lock = threading.Lock()
@@ -72,8 +73,6 @@ class QuadScanGui(QtGui.QWidget):
         :return:
         """
         # Plotting widgets:
-        plt1 = pq.PlotItem(labels={'bottom': ('Spectrum', 'm'), 'left': ('Time delay', 's')})
-        # self.ui.image_raw_widget = pq.ImageView(view=plt1)
         self.ui.image_raw_widget.ui.histogram.gradient.loadPreset('thermalclip')
         self.ui.image_raw_widget.setSizePolicy(QtGui.QSizePolicy.Expanding, QtGui.QSizePolicy.Expanding)
         self.ui.image_raw_widget.getView().setAspectLocked(False)
@@ -105,9 +104,11 @@ class QuadScanGui(QtGui.QWidget):
         self.ui.lineout_widget.setLabel("bottom", "Line coord", "px")
         self.ui.lineout_widget.showGrid(True)
 
+        self.sigma_x_plot = self.ui.fit_widget.plot()
+        self.sigma_x_plot.setPen((10, 200, 25))
         self.fit_x_plot = self.ui.fit_widget.plot()
-        self.fit_x_plot.setPen((10, 200, 25))
-        self.ui.fit_widget.setLabel("bottom", "k", "m")
+        self.fit_x_plot.setPen((100, 100, 200))
+        self.ui.fit_widget.setLabel("bottom", "k", "T/m")
         self.ui.fit_widget.setLabel("left", "sigma", "m")
 
         # This is to make sure . is the decimal character
@@ -171,7 +172,6 @@ class QuadScanGui(QtGui.QWidget):
             self.ui.image_raw_widget.roi.show()
             self.ui.image_raw_widget.roi.blockSignals(False)
         self.update_image_selection()
-        self.update_fit_data()
 
     def update_image_threshold(self):
         """
@@ -242,8 +242,12 @@ class QuadScanGui(QtGui.QWidget):
         root.info("Updating fit data")
         k_data = np.array(self.controller.get_result("scan", "k_data")).flatten()
         sigma_data = np.array(self.controller.get_result("scan", "sigma_x")).flatten()
-        self.fit_x_plot.setData(x=k_data, y=sigma_data, symbol="x", symbolBrush=(100, 100, 255), symbolPen=None,
-                                pen=None)
+        self.sigma_x_plot.setData(x=k_data, y=sigma_data, symbol="x", symbolBrush=(150, 150, 255), symbolPen=None,
+                                  pen=None)
+        poly = self.controller.get_result("scan", "fit_poly")
+        x = np.linspace(k_data.min(), k_data.max(), 100)
+        y = np.polyval(poly, x)
+        self.fit_x_plot.setData(x=x, y=y)
 
     def load_data(self):
         root.info("Loading data")

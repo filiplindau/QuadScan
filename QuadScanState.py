@@ -662,6 +662,8 @@ class StateLoad(State):
             return True
         except StopIteration:
             self.logger.debug("No more files, stopping image read.")
+            self.controller.fit_quad_data()
+            self.controller.processing_done_signal.emit()
             self.check_requirements(True)
             return False
 

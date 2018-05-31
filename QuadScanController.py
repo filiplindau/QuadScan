@@ -91,6 +91,7 @@ class QuadScanController(QtCore.QObject):
         self.scan_result["y_cent"] = None
         self.scan_result["sigma_x"] = None
         self.scan_result["sigma_y"] = None
+        self.scan_result["fit_poly"] = None
         self.scan_result["start_time"] = None
         self.scan_raw_data = None
         self.scan_proc_data = None
@@ -432,7 +433,12 @@ class QuadScanController(QtCore.QObject):
 
     def process_images_done(self, result):
         self.logger.info("All images processed.")
-        self.fit_quad_data()
+        self.logger.info("Fitting image data")
+        k_data = np.array(self.get_result("scan", "k_data")).flatten()
+        sigma_data = np.array(self.get_result("scan", "sigma_x")).flatten()
+        poly = np.polyfit(k_data, sigma_data, 2)
+        self.set_result("scan", "fit_poly", poly)
+        self.logger.debug("Fit coefficients: {0}".format(poly))
         self.processing_done_signal.emit()
 
     def process_image_error(self, error):
@@ -443,6 +449,7 @@ class QuadScanController(QtCore.QObject):
         k_data = np.array(self.get_result("scan", "k_data")).flatten()
         sigma_data = np.array(self.get_result("scan", "sigma_x")).flatten()
         poly = np.polyfit(k_data, sigma_data, 2)
+        self.set_result("scan", "fit_poly", poly)
         self.logger.debug("Fit coefficients: {0}".format(poly))
 
     def add_raw_image(self, k_num, k_value, image):
