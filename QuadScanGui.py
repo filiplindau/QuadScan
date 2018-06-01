@@ -109,8 +109,8 @@ class QuadScanGui(QtGui.QWidget):
         self.sigma_x_plot.setPen((10, 200, 25))
         self.fit_x_plot = self.ui.fit_widget.plot()
         self.fit_x_plot.setPen(pq.mkPen(color=(180, 180, 250), width=2))
-        self.ui.fit_widget.setLabel("bottom", "k", "T/m")
-        self.ui.fit_widget.setLabel("left", "sigma", "m")
+        self.ui.fit_widget.setLabel("bottom", "K", "1/m^2")
+        self.ui.fit_widget.setLabel("left", "sigma^2", "m^2")
 
         # This is to make sure . is the decimal character
         self.setLocale(QtCore.QLocale(QtCore.QLocale.English))
@@ -263,7 +263,7 @@ class QuadScanGui(QtGui.QWidget):
             else:
                 symbol_list.append("o")
                 brush_list.append(o_brush)
-        self.sigma_x_plot.setData(x=k_data, y=sigma_data, symbol=symbol_list, symbolBrush=brush_list, symbolPen=None,
+        self.sigma_x_plot.setData(x=k_data, y=sigma_data**2, symbol=symbol_list, symbolBrush=brush_list, symbolPen=None,
                                   pen=None)
         poly = self.controller.get_result("scan", "fit_poly")
         x = np.linspace(k_data.min(), k_data.max(), 100)
@@ -285,7 +285,7 @@ class QuadScanGui(QtGui.QWidget):
         for k_i, k_list in enumerate(kd):
             for im_i, k_val in enumerate(k_list):
                 if abs(pos.x() - k_val) < eps:
-                    if abs(pos.y() - sx[k_i][im_i]) < eps:
+                    if abs(pos.y() - (sx[k_i][im_i])**2) < eps:
                         k_ind = k_i
                         image_ind = im_i
                         break

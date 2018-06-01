@@ -313,8 +313,8 @@ class QuadScanController(QtCore.QObject):
     def set_result(self, state_name, result_name, value):
         self.logger.debug("Setting result {0}.{1}:".format(state_name, result_name))
         with self.state_lock:
-            if state_name == "analyse":
-                self.analyse_result[result_name] = value
+            if state_name == "analysis":
+                self.analysis_result[result_name] = value
             elif state_name == "scan":
                 self.scan_result[result_name] = value
 
@@ -322,8 +322,8 @@ class QuadScanController(QtCore.QObject):
         # self.logger.debug("Getting result {0}.{1}:".format(state_name, result_name))
         with self.state_lock:
             try:
-                if state_name == "analyse":
-                    value = self.analyse_result[result_name]
+                if state_name == "analysis":
+                    value = self.analysis_result[result_name]
                 elif state_name == "scan":
                     value = self.scan_result[result_name]
                 else:
@@ -452,9 +452,27 @@ class QuadScanController(QtCore.QObject):
         k_data = np.array(self.get_result("scan", "k_data")).flatten()
         sigma_data = np.array(self.get_result("scan", "sigma_x")).flatten()
         en_data = np.array(self.get_result("scan", "enabled_data")).flatten()
-        poly = np.polyfit(k_data[en_data], sigma_data[en_data], 2)
+        s2 = (sigma_data[en_data])**2
+        k = k_data[en_data]
+        ind = np.isfinite(s2)
+        poly = np.polyfit(k[ind], s2[ind], 2)
         self.set_result("scan", "fit_poly", poly)
         self.logger.debug("Fit coefficients: {0}".format(poly))
+        d = self.get_parameter("scan", "quad_screen_distance")
+        L = self.get_parameter("scan", "quad_length")
+        gamma = self.get_parameter("scan", "beam_energy") / 0.511
+        eps = 1 / (d**2 * L) * np.sqrt(poly[0] * poly[2] - poly[1]**2 / 4)
+        eps_n = eps * gamma
+        beta = poly[0] / (eps * d**2 * L**2)
+        alpha = (beta + poly[1] / (2 * eps * d * L)) / L
+        self.logger.info("-------------------------------")
+        self.logger.info("eps_n  = {0:.3f} mm x mrad".format(eps_n*1e6))
+        self.logger.info("beta   = {0:.4g} m".format(beta))
+        self.logger.info("alpha  = {0:.4g} rad".format(alpha))
+        self.logger.info("-------------------------------")
+        self.set_result("analysis", "eps", eps_n)
+        self.set_result("analysis", "beta", beta)
+        self.set_result("analysis", "alpha", alpha)
         self.fit_done_signal.emit()
 
     def add_raw_image(self, k_num, k_value, image):
@@ -774,51 +792,26 @@ class QuadScanAnalyse(object):
         self.d.errback(err)
 
 
-def test_cb(result):
-    logger.debug("Returned {0}".format(result))
-
-
-def test_err(err):
-    logger.error("ERROR Returned {0}".format(err))
-
-
-def test_timeout(result):
-    logger.warning("TIMEOUT returned {0}".format(result))
-
-
 if __name__ == "__main__":
-    # fc = QuadScanController("sys/tg_test/1", "gunlaser/motors/zaber01")
-    fc = QuadScanController("gunlaser/devices/spectrometer_frog", "gunlaser/motors/zaber01")
-    # time.sleep(0)
-    # dc = fc.check_attribute("position", "motor", 7.17, 0.1, 0.5, 0.001, True)
-    # dc.addCallbacks(test_cb, test_err)
-    # time.sleep(1.0)
-    # dc.addCallback(lambda _: TangoTwisted.DelayedCallReactorless(2.0 + time.time(),
-    #                                                              fc.start_scan, ["position", 5, 10, 0.5,
-    #                                                                              "double_scalar"]))
-    # scan = TangoTwisted.Scan(fc, "position", "motor", 5, 10, 0.5, "double_scalar", "spectrometer")
-    # ds = scan.start_scan()
-    # ds.addCallback(test_cb)
+    root = logging.getLogger()
+    while len(root.handlers):
+        root.removeHandler(root.handlers[0])
 
-    sh = qs.StateDispatcher(fc)
+    f = logging.Formatter("%(asctime)s - %(module)s.   %(funcName)s - %(levelname)s - %(message)s")
+    fh = logging.StreamHandler()
+    fh.setFormatter(f)
+    root.addHandler(fh)
+    root.setLevel(logging.DEBUG)
+
+    controller = QuadScanController()
+
+    sh = qs.StateDispatcher(controller)
     sh.start()
 
-    # da = fc.read_attribute("double_scalar", "motor")
-    # da.addCallbacks(test_cb, test_err)
-    # da = fc.write_attribute("double_scalar_w", "motor", 10)
-    # da.addCallbacks(test_cb, test_err)
+    loaddir = "d:/Documents/Data/quadscan_data/2018-04-16_13-38-53_I-MS1-MAG-QB-01_I-MS1-DIA-SCRN-01"
+    loaddir2 = "d:/Documents/Data/quadscan_data/2018-04-16_13-40-48_I-MS1-MAG-QB-01_I-MS1-DIA-SCRN-01"
+    controller.set_parameter("load", "path", str(loaddir2))
+    sh.send_command("load")
 
-    # da = fc.defer_later(3.0, fc.read_attribute, "short_scalar", "motor")
-    # da.addCallback(test_cb, test_err)
 
-    # lc = LoopingCall(fc.read_attribute, "double_scalar_w", "motor")
-    # dlc = lc.start(1)
-    # dlc.addCallbacks(test_cb, test_err)
-    # lc.loop_deferred.addCallback(test_cb)
-
-    # clock = ClockReactorless()
-    #
-    # defcond = DeferredCondition("result.value>15", fc.read_attribute, "double_scalar_w", "motor")
-    # dcd = defcond.start(1.0, timeout=3.0)
-    # dcd.addCallbacks(test_cb, test_err)
 
