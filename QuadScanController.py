@@ -473,7 +473,41 @@ class QuadScanController(QtCore.QObject):
         self.set_result("analysis", "eps", eps_n)
         self.set_result("analysis", "beta", beta)
         self.set_result("analysis", "alpha", alpha)
+
+        self.fit_full_transfer_matrix()
+
         self.fit_done_signal.emit()
+
+    def fit_full_transfer_matrix(self):
+        self.logger.info("Fitting using full transfer matrix")
+        k_data = np.array(self.get_result("scan", "k_data")).flatten()
+        sigma_data = np.array(self.get_result("scan", "sigma_x")).flatten()
+        en_data = np.array(self.get_result("scan", "enabled_data")).flatten()
+        d = self.get_parameter("scan", "quad_screen_distance")
+        L = self.get_parameter("scan", "quad_length")
+        gamma = self.get_parameter("scan", "beam_energy") / 0.511
+        s2 = (sigma_data[en_data]) ** 2
+        k = k_data[en_data]
+        ind = np.isfinite(s2)
+        k_sqrt = np.sqrt(k[ind])
+        A = np.cos(k_sqrt * L) - d * k_sqrt * np.sin(k_sqrt * L)
+        B = 1 / k_sqrt * np.sin(k_sqrt * L) + d * np.cos(k_sqrt * L)
+        M = np.vstack((A*A, -2*A*B, B*B)).transpose()
+        x = np.linalg.lstsq(M, s2[ind])
+        self.logger.debug("Fit coefficients: {0}".format(x[0]))
+        eps = x[0][2] / gamma
+        eps_n = eps * gamma
+        beta = x[0][0] / eps
+        alpha = x[0][1] / eps
+        self.logger.info("-------------------------------")
+        self.logger.info("eps_n  = {0:.3f} mm x mrad".format(eps_n * 1e6))
+        self.logger.info("beta   = {0:.4g} m".format(beta))
+        self.logger.info("alpha  = {0:.4g} rad".format(alpha))
+        self.logger.info("-------------------------------")
+        self.set_result("analysis", "eps", eps_n)
+        self.set_result("analysis", "beta", beta)
+        self.set_result("analysis", "alpha", alpha)
+
 
     def add_raw_image(self, k_num, k_value, image):
         self.logger.info("Adding new image with k index {0}".format(k_num))
@@ -810,7 +844,8 @@ if __name__ == "__main__":
 
     loaddir = "d:/Documents/Data/quadscan_data/2018-04-16_13-38-53_I-MS1-MAG-QB-01_I-MS1-DIA-SCRN-01"
     loaddir2 = "d:/Documents/Data/quadscan_data/2018-04-16_13-40-48_I-MS1-MAG-QB-01_I-MS1-DIA-SCRN-01"
-    controller.set_parameter("load", "path", str(loaddir2))
+    loaddir3 = "C:/Users/filip/Documents/workspace/emittancescansinglequad/saved-images/2018-04-16_13-38-53_I-MS1-MAG-QB-01_I-MS1-DIA-SCRN-01"
+    controller.set_parameter("load", "path", str(loaddir3))
     sh.send_command("load")
 
 
