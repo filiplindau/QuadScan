@@ -495,7 +495,7 @@ class QuadScanController(QtCore.QObject):
         M = np.vstack((A*A, -2*A*B, B*B)).transpose()
         x = np.linalg.lstsq(M, s2[ind])
         self.logger.debug("Fit coefficients: {0}".format(x[0]))
-        eps = x[0][2] / gamma
+        eps = np.sqrt(x[0][2] * x[0][0] - x[0][1]**2)
         eps_n = eps * gamma
         beta = x[0][0] / eps
         alpha = x[0][1] / eps
