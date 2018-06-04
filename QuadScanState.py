@@ -45,7 +45,7 @@ class StateDispatcher(object):
         self.statehandler_dict[StateSetupAttributes.name] = StateSetupAttributes
         self.statehandler_dict[StateIdle.name] = StateIdle
         self.statehandler_dict[StateScan.name] = StateScan
-        self.statehandler_dict[StateAnalyse.name] = StateAnalyse
+        self.statehandler_dict[StateAnalysis.name] = StateAnalysis
         self.statehandler_dict[StateLoad.name] = StateLoad
         self.statehandler_dict[StateSave.name] = StateSave
         self.statehandler_dict[StateFault] = StateFault
@@ -384,6 +384,16 @@ class StateIdle(State):
             for d in self.deferred_list:
                 d.cancel()
             self.stop_looping_calls()
+        elif msg == "process_images":
+            self.logger.debug("Message process_images")
+            d = self.controller.process_all_images()
+            d.addErrback(self.state_error)
+        elif msg == "fit_data":
+            self.logger.debug("Message fit_data")
+            d = defer.maybeDeferred(self.controller.fit_quad_data)
+            d.addErrback(self.state_error)
+        else:
+            self.logger.warning("Unknown command {0}".format(msg))
 
     def stop_looping_calls(self):
         for lc in self.controller.looping_calls:
@@ -484,9 +494,19 @@ class StateScan(State):
             self.logger.debug("Message resume... continue scan")
             d = self.deferred_list[0]   # type: defer.Deferred
             d.cancel()
+        elif msg == "process_images":
+            self.logger.debug("Message process_images")
+            d = self.controller.process_all_images()
+            d.addErrback(self.state_error)
+        elif msg == "fit_data":
+            self.logger.debug("Message fit_data")
+            d = defer.maybeDeferred(self.controller.fit_quad_data)
+            d.addErrback(self.state_error)
+        else:
+            self.logger.warning("Unknown command {0}".format(msg))
 
 
-class StateAnalyse(State):
+class StateAnalysis(State):
     """
     Start quad analysis of latest scan data. Parameters are stored in controller.analyse_params
     analyse_params["method"]: FROG method (SHG, TG, ...)
@@ -496,7 +516,7 @@ class StateAnalyse(State):
     analyse_params["threshold"]: threshold level for the normalized data
     analyse_params["background_subtract"]: do background subtraction using start pos spectrum
     """
-    name = "analyse"
+    name = "analysis"
 
     def __init__(self, controller):
         State.__init__(self, controller)
@@ -628,6 +648,8 @@ class StateLoad(State):
                                    [list() for i in range(self.controller.get_parameter("scan", "num_k_values"))])
         self.controller.set_result("scan", "enabled_data",
                                    [list() for i in range(self.controller.get_parameter("scan", "num_k_values"))])
+        self.controller.set_result("scan", "charge_data",
+                                   [list() for i in range(self.controller.get_parameter("scan", "num_k_values"))])
         self.load_next_image(None)
 
     def load_next_image(self, result):
@@ -697,6 +719,12 @@ class StateLoad(State):
             self.set_result("scan", "proc_data", self.old_proc_data)
             self.next_state = "idle"
             self.stop_run()
+        elif msg == "process_images":
+            self.logger.debug("Message process_images")
+            d = self.controller.process_all_images()
+            d.addErrback(self.state_error)
+        else:
+            self.logger.warning("Unknown command {0}".format(msg))
 
 
 class StateSave(State):
@@ -801,6 +829,16 @@ class StateUnknown(State):
                 d.cancel()
             self.next_state = "connect"
             self.stop_run()
+        elif msg == "process_images":
+            self.logger.debug("Message process_images")
+            d = self.controller.process_all_images()
+            d.addErrback(self.state_error)
+        elif msg == "fit_data":
+            self.logger.debug("Message fit_data")
+            d = defer.maybeDeferred(self.controller.fit_quad_data)
+            d.addErrback(self.state_error)
+        else:
+            self.logger.warning("Unknown command {0}".format(msg))
 
 
 def test_cb(result):

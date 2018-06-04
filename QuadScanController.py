@@ -93,6 +93,7 @@ class QuadScanController(QtCore.QObject):
         self.scan_result["sigma_x"] = None
         self.scan_result["sigma_y"] = None
         self.scan_result["enabled_data"] = None
+        self.scan_result["charge_data"] = None
         self.scan_result["fit_poly"] = None
         self.scan_result["start_time"] = None
         self.scan_raw_data = None
@@ -104,14 +105,14 @@ class QuadScanController(QtCore.QObject):
         self.analysis_result["beta"] = None
         self.analysis_result["gamma"] = None
         self.analysis_result["alpha"] = None
+        self.analysis_result["fit_data"] = None
 
-        self.analyse_params = dict()
-        self.analyse_params["method"] = "GP"
-        self.analyse_params["iterations"] = 70
-        self.analyse_params["roi"] = "full"
-        self.analyse_params["threshold"] = 0.001
-        self.analyse_params["median_kernel"] = 3
-        self.analyse_params["background_subtract"] = True
+        self.analysis_params = dict()
+        self.analysis_params["fit_algo"] = "full_matrix"
+        self.analysis_params["roi"] = "full"
+        self.analysis_params["threshold"] = 0.001
+        self.analysis_params["median_kernel"] = 3
+        self.analysis_params["background_subtract"] = True
 
         self.load_params = dict()
         self.load_params["path"] = "."
@@ -282,8 +283,8 @@ class QuadScanController(QtCore.QObject):
                 self.load_params[param_name] = value
             elif state_name == "save":
                 self.save_params[param_name] = value
-            elif state_name == "analyse":
-                self.analyse_params[param_name] = value
+            elif state_name == "analysis":
+                self.analysis_params[param_name] = value
             elif state_name == "scan":
                 self.scan_params[param_name] = value
             elif state_name == "idle":
@@ -297,8 +298,8 @@ class QuadScanController(QtCore.QObject):
                     value = self.load_params[param_name]
                 elif state_name == "save":
                     value = self.save_params[param_name]
-                elif state_name == "analyse":
-                    value = self.analyse_params[param_name]
+                elif state_name == "analysis":
+                    value = self.analysis_params[param_name]
                 elif state_name == "scan":
                     value = self.scan_params[param_name]
                 elif state_name == "idle":
@@ -344,7 +345,7 @@ class QuadScanController(QtCore.QObject):
         """
         self.logger.info("Processing image {0}, {1}".format(k_ind, image_ind))
         t0 = time.time()
-        th = self.get_parameter("analyse", "threshold")
+        th = self.get_parameter("analysis", "threshold")
         roi_cent = self.get_parameter("scan", "roi_center")
         roi_dim = self.get_parameter("scan", "roi_dim")
         x = np.array([int(roi_cent[0] - roi_dim[0]/2.0), int(roi_cent[0] + roi_dim[1]/2.0)])
@@ -377,7 +378,7 @@ class QuadScanController(QtCore.QObject):
                 n = 1
 
             # Median filtering:
-            kernel = self.analyse_params["median_kernel"]
+            kernel = self.analysis_params["median_kernel"]
             pic_roi = medfilt2d(pic_roi / n, kernel)
 
             # Threshold image
@@ -385,13 +386,14 @@ class QuadScanController(QtCore.QObject):
 
             line_x = pic_roi.sum(0)
             line_y = pic_roi.sum(1)
+            q = line_x.sum()            # Total signal (charge) in the image
 
             proc_list = self.scan_result["proc_data"]
             line_data_x = self.scan_result["line_data_x"]
             line_data_y = self.scan_result["line_data_y"]
 
             cal = self.scan_params["pixel_size"]
-            enabled = True
+            enabled = False
             l_x_n = np.sum(line_x)
             l_y_n = np.sum(line_y)
             # Enable point only if there is data:
@@ -414,6 +416,7 @@ class QuadScanController(QtCore.QObject):
                 self.scan_result["y_cent"][k_ind][image_ind] = y_cent
                 self.scan_result["sigma_x"][k_ind][image_ind] = sigma_x
                 self.scan_result["sigma_y"][k_ind][image_ind] = sigma_y
+                self.scan_result["charge_data"][k_ind][image_ind] = q
             except IndexError:
                 proc_list[k_ind].append(pic_roi)
                 line_data_x[k_ind].append(pic_roi.sum(0))
@@ -422,6 +425,7 @@ class QuadScanController(QtCore.QObject):
                 self.scan_result["y_cent"][k_ind].append(y_cent)
                 self.scan_result["sigma_x"][k_ind].append(sigma_x)
                 self.scan_result["sigma_y"][k_ind].append(sigma_y)
+                self.scan_result["charge_data"][k_ind].append(q)
         # self.logger.debug("Image process time: {0}".format(time.time() - t0))
         return pic_roi
 
@@ -448,11 +452,23 @@ class QuadScanController(QtCore.QObject):
         self.logger.error("Process image error: {0}".format(error))
 
     def fit_quad_data(self):
-        self.logger.info("Fitting image data")
+        algo = self.get_parameter("analysis", "fit_algo")
+        if algo == "full_matrix":
+            self.fit_full_transfer_matrix()
+        elif algo == "thin_lens":
+            self.fit_thin_lens()
+        else:
+            self.logger.warning("Fitting algorithm {0} not found.".format(algo))
+            return False
+        self.fit_done_signal.emit()
+        return True
+
+    def fit_thin_lens(self):
+        self.logger.info("Fitting image data using thin lens approximation")
         k_data = np.array(self.get_result("scan", "k_data")).flatten()
         sigma_data = np.array(self.get_result("scan", "sigma_x")).flatten()
         en_data = np.array(self.get_result("scan", "enabled_data")).flatten()
-        s2 = (sigma_data[en_data])**2
+        s2 = (sigma_data[en_data]) ** 2
         k = k_data[en_data]
         ind = np.isfinite(s2)
         poly = np.polyfit(k[ind], s2[ind], 2)
@@ -461,12 +477,12 @@ class QuadScanController(QtCore.QObject):
         d = self.get_parameter("scan", "quad_screen_distance")
         L = self.get_parameter("scan", "quad_length")
         gamma = self.get_parameter("scan", "beam_energy") / 0.511
-        eps = 1 / (d**2 * L) * np.sqrt(poly[0] * poly[2] - poly[1]**2 / 4)
+        eps = 1 / (d ** 2 * L) * np.sqrt(poly[0] * poly[2] - poly[1] ** 2 / 4)
         eps_n = eps * gamma
-        beta = poly[0] / (eps * d**2 * L**2)
+        beta = poly[0] / (eps * d ** 2 * L ** 2)
         alpha = (beta + poly[1] / (2 * eps * d * L)) / L
         self.logger.info("-------------------------------")
-        self.logger.info("eps_n  = {0:.3f} mm x mrad".format(eps_n*1e6))
+        self.logger.info("eps_n  = {0:.3f} mm x mrad".format(eps_n * 1e6))
         self.logger.info("beta   = {0:.4g} m".format(beta))
         self.logger.info("alpha  = {0:.4g} rad".format(alpha))
         self.logger.info("-------------------------------")
@@ -474,9 +490,9 @@ class QuadScanController(QtCore.QObject):
         self.set_result("analysis", "beta", beta)
         self.set_result("analysis", "alpha", alpha)
 
-        self.fit_full_transfer_matrix()
-
-        self.fit_done_signal.emit()
+        x = np.linspace(k.min(), k.max(), 100)
+        y = np.polyval(poly, x)
+        self.set_result("analysis", "fit_data", [x, np.sqrt(y)])
 
     def fit_full_transfer_matrix(self):
         self.logger.info("Fitting using full transfer matrix")
@@ -486,7 +502,11 @@ class QuadScanController(QtCore.QObject):
         d = self.get_parameter("scan", "quad_screen_distance")
         L = self.get_parameter("scan", "quad_length")
         gamma = self.get_parameter("scan", "beam_energy") / 0.511
-        s2 = (sigma_data[en_data]) ** 2
+        try:
+            s2 = (sigma_data[en_data]) ** 2
+        except IndexError as e:
+            self.logger.warning("Could not address enabled sigma values. "
+                                "En_data: {0}, sigma_data: {1}".format(en_data, sigma_data))
         k = k_data[en_data]
         ind = np.isfinite(s2)
         k_sqrt = np.sqrt(k[ind])
@@ -499,6 +519,7 @@ class QuadScanController(QtCore.QObject):
         eps_n = eps * gamma
         beta = x[0][0] / eps
         alpha = x[0][1] / eps
+
         self.logger.info("-------------------------------")
         self.logger.info("eps_n  = {0:.3f} mm x mrad".format(eps_n * 1e6))
         self.logger.info("beta   = {0:.4g} m".format(beta))
@@ -508,6 +529,13 @@ class QuadScanController(QtCore.QObject):
         self.set_result("analysis", "beta", beta)
         self.set_result("analysis", "alpha", alpha)
 
+        x = np.linspace(k.min(), k.max(), 100)
+        x_sqrt = np.sqrt(x)
+        Ax = np.cos(x_sqrt * L) - d * x_sqrt * np.sin(x_sqrt * L)
+        Bx = 1 / x_sqrt * np.sin(x_sqrt * L) + d * np.cos(x_sqrt * L)
+
+        y = Ax**2 * beta * eps - 2 * Ax * Bx * alpha * eps + Bx**2 * (1 + alpha**2) * eps / beta
+        self.set_result("analysis", "fit_data", [x, np.sqrt(y)])
 
     def add_raw_image(self, k_num, k_value, image):
         self.logger.info("Adding new image with k index {0}".format(k_num))

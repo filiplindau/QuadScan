@@ -35,6 +35,32 @@ pq.graphicsItems.GradientEditorItem.Gradients['thermalclip'] = {
               (1, (255, 255, 255, 255))], 'mode': 'rgb'}
 
 
+class MyScatterPlotItem(pq.ScatterPlotItem):
+    sigRightClicked = QtCore.Signal(object, object, object)  ## self, points, right
+
+    def mouseClickEvent(self, ev):
+        if ev.button() == QtCore.Qt.LeftButton:
+            pts = self.pointsAt(ev.pos())
+            if len(pts) > 0:
+                self.ptsClicked = pts
+                self.sigClicked.emit(self, self.ptsClicked)
+                ev.accept()
+            else:
+                #print "no spots"
+                ev.ignore()
+        elif ev.button() == QtCore.Qt.RightButton:
+            pts = self.pointsAt(ev.pos())
+            if len(pts) > 0:
+                self.ptsRightClicked = pts
+                self.sigRightClicked.emit(self, self.ptsRightClicked, True)
+                ev.accept()
+            else:
+                #print "no spots"
+                ev.ignore()
+        else:
+            ev.ignore()
+
+
 class QuadScanGui(QtGui.QWidget):
     """
     Class for scanning a motor while grabbing images to produce a frog trace. It can also analyse the scanned trace
@@ -54,6 +80,8 @@ class QuadScanGui(QtGui.QWidget):
         self.cent_plot = None
         self.sigma_x_plot = None
         self.fit_x_plot = None
+        self.charge_plot = None
+        self.fit_plot_vb = None
 
         self.gui_lock = threading.Lock()
 
@@ -105,30 +133,53 @@ class QuadScanGui(QtGui.QWidget):
         self.ui.lineout_widget.setLabel("bottom", "Line coord", "px")
         self.ui.lineout_widget.showGrid(True)
 
-        self.sigma_x_plot = self.ui.fit_widget.plot()
+        # self.sigma_x_plot = self.ui.fit_widget.plot()
+        self.sigma_x_plot = MyScatterPlotItem()
+        self.ui.fit_widget.getPlotItem().addItem(self.sigma_x_plot)
         self.sigma_x_plot.setPen((10, 200, 25))
         self.fit_x_plot = self.ui.fit_widget.plot()
         self.fit_x_plot.setPen(pq.mkPen(color=(180, 180, 250), width=2))
         self.ui.fit_widget.setLabel("bottom", "K", "1/m^2")
-        self.ui.fit_widget.setLabel("left", "sigma^2", "m^2")
+        self.ui.fit_widget.setLabel("left", "sigma", "m")
+        self.ui.fit_widget.getPlotItem().showGrid(alpha=0.3)
+
+        self.charge_plot = self.ui.charge_widget.plot()
+        self.charge_plot.setPen((180, 250, 180))
+        self.ui.charge_widget.setLabel("bottom", "K", "1/m^2")
+        self.ui.charge_widget.setLabel("left", "charge", "a.u.")
+        self.ui.charge_widget.getPlotItem().showGrid(alpha=0.3)
+        self.ui.charge_widget.disableAutoRange()
+
+        # Combobox init
+        self.ui.fit_algo_combobox.addItem("Full matrix repr")
+        self.ui.fit_algo_combobox.addItem("Thin lens approx")
+        self.ui.fit_algo_combobox.setCurrentIndex(0)
 
         # This is to make sure . is the decimal character
         self.setLocale(QtCore.QLocale(QtCore.QLocale.English))
 
+        # Restore settings
+        self.last_load_dir = self.settings.value("load_path", ".", type=str)
+        val = self.settings.value("threshold", "0.001", type=float)
+        self.ui.threshold_spinbox.setValue(val)
+        self.controller.set_parameter("analysis", "threshold", val)
+        val = self.settings.value("median_kernel", "3", type=int)
+        self.ui.median_kernel_spinbox.setValue(val)
+        self.controller.set_parameter("analysis", "median_kernel", val)
+
         # Signal connections
-        self.ui.threshold_spinbox.editingFinished.connect(self.update_image_threshold)
+        self.ui.threshold_spinbox.editingFinished.connect(self.update_image_processing)
+        self.ui.median_kernel_spinbox.editingFinished.connect(self.update_image_processing)
         self.ui.k_slider.valueChanged.connect(self.update_image_selection)
         self.ui.image_slider.valueChanged.connect(self.update_image_selection)
         self.controller.progress_signal.connect(self.change_progress)
         self.controller.processing_done_signal.connect(self.update_image_selection)
         self.controller.fit_done_signal.connect(self.update_fit_data)
         self.controller.state_change_signal.connect(self.change_state)
-        self.sigma_x_plot.sigPointsClicked.connect(self.points_clicked)
-
-        # Data storage
+        self.sigma_x_plot.sigClicked.connect(self.points_clicked)
+        self.sigma_x_plot.sigRightClicked.connect(self.points_clicked)
+        self.ui.fit_algo_combobox.currentIndexChanged.connect(self.update_algo)
         self.ui.load_data_button.clicked.connect(self.load_data)
-
-        self.last_load_dir = self.settings.value("load_path", ".", type=str)
 
         # Geometry setup
         window_pos_x = self.settings.value('window_pos_x', 100, type=int)
@@ -185,18 +236,21 @@ class QuadScanGui(QtGui.QWidget):
             self.ui.image_raw_widget.roi.blockSignals(False)
         self.update_image_selection()
 
-    def update_image_threshold(self):
+    def update_image_processing(self):
         """
         Set the threshold used when processing image for beam emittance calculations
         :return:
         """
         th = self.ui.threshold_spinbox.value()
-        root.info("Setting image threshold to {0}".format(th))
-        self.controller.set_parameter("analyse", "threshold", th)
-        image_ind = self.ui.image_slider.value()
-        k_ind = self.ui.k_slider.value()
-        # self.controller.process_image(k_ind, image_ind)
-        d = self.controller.process_all_images()
+        kern = self.ui.median_kernel_spinbox.value()
+        if kern % 2 == 0:
+            kern += 1
+            root.info("Median kernel value must be odd")
+        root.info("Setting image threshold to {0}, median kernel to {1}".format(th, kern))
+        self.controller.set_parameter("analysis", "threshold", th)
+        self.controller.set_parameter("analysis", "median_kernel", kern)
+
+        self.state_dispatcher.send_command("process_images")
 
     def update_roi(self):
         """
@@ -208,9 +262,7 @@ class QuadScanGui(QtGui.QWidget):
         rp = self.ui.image_raw_widget.roi.pos()
         self.controller.set_parameter("scan", "roi_center", [rp[0] + rs[0]/2, rp[1] + rs[1]/2])
         self.controller.set_parameter("scan", "roi_dim", [rs[0], rs[1]])
-        d = self.controller.process_all_images()
-        # d.addCallback(self.update_image_selection)
-        # d.addCallback(self.update_fit_data)
+        self.state_dispatcher.send_command("process_images")
 
     def update_image_selection(self, result=None):
         """
@@ -221,6 +273,9 @@ class QuadScanGui(QtGui.QWidget):
         k_ind = self.ui.k_slider.value()
         raw_data = self.controller.get_result("scan", "raw_data")
         proc_data = self.controller.get_result("scan", "proc_data")
+        k_data = self.controller.get_result("scan", "k_data")
+        self.ui.image_select_label.setText("{0}".format(image_ind))
+        self.ui.k_select_label.setText("{0:.2f}".format(k_data[k_ind][image_ind]))
         if raw_data is None:
             # Exit if there is no data
             return
@@ -251,32 +306,68 @@ class QuadScanGui(QtGui.QWidget):
         root.info("Updating fit data")
         k_data = np.array(self.controller.get_result("scan", "k_data")).flatten()
         sigma_data = np.array(self.controller.get_result("scan", "sigma_x")).flatten()
+        q = np.array(self.controller.get_result("scan", "charge_data")).flatten()
         en_data = np.array(self.controller.get_result("scan", "enabled_data")).flatten()
-        symbol_list = list()
-        brush_list = list()
+        sigma_symbol_list = list()
+        sigma_brush_list = list()
         o_brush = pq.mkBrush(150, 150, 250, 150)
-        x_brush = pq.mkBrush(250, 150, 150, 190)
+        t_brush = pq.mkBrush(250, 150, 150, 150)
+        q_symbol_list = list()
+        q_brush_list = list()
+        s_brush = pq.mkBrush(150, 250, 150, 150)
+        x_brush = pq.mkBrush(250, 150, 150, 150)
         for en in en_data:
             if en == False:
-                symbol_list.append("t")
-                brush_list.append(x_brush)
+                sigma_symbol_list.append("t")
+                sigma_brush_list.append(t_brush)
+                q_symbol_list.append("t")
+                q_brush_list.append(x_brush)
             else:
-                symbol_list.append("o")
-                brush_list.append(o_brush)
-        self.sigma_x_plot.setData(x=k_data, y=sigma_data**2, symbol=symbol_list, symbolBrush=brush_list, symbolPen=None,
-                                  pen=None)
-        poly = self.controller.get_result("scan", "fit_poly")
-        x = np.linspace(k_data.min(), k_data.max(), 100)
-        y = np.polyval(poly, x)
-        self.fit_x_plot.setData(x=x, y=y)
+                sigma_symbol_list.append("o")
+                sigma_brush_list.append(o_brush)
+                q_symbol_list.append("s")
+                q_brush_list.append(s_brush)
+        # self.sigma_x_plot.setData(x=k_data, y=sigma_data, symbol=sigma_symbol_list, symbolBrush=sigma_brush_list,
+        #                           symbolPen=None, pen=None)
+        self.sigma_x_plot.setData(x=k_data, y=sigma_data, symbol=sigma_symbol_list, brush=sigma_brush_list, pen=None)
+        fit_data = self.controller.get_result("analysis", "fit_data")
+        if fit_data is not None:
+            self.fit_x_plot.setData(x=fit_data[0], y=fit_data[1])
 
-    def points_clicked(self, scatterplotitem, point_list):
+        self.charge_plot.setData(x=k_data, y=q, symbol=q_symbol_list, symbolBrush=q_brush_list,
+                                 symbolPen=None, pen=None)
+        # Clamp charge range to zero to facilitate relative loss assessment:
+        y_range = [0, q.max()]
+        x_range = [k_data.min(), k_data.max()]
+        self.ui.charge_widget.getViewBox().setRange(xRange=x_range, yRange=y_range, disableAutoRange=True)
+
+        self.update_result()
+
+    def update_result(self):
+        eps = self.controller.get_result("analysis", "eps")
+        beta = self.controller.get_result("analysis", "beta")
+        alpha = self.controller.get_result("analysis", "alpha")
+        self.ui.eps_label.setText("{0:.4g}".format(eps*1e6))
+        self.ui.beta_label.setText("{0:.4g}".format(beta))
+        self.ui.alpha_label.setText("{0:.4g}".format(alpha))
+
+    def update_algo(self):
+        algo = str(self.ui.fit_algo_combobox.currentText())
+        root.info("Updating fitting algorithm to {0}".format(algo))
+        if algo == "Thin lens approx":
+            self.controller.set_parameter("analysis", "fit_algo", "thin_lens")
+        elif algo == "Full matrix repr":
+            self.controller.set_parameter("analysis", "fit_algo", "full_matrix")
+        self.state_dispatcher.send_command("fit_data")
+
+    def points_clicked(self, scatterplotitem, point_list, right=False):
         try:
             pos = point_list[0].pos()
             root.info("Point clicked: {0}".format(pos))
         except IndexError:
             root.debug("No points in list - exit")
             return
+        root.debug("Right button: {0}".format(right))
         sx = self.controller.get_result("scan", "sigma_x")
         kd = self.controller.get_result("scan", "k_data")
         eps = 1e-9
@@ -285,15 +376,16 @@ class QuadScanGui(QtGui.QWidget):
         for k_i, k_list in enumerate(kd):
             for im_i, k_val in enumerate(k_list):
                 if abs(pos.x() - k_val) < eps:
-                    if abs(pos.y() - (sx[k_i][im_i])**2) < eps:
+                    if abs(pos.y() - (sx[k_i][im_i])) < eps:
                         k_ind = k_i
                         image_ind = im_i
                         break
         if k_ind is not None:
             en_data = self.controller.get_result("scan", "enabled_data")
-            enabled = en_data[k_ind][image_ind]
-            en_data[k_ind][image_ind] = not en_data[k_ind][image_ind]
-            if enabled is True:
+            enabled = not en_data[k_ind][image_ind]
+            enabled = not right
+            en_data[k_ind][image_ind] = enabled
+            if enabled is False:
                 point_list[0].setSymbol("x")
                 point_list[0].setBrush((200, 50, 50))
             else:
@@ -316,6 +408,8 @@ class QuadScanGui(QtGui.QWidget):
         root.debug("Loading from directory {0}".format(load_dir))
         self.controller.set_parameter("load", "path", str(load_dir))
         self.state_dispatcher.send_command("load")
+        source_name = QtCore.QDir.fromNativeSeparators(load_dir).split("/")[-1]
+        self.ui.data_source_label.setText(source_name)
 
     def closeEvent(self, event):
         """
@@ -330,6 +424,9 @@ class QuadScanGui(QtGui.QWidget):
         self.settings.setValue('window_size_h', np.int(self.size().height()))
         self.settings.setValue('window_pos_x', np.int(self.pos().x()))
         self.settings.setValue('window_pos_y', np.int(self.pos().y()))
+
+        self.settings.setValue("threshold", self.controller.get_parameter("analysis", "threshold"))
+        self.settings.setValue("median_kernel", self.controller.get_parameter("analysis", "median_kernel"))
 
 
 if __name__ == "__main__":
