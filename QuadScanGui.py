@@ -168,6 +168,7 @@ class QuadScanGui(QtGui.QWidget):
         self.controller.set_parameter("analysis", "median_kernel", val)
 
         # Signal connections
+        self.ui.image_raw_widget.roi.sigRegionChanged.disconnect()
         self.ui.threshold_spinbox.editingFinished.connect(self.update_image_processing)
         self.ui.median_kernel_spinbox.editingFinished.connect(self.update_image_processing)
         self.ui.k_slider.valueChanged.connect(self.update_image_selection)
