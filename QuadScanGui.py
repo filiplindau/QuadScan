@@ -10,6 +10,7 @@ from PyQt4 import QtGui, QtCore
 import pyqtgraph as pq
 import sys
 import numpy as np
+import itertools
 from QuadScanController import QuadScanController
 from QuadScanState import StateDispatcher
 from quadscan_ui import Ui_QuadScanDialog
@@ -108,6 +109,7 @@ class QuadScanGui(QtGui.QWidget):
         self.ui.image_raw_widget.setImage(np.random.random((64, 64)))
         self.ui.image_raw_widget.ui.roiBtn.hide()
         self.ui.image_raw_widget.ui.menuBtn.hide()
+        self.ui.image_raw_widget.roi.sigRegionChanged.disconnect()
         h = self.ui.image_raw_widget.getHistogramWidget()
         # h.item.sigLevelChangeFinished.connect(self.update_image_threshold)
         self.ui.image_raw_widget.roi.show()
@@ -168,7 +170,7 @@ class QuadScanGui(QtGui.QWidget):
         self.controller.set_parameter("analysis", "median_kernel", val)
 
         # Signal connections
-        self.ui.image_raw_widget.roi.sigRegionChanged.disconnect()
+        self.ui.energy_spinbox.editingFinished.connect(self.update_parameter_data)
         self.ui.threshold_spinbox.editingFinished.connect(self.update_image_processing)
         self.ui.median_kernel_spinbox.editingFinished.connect(self.update_image_processing)
         self.ui.k_slider.valueChanged.connect(self.update_image_selection)
@@ -176,11 +178,14 @@ class QuadScanGui(QtGui.QWidget):
         self.controller.progress_signal.connect(self.change_progress)
         self.controller.processing_done_signal.connect(self.update_image_selection)
         self.controller.fit_done_signal.connect(self.update_fit_data)
+        self.controller.fit_done_signal.connect(self.update_result)
         self.controller.state_change_signal.connect(self.change_state)
         self.sigma_x_plot.sigClicked.connect(self.points_clicked)
         self.sigma_x_plot.sigRightClicked.connect(self.points_clicked)
         self.ui.fit_algo_combobox.currentIndexChanged.connect(self.update_algo)
         self.ui.load_data_button.clicked.connect(self.load_data)
+
+        # self.controller.image_done_signal.connect(self.update_fit_data)
 
         # Geometry setup
         window_pos_x = self.settings.value('window_pos_x', 100, type=int)
@@ -305,35 +310,41 @@ class QuadScanGui(QtGui.QWidget):
 
     def update_fit_data(self, result=None):
         root.info("Updating fit data")
-        k_data = np.array(self.controller.get_result("scan", "k_data")).flatten()
-        sigma_data = np.array(self.controller.get_result("scan", "sigma_x")).flatten()
-        q = np.array(self.controller.get_result("scan", "charge_data")).flatten()
-        en_data = np.array(self.controller.get_result("scan", "enabled_data")).flatten()
+        # k_data = np.array(self.controller.get_result("scan", "k_data")).flatten()
+        k_data = np.array(list(itertools.chain.from_iterable(self.controller.get_result("scan", "k_data"))))
+        # sigma_data = np.array(self.controller.get_result("scan", "sigma_x")).flatten()
+        sigma_data = np.array(list(itertools.chain.from_iterable(self.controller.get_result("scan", "sigma_x"))))
+        # q = np.array(self.controller.get_result("scan", "charge_data")).flatten()
+        q = np.array(list(itertools.chain.from_iterable(self.controller.get_result("scan", "charge_data"))))
+        # en_data = np.array(self.controller.get_result("scan", "enabled_data")).flatten()
+        en_data = np.array(list(itertools.chain.from_iterable(self.controller.get_result("scan", "enabled_data"))))
+        en_data = en_data[0:sigma_data.shape[0]]
+        k_data = k_data[0:sigma_data.shape[0]]
         sigma_symbol_list = list()
         sigma_brush_list = list()
-        o_brush = pq.mkBrush(150, 150, 250, 150)
-        t_brush = pq.mkBrush(250, 150, 150, 150)
+        so_brush = pq.mkBrush(150, 150, 250, 150)
+        sx_brush = pq.mkBrush(250, 150, 150, 150)
         q_symbol_list = list()
         q_brush_list = list()
-        s_brush = pq.mkBrush(150, 250, 150, 150)
-        x_brush = pq.mkBrush(250, 150, 150, 150)
+        qo_brush = pq.mkBrush(150, 250, 150, 150)
+        qx_brush = pq.mkBrush(250, 100, 100, 200)
         for en in en_data:
             if en == False:
                 sigma_symbol_list.append("t")
-                sigma_brush_list.append(t_brush)
+                sigma_brush_list.append(sx_brush)
                 q_symbol_list.append("t")
-                q_brush_list.append(x_brush)
+                q_brush_list.append(qx_brush)
             else:
                 sigma_symbol_list.append("o")
-                sigma_brush_list.append(o_brush)
+                sigma_brush_list.append(so_brush)
                 q_symbol_list.append("s")
-                q_brush_list.append(s_brush)
+                q_brush_list.append(qo_brush)
         # self.sigma_x_plot.setData(x=k_data, y=sigma_data, symbol=sigma_symbol_list, symbolBrush=sigma_brush_list,
         #                           symbolPen=None, pen=None)
-        self.sigma_x_plot.setData(x=k_data, y=sigma_data, symbol=sigma_symbol_list, brush=sigma_brush_list, pen=None)
-        fit_data = self.controller.get_result("analysis", "fit_data")
-        if fit_data is not None:
-            self.fit_x_plot.setData(x=fit_data[0], y=fit_data[1])
+        self.sigma_x_plot.setData(x=k_data, y=sigma_data, symbol=sigma_symbol_list,
+                                  brush=sigma_brush_list, size=10, pen=None)
+        self.sigma_x_plot.update()
+        # pq.QtGui.QApplication.processEvents()
 
         self.charge_plot.setData(x=k_data, y=q, symbol=q_symbol_list, symbolBrush=q_brush_list,
                                  symbolPen=None, pen=None)
@@ -342,7 +353,9 @@ class QuadScanGui(QtGui.QWidget):
         x_range = [k_data.min(), k_data.max()]
         self.ui.charge_widget.getViewBox().setRange(xRange=x_range, yRange=y_range, disableAutoRange=True)
 
-        self.update_result()
+        fit_data = self.controller.get_result("analysis", "fit_data")
+        if fit_data is not None:
+            self.fit_x_plot.setData(x=fit_data[0], y=fit_data[1])
 
     def update_result(self):
         eps = self.controller.get_result("analysis", "eps")
@@ -362,6 +375,15 @@ class QuadScanGui(QtGui.QWidget):
         self.state_dispatcher.send_command("fit_data")
 
     def points_clicked(self, scatterplotitem, point_list, right=False):
+        """
+        Check if there is a point in the clicked list that should be enabled or disabled.
+        Right click disabled, left click enables.
+
+        :param scatterplotitem: Scatterplot that was clicked
+        :param point_list: List of points under the mouse cursor
+        :param right: True if the right mouse button was clicked, False if left.
+        :return:
+        """
         try:
             pos = point_list[0].pos()
             root.info("Point clicked: {0}".format(pos))
@@ -371,36 +393,55 @@ class QuadScanGui(QtGui.QWidget):
         root.debug("Right button: {0}".format(right))
         sx = self.controller.get_result("scan", "sigma_x")
         kd = self.controller.get_result("scan", "k_data")
+        en_data = self.controller.get_result("scan", "enabled_data")
+        enabled = not right
         eps = 1e-9
-        k_ind = None
-        image_ind = None
-        for k_i, k_list in enumerate(kd):
-            for im_i, k_val in enumerate(k_list):
-                if abs(pos.x() - k_val) < eps:
-                    if abs(pos.y() - (sx[k_i][im_i])) < eps:
-                        k_ind = k_i
-                        image_ind = im_i
-                        break
-        if k_ind is not None:
-            en_data = self.controller.get_result("scan", "enabled_data")
-            enabled = not en_data[k_ind][image_ind]
-            enabled = not right
-            en_data[k_ind][image_ind] = enabled
+        mouse_pos = self.mapFromGlobal(QtGui.QCursor.pos())
+        root.debug("Mouse pos: {0}".format(mouse_pos))
+        k_sel_i = None
+        im_sel_i = None
+        sel_dist = np.inf
+        k_tog_i = None
+        im_tog_i = None
+        tog_dist = np.inf
+        tog_spot = None
+        for p in point_list:
+            pos = p.pos()
+            # We need to loop through the list of data points to find the index of the points clicked:
+            for k_i, k_list in enumerate(kd):
+                for im_i, k_val in enumerate(k_list):
+                    # Check if the point is within eps:
+                    if abs(pos.x() - k_val) < eps:
+                        if abs(pos.y() - (sx[k_i][im_i])) < eps:
+                            d = (pos.x() - mouse_pos.x())**2 + (pos.y() - mouse_pos.y())**2
+                            if d < sel_dist:
+                                k_sel_i = k_i
+                                im_sel_i = im_i
+                                sel_dist = d
+                            if en_data[k_i][im_i] != enabled:
+                                if d < tog_dist:
+                                    k_tog_i = k_i
+                                    im_tog_i = im_i
+                                    tog_dist = d
+                                    tog_spot = p
+
+        if k_tog_i is not None:
+            en_data[k_tog_i][im_tog_i] = enabled
+
             if enabled is False:
-                point_list[0].setSymbol("x")
-                point_list[0].setBrush((200, 50, 50))
+                tog_spot.setSymbol("x")
+                tog_spot.setBrush((200, 50, 50))
             else:
-                point_list[0].setSymbol("o")
-                point_list[0].setBrush((150, 150, 250, 100))
+                tog_spot.setSymbol("o")
+                tog_spot.setBrush((150, 150, 250, 100))
+        if k_sel_i is not None:
             self.ui.k_slider.blockSignals(True)
-            self.ui.k_slider.setValue(k_ind)
-            self.ui.image_slider.setValue(image_ind)
+            self.ui.k_slider.setValue(k_sel_i)
+            self.ui.image_slider.setValue(im_sel_i)
             self.ui.k_slider.blockSignals(False)
 
             self.update_image_selection()
             self.controller.fit_quad_data()
-        else:
-            root.debug("No point found")
 
     def load_data(self):
         root.info("Loading data")

@@ -12,6 +12,7 @@ from twisted_cut import defer
 from twisted_cut.failure import Failure
 import TangoTwisted
 from TangoTwisted import TangoAttributeFactory, defer_later
+import PyTango as tango
 import QuadScanState as qs
 import numpy as np
 from scipy.signal import medfilt2d
@@ -32,6 +33,7 @@ from PyQt4 import QtCore
 class QuadScanController(QtCore.QObject):
     progress_signal = QtCore.Signal(float)
     processing_done_signal = QtCore.Signal()
+    image_done_signal = QtCore.Signal(int, int)      # Image number as argument
     fit_done_signal = QtCore.Signal()
     state_change_signal = QtCore.Signal(str)
 
@@ -79,6 +81,8 @@ class QuadScanController(QtCore.QObject):
         self.scan_params["beam_energy"] = 1.0
         self.scan_params["roi_center"] = [1.0, 1.0]
         self.scan_params["roi_dim"] = [1.0, 1.0]
+        self.scan_params["sections"] = ["MS1", "MS2", "MS3", "SP02"]
+        self.scan_params["section_quads"] = dict()
         # self.scan_params["dev_name"] = "motor"
 
         self.scan_result = dict()
@@ -427,6 +431,7 @@ class QuadScanController(QtCore.QObject):
                 self.scan_result["sigma_y"][k_ind].append(sigma_y)
                 self.scan_result["charge_data"][k_ind].append(q)
         # self.logger.debug("Image process time: {0}".format(time.time() - t0))
+        self.image_done_signal.emit(k_ind, image_ind)
         return pic_roi
 
     def process_all_images(self):
@@ -550,6 +555,14 @@ class QuadScanController(QtCore.QObject):
             except IndexError:
                 self.logger.warning("Image index out of range: {0}/{1}, skipping".format(k_num,
                                                                                          len(self.controller.scan_raw_data)))
+
+    def populate_matching_sections(self):
+        db = tango.Database()
+        sections = self.get_parameter("scan", "sections")
+        for s in sections:
+            quad_list = db.get_device_exported("*{0}*kquad*".format(s)).value_string
+            screen_list = db.get_device_exported("*{0}*scrn*".format(s)).value_string
+
 
 
 class Scan(object):
