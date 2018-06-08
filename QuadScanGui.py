@@ -75,6 +75,7 @@ class QuadScanGui(QtGui.QWidget):
 
         self.current_state = "unknown"
         self.last_load_dir = "."
+        self.data_base_dir = "."
 
         self.line_x_plot = None
         self.line_y_plot = None
@@ -162,12 +163,16 @@ class QuadScanGui(QtGui.QWidget):
 
         # Restore settings
         self.last_load_dir = self.settings.value("load_path", ".", type=str)
+        self.data_base_dir = self.settings.value("base_path", ".", type=str)
+        self.ui.data_base_dir_edit.setText(self.data_base_dir)
         val = self.settings.value("threshold", "0.001", type=float)
         self.ui.threshold_spinbox.setValue(val)
         self.controller.set_parameter("analysis", "threshold", val)
         val = self.settings.value("median_kernel", "3", type=int)
         self.ui.median_kernel_spinbox.setValue(val)
         self.controller.set_parameter("analysis", "median_kernel", val)
+        self.ui.k_start_spinbox.setValue(self.settings.value("k_start", "0", type=float))
+        self.ui.k_end_spinbox.setValue(self.settings.value("k_end", "0", type=float))
 
         # Signal connections
         self.ui.energy_spinbox.editingFinished.connect(self.update_parameter_data)
@@ -184,6 +189,10 @@ class QuadScanGui(QtGui.QWidget):
         self.sigma_x_plot.sigRightClicked.connect(self.points_clicked)
         self.ui.fit_algo_combobox.currentIndexChanged.connect(self.update_algo)
         self.ui.load_data_button.clicked.connect(self.load_data)
+        self.ui.set_max_button.clicked.connect(self.set_max_k)
+        self.ui.set_min_button.clicked.connect(self.set_min_k)
+        self.ui.process_button.clicked.connect(self.start_processing)
+        self.ui.data_base_dir_button.clicked.connect(self.set_base_dir)
 
         # self.controller.image_done_signal.connect(self.update_fit_data)
 
@@ -197,6 +206,9 @@ class QuadScanGui(QtGui.QWidget):
         if window_pos_y < 50:
             window_pos_y = 50
         self.setGeometry(window_pos_x, window_pos_y, window_size_w, window_size_h)
+
+        # Install event filter
+        self.ui.k_current_spinbox.installEventFilter(self)
 
     def change_state(self, new_state, new_status=None):
         root.info("Change state: {0}, status {1}".format(new_state, new_status))
@@ -280,6 +292,9 @@ class QuadScanGui(QtGui.QWidget):
         raw_data = self.controller.get_result("scan", "raw_data")
         proc_data = self.controller.get_result("scan", "proc_data")
         k_data = self.controller.get_result("scan", "k_data")
+        if k_data is None:
+            root.debug("No data in store, exit update_image_selection")
+            return
         self.ui.image_select_label.setText("{0}".format(image_ind))
         self.ui.k_select_label.setText("{0:.2f}".format(k_data[k_ind][image_ind]))
         if raw_data is None:
@@ -443,6 +458,18 @@ class QuadScanGui(QtGui.QWidget):
             self.update_image_selection()
             self.controller.fit_quad_data()
 
+    def set_max_k(self):
+        k_current = self.ui.k_current_spinbox.value()
+        root.info("Setting scan end k value to {0}".format(k_current))
+        self.ui.k_end_spinbox.setValue(k_current)
+        self.controller.set_parameter("scan", "k_max", k_current)
+
+    def set_min_k(self):
+        k_current = self.ui.k_current_spinbox.value()
+        root.info("Setting scan start k value to {0}".format(k_current))
+        self.ui.k_start_spinbox.setValue(k_current)
+        self.controller.set_parameter("scan", "k_min", k_current)
+
     def load_data(self):
         root.info("Loading data")
         load_dir = QtGui.QFileDialog.getExistingDirectory(self, "Select directory", self.last_load_dir)
@@ -453,6 +480,26 @@ class QuadScanGui(QtGui.QWidget):
         source_name = QtCore.QDir.fromNativeSeparators(load_dir).split("/")[-1]
         self.ui.data_source_label.setText(source_name)
 
+    def start_processing(self):
+        root.info("Sending process_images command")
+        self.state_dispatcher.send_command("process_images")
+
+    def set_base_dir(self):
+        root.info("Setting data base directory")
+        base_dir = QtGui.QFileDialog.getExistingDirectory(self, "Select directory", self.data_base_dir)
+        self.data_base_dir = base_dir
+        root.debug("Setting base directory to {0}".format(base_dir))
+        self.controller.set_parameter("save", "base_path", str(base_dir))
+        self.ui.data_base_dir_edit.setText(base_dir)
+
+    def eventFilter(self, obj, event):
+        if event.type() == QtCore.QEvent.Wheel:
+            dk = 0.025 * event.delta() / 120.0
+            self.ui.k_current_spinbox.setValue(self.ui.k_current_spinbox.value() + dk)
+            return True
+        else:
+            return False
+
     def closeEvent(self, event):
         """
         Closing the applications. Stopping threads and saving the settings.
@@ -461,6 +508,7 @@ class QuadScanGui(QtGui.QWidget):
         """
         self.state_dispatcher.stop()
         self.settings.setValue("load_path", self.last_load_dir)
+        self.settings.setValue("base_path", self.data_base_dir)
 
         self.settings.setValue('window_size_w', np.int(self.size().width()))
         self.settings.setValue('window_size_h', np.int(self.size().height()))
@@ -469,6 +517,8 @@ class QuadScanGui(QtGui.QWidget):
 
         self.settings.setValue("threshold", self.controller.get_parameter("analysis", "threshold"))
         self.settings.setValue("median_kernel", self.controller.get_parameter("analysis", "median_kernel"))
+        self.settings.setValue("k_start", self.ui.k_start_spinbox.value())
+        self.settings.setValue("k_end", self.ui.k_end_spinbox.value())
 
 
 if __name__ == "__main__":
