@@ -158,6 +158,9 @@ class QuadScanGui(QtGui.QWidget):
         self.ui.fit_algo_combobox.addItem("Thin lens approx")
         self.ui.fit_algo_combobox.setCurrentIndex(0)
 
+        for sect in self.controller.get_parameter("scan", "sections").iterkeys():
+            self.ui.section_combobox.addItem(sect)
+
         # This is to make sure . is the decimal character
         self.setLocale(QtCore.QLocale(QtCore.QLocale.English))
 
@@ -388,6 +391,10 @@ class QuadScanGui(QtGui.QWidget):
         elif algo == "Full matrix repr":
             self.controller.set_parameter("analysis", "fit_algo", "full_matrix")
         self.state_dispatcher.send_command("fit_data")
+
+    def update_section(self):
+        sect = str(self.ui.section_combobox.currentText())
+        quads = self.controller.get_parameter("scan", "sections_quads")[sect]
 
     def points_clicked(self, scatterplotitem, point_list, right=False):
         """

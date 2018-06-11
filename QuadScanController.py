@@ -12,6 +12,7 @@ from twisted_cut import defer
 from twisted_cut.failure import Failure
 import TangoTwisted
 from TangoTwisted import TangoAttributeFactory, defer_later
+from collections import OrderedDict
 import PyTango as tango
 import QuadScanState as qs
 import numpy as np
@@ -82,6 +83,8 @@ class QuadScanController(QtCore.QObject):
         self.scan_params["roi_center"] = [1.0, 1.0]
         self.scan_params["roi_dim"] = [1.0, 1.0]
         self.scan_params["sections"] = ["MS1", "MS2", "MS3", "SP02"]
+        self.scan_params["sections"] = OrderedDict([("MS1", OrderedDict()), ("MS2", OrderedDict()),
+                                                    ("MS3", OrderedDict()), ("SP02", OrderedDict())])
         self.scan_params["section_quads"] = dict()
         # self.scan_params["dev_name"] = "motor"
 
