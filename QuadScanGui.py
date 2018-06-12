@@ -158,7 +158,11 @@ class QuadScanGui(QtGui.QWidget):
         self.ui.fit_algo_combobox.addItem("Thin lens approx")
         self.ui.fit_algo_combobox.setCurrentIndex(0)
 
-        self.ui.section_combobox.addItems(self.controller.get_parameter("scan", "sections"))
+        for sect in self.controller.get_parameter("scan", "sections"):
+            self.ui.section_combobox.addItem(sect.upper())
+
+        doc = self.ui.status_label.document()
+        doc.setMaximumBlockCount(100)
 
         # This is to make sure . is the decimal character
         self.setLocale(QtCore.QLocale(QtCore.QLocale.English))
@@ -173,12 +177,22 @@ class QuadScanGui(QtGui.QWidget):
         val = self.settings.value("median_kernel", "3", type=int)
         self.ui.median_kernel_spinbox.setValue(val)
         self.controller.set_parameter("analysis", "median_kernel", val)
+
         val = self.settings.value("fit_algo", "thin_lens", type=str)
-        self.ui.fit_algo_combobox.setCurrentIndex(self.ui.fit_algo_combobox.findText(val))
+        if val == "thin_lens":
+            ind = self.ui.fit_algo_combobox.findText("Thin lens approx")
+        else:
+            ind = self.ui.fit_algo_combobox.findText("Full matrix repr")
+        root.debug("Fit algo index: {0}".format(ind))
+        self.ui.fit_algo_combobox.setCurrentIndex(ind)
         self.controller.set_parameter("analysis", "fit_algo", val)
+
         self.ui.k_start_spinbox.setValue(self.settings.value("k_start", "0", type=float))
         self.ui.k_end_spinbox.setValue(self.settings.value("k_end", "0", type=float))
-        ind = self.ui.section_combobox.findText(self.settings.value("section", "ms1", type=str))
+
+        val = str(self.settings.value("section", "ms1", type=str)).upper()
+        ind = self.ui.section_combobox.findText(val)
+        root.debug("Section {1} index: {0}".format(ind, val))
         self.ui.section_combobox.setCurrentIndex(ind)
 
         # Signal connections
@@ -201,6 +215,9 @@ class QuadScanGui(QtGui.QWidget):
         self.ui.process_button.clicked.connect(self.start_processing)
         self.ui.data_base_dir_button.clicked.connect(self.set_base_dir)
 
+        self.ui.section_combobox.currentIndexChanged.connect(self.update_section)
+        self.ui.quad_combobox.currentIndexChanged.connect(self.update_section)
+        self.ui.screen_combobox.currentIndexChanged.connect(self.update_section)
         self.ui.screen_select_edit.editingFinished.connect(self.update_scan_devices)
         self.ui.quad_select_edit.editingFinished.connect(self.update_scan_devices)
 
@@ -224,7 +241,10 @@ class QuadScanGui(QtGui.QWidget):
         root.info("Change state: {0}, status {1}".format(new_state, new_status))
         self.ui.state_label.setText(QtCore.QString(new_state))
         if new_status is not None:
-            self.ui.status_label.setText(QtCore.QString(new_status))
+            self.ui.status_label.append(QtCore.QString(new_status))
+            self.ui.status_label.verticalScrollBar().setValue(self.ui.status_label.verticalScrollBar().maximum())
+            # st = self.ui.status_label.toPlainText()
+            # self.ui.status_label.setText(QtCore.QString(new_status) + "\n" + st)
         if self.current_state == "load" and new_state != "load":
             self.update_parameter_data()
         elif self.current_state == "database" and new_state == "device_connect":
@@ -234,6 +254,16 @@ class QuadScanGui(QtGui.QWidget):
             screen_name = self.settings.value("screen_name", None)
             self.controller.set_parameter("scan", "screen_name", screen_name)
             self.update_section()
+        if new_state != "idle":
+            # Only enable changing section etc. when idle.
+            # Otherwise we are connecting, scanning, or loading
+            self.ui.section_combobox.setEnabled(False)
+            self.ui.quad_combobox.setEnabled(False)
+            self.ui.screen_combobox.setEnabled(False)
+        else:
+            self.ui.section_combobox.setEnabled(True)
+            self.ui.quad_combobox.setEnabled(True)
+            self.ui.screen_combobox.setEnabled(True)
         self.current_state = new_state
 
     def change_progress(self, new_progress):
@@ -270,6 +300,12 @@ class QuadScanGui(QtGui.QWidget):
             self.ui.image_raw_widget.roi.show()
             self.ui.image_raw_widget.roi.blockSignals(False)
         self.update_image_selection()
+
+    def update_attribute(self, attr):
+        if attr.name == "mainfieldcomponent":
+            self.ui.k_current_label.setText("{0:.3f}".format(attr.value))
+        elif attr.name == "image":
+            self.ui.image_raw_widget.setImage(attr.value)
 
     def update_image_processing(self):
         """
@@ -342,13 +378,9 @@ class QuadScanGui(QtGui.QWidget):
 
     def update_fit_data(self, result=None):
         root.info("Updating fit data")
-        # k_data = np.array(self.controller.get_result("scan", "k_data")).flatten()
         k_data = np.array(list(itertools.chain.from_iterable(self.controller.get_result("scan", "k_data"))))
-        # sigma_data = np.array(self.controller.get_result("scan", "sigma_x")).flatten()
         sigma_data = np.array(list(itertools.chain.from_iterable(self.controller.get_result("scan", "sigma_x"))))
-        # q = np.array(self.controller.get_result("scan", "charge_data")).flatten()
         q = np.array(list(itertools.chain.from_iterable(self.controller.get_result("scan", "charge_data"))))
-        # en_data = np.array(self.controller.get_result("scan", "enabled_data")).flatten()
         en_data = np.array(list(itertools.chain.from_iterable(self.controller.get_result("scan", "enabled_data"))))
         en_data = en_data[0:sigma_data.shape[0]]
         k_data = k_data[0:sigma_data.shape[0]]
@@ -371,12 +403,9 @@ class QuadScanGui(QtGui.QWidget):
                 sigma_brush_list.append(so_brush)
                 q_symbol_list.append("s")
                 q_brush_list.append(qo_brush)
-        # self.sigma_x_plot.setData(x=k_data, y=sigma_data, symbol=sigma_symbol_list, symbolBrush=sigma_brush_list,
-        #                           symbolPen=None, pen=None)
         self.sigma_x_plot.setData(x=k_data, y=sigma_data, symbol=sigma_symbol_list,
                                   brush=sigma_brush_list, size=10, pen=None)
         self.sigma_x_plot.update()
-        # pq.QtGui.QApplication.processEvents()
 
         self.charge_plot.setData(x=k_data, y=q, symbol=q_symbol_list, symbolBrush=q_brush_list,
                                  symbolPen=None, pen=None)
@@ -407,12 +436,31 @@ class QuadScanGui(QtGui.QWidget):
         self.state_dispatcher.send_command("fit_data")
 
     def update_section(self):
-        sect = str(self.ui.section_combobox.currentText())
-        if sect != self.controller.get_parameter("scan", "section_name"):
+        root.info("Changing section settings")
+        sect = str(self.ui.section_combobox.currentText()).lower()
+        try:
             quads = self.controller.get_parameter("scan", "section_quads")[sect]
-            self.ui.quad_combobox.addItems(quads)
             screens = self.controller.get_parameter("scan", "section_quads")[sect]
-            self.ui.screen_combobox.addItems(screens)
+        except KeyError:
+            # Section not in dict. Exit
+            self.controller.set_parameter("scan", "section_name", sect)
+            return
+
+        if sect != self.controller.get_parameter("scan", "section_name"):
+            for qd in quads:
+                self.ui.quad_combobox.addItem(qd.upper())
+            for sc in screens:
+                self.ui.screen_combobox.addItem(sc.upper())
+            try:
+                quad = quads[0]
+                screen = screens[0]
+            except IndexError:
+                # Quad, screen lists not populated. Cannot select device yet
+                return
+        else:
+            quad = str(self.ui.quad_combobox.currentText()).lower()
+            screen = str(self.ui.screen_combobox.currentText()).lower()
+        self.state_dispatcher.send_command("set_section", sect, quad, screen)
 
     def update_scan_devices(self):
         quad_dev = str(self.ui.quad_select_edit.text())

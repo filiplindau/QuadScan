@@ -41,6 +41,7 @@ class StateDispatcher(object):
         self.stop_flag = False
         self.statehandler_dict = dict()
         self.statehandler_dict[StateUnknown.name] = StateUnknown
+        self.statehandler_dict[StateDatabase.name] = StateDatabase
         self.statehandler_dict[StateDeviceConnect.name] = StateDeviceConnect
         self.statehandler_dict[StateSetupAttributes.name] = StateSetupAttributes
         self.statehandler_dict[StateIdle.name] = StateIdle
@@ -49,7 +50,7 @@ class StateDispatcher(object):
         self.statehandler_dict[StateLoad.name] = StateLoad
         self.statehandler_dict[StateSave.name] = StateSave
         self.statehandler_dict[StateFault] = StateFault
-        self.current_state = StateUnknown.name
+        self.current_state = StateDatabase.name
         self._state_obj = None
         self._state_thread = None
 
@@ -94,9 +95,9 @@ class StateDispatcher(object):
             self.logger.debug("New state unknown. Got {0}, setting to UNKNOWN".format(state_name))
             self.current_state = "unknown"
 
-    def send_command(self, msg):
+    def send_command(self, msg, *args):
         self.logger.info("Sending command {0} to state {1}".format(msg, self.current_state))
-        self._state_obj.check_message(msg)
+        self._state_obj.check_message(msg, *args)
 
     def stop(self):
         self.logger.info("Stop state handler thread")
@@ -154,7 +155,7 @@ class State(object):
         self.next_state = None
         return result
 
-    def check_message(self, msg):
+    def check_message(self, msg, *args):
         """
         Check message with condition object released and take appropriate action.
         The condition object is released already in the send_message function.
@@ -211,25 +212,34 @@ class StateDeviceConnect(State):
         sect_name = self.controller.get_parameter("scan", "section_name")
         quad_name = self.controller.get_parameter("scan", "quad_name")
         screen_name = self.controller.get_parameter("scan", "screen_name")
-        dev_names = list()
-        dev_names.append()
+        if quad_name is None:
+            # If there is no current quad / screen selected, take the first one for the section.
+            # If there are none in the section, exit
+            try:
+                quad_name = self.controller.get_parameter("scan", "section_quads")[sect_name][0]
+            except (IndexError, KeyError):
+                self.next_state = "idle"
+                self.stop_run()
+        if screen_name is None:
+            # If there is no current quad / screen selected, take the first one for the section.
+            # If there are none in the section, exit
+            try:
+                screen_name = self.controller.get_parameter("scan", "section_screens")[sect_name][0]
+            except (IndexError, KeyError):
+                self.next_state = "idle"
+                self.stop_run()
         dl = list()
-        dl.append()
-        for key, dev_name in self.controller.device_names.items():
-            self.logger.debug("Connect to device {0}".format(dev_name))
-            fact = TangoAttributeFactory(dev_name)
-            dl.append(fact.startFactory())
-            self.controller.device_factory_dict[dev_name] = fact
-        self.logger.debug("List of deferred device proxys: {0}".format(dl))
-        def_list = defer.DeferredList(dl)
-        self.deferred_list.append(def_list)
-        def_list.addCallbacks(self.check_requirements, self.state_error)
+        # set_section will connect to devices if needed. The connections are done asynchronously
+        d = self.controller.set_section(sect_name, quad_name, screen_name)
+        dl.append(d)
+        self.deferred_list = dl
+        d.addCallbacks(self.check_requirements, self.state_error)
 
     def check_requirements(self, result):
         self.logger.info("Check requirements result: {0}".format(result))
-        self.next_state = "setup_attributes"
+        self.next_state = "idle"
         self.stop_run()
-        return "setup_attributes"
+        return "idle"
 
     def state_error(self, err):
         self.logger.error("Error: {0}".format(err))
@@ -366,7 +376,7 @@ class StateIdle(State):
                 self.next_state = "unknown"
                 self.stop_run()
 
-    def check_message(self, msg):
+    def check_message(self, msg, *args):
         if msg == "load":
             self.logger.debug("Message load... set next state and stop.")
             self.controller.idle_params["paused"] = True
@@ -400,6 +410,13 @@ class StateIdle(State):
             self.logger.debug("Message fit_data")
             d = defer.maybeDeferred(self.controller.fit_quad_data)
             d.addErrback(self.state_error)
+        elif msg == "set_section":
+            self.logger.debug("Message set section")
+            self.controller.set_parameter("scan", "section_name", args[0])
+            self.controller.set_parameter("scan", "quad_name", args[1])
+            self.controller.set_parameter("scan", "screen_name", args[2])
+            self.next_state("device_connect")
+            self.stop_run()
         else:
             self.logger.warning("Unknown command {0}".format(msg))
 
@@ -414,11 +431,23 @@ class StateIdle(State):
 
     def start_looping_calls(self):
         self.stop_looping_calls()
-        dev_name = "camera"
-        attr_name = "image"
-        self.stop_looping_calls()
-        self.logger.debug("Starting looping call for {0}".format(attr_name))
+        quad_devices = self.controller.get_parameter("scan", "quad_device_names")
+        screen_devices = self.controller.get_parameter("scan", "screen_device_names")
         interval = 1.0 / self.controller.idle_params["reprate"]
+
+        dev_name = quad_devices["crq"]
+        attr_name = "mainfieldcomponent"
+        self.logger.debug("Starting looping call for {0}".format(attr_name))
+        lc = TangoTwisted.LoopingCall(self.controller.read_attribute, attr_name, dev_name)
+        self.controller.looping_calls.append(lc)
+        d = lc.start(interval)
+        d.addCallbacks(self.update_attribute, self.state_error)
+        lc.loop_deferred.addCallback(self.update_attribute)
+        lc.loop_deferred.addErrback(self.state_error)
+
+        dev_name = screen_devices["image"]
+        attr_name = "mainfieldcomponent"
+        self.logger.debug("Starting looping call for {0}".format(attr_name))
         lc = TangoTwisted.LoopingCall(self.controller.read_attribute, attr_name, dev_name)
         self.controller.looping_calls.append(lc)
         d = lc.start(interval)
@@ -899,6 +928,10 @@ class StateDatabase(State):
         else:
             self.logger.warning("Unknown command {0}".format(msg))
 
+    def state_error(self, err):
+        State.state_error(self, err)
+        self.next_state = "unknown"
+        self.stop_run()
 
 def test_cb(result):
     logger.debug("Returned {0}".format(result))

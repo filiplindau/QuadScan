@@ -36,7 +36,8 @@ class QuadScanController(QtCore.QObject):
     processing_done_signal = QtCore.Signal()        # signal when all processing is done
     image_done_signal = QtCore.Signal(int, int)     # Emit when a single image is done processing. Image number as arg
     fit_done_signal = QtCore.Signal()
-    state_change_signal = QtCore.Signal(str)
+    state_change_signal = QtCore.Signal(str, str)   # State, Status strings
+    attribute_ready_signal = QtCore.Signal(object)  # Returns with a pytango.Attribute
 
     def __init__(self, quad_name=None, screen_name=None, start=False):
         """
@@ -74,13 +75,13 @@ class QuadScanController(QtCore.QObject):
         self.scan_params["k_max"] = 8.75
         self.scan_params["num_k_values"] = 1
         self.scan_params["num_shots"] = 1
-        self.scan_params["quad_name"] = ""
+        self.scan_params["quad_name"] = None
         self.scan_params["quad_device_names"] = dict()
         self.scan_params["quad_length"] = 1.0
         self.scan_params["quad_screen_dist"] = 1.0
-        self.scan_params["screen_name"] = ""
+        self.scan_params["screen_name"] = None
         self.scan_params["screen_device_names"] = dict()
-        self.scan_params["section_name"] = ""
+        self.scan_params["section_name"] = "ms1"
         self.scan_params["pixel_size"] = 1.0
         self.scan_params["beam_energy"] = 1.0
         self.scan_params["roi_center"] = [1.0, 1.0]
@@ -270,7 +271,7 @@ class QuadScanController(QtCore.QObject):
                 self.status = status
         for m in self.state_notifier_list:
             m(state, status)
-        self.state_change_signal.emit(state)
+        self.state_change_signal.emit(state, status)
 
     def get_status(self):
         with self.state_lock:
@@ -284,6 +285,7 @@ class QuadScanController(QtCore.QObject):
             state = self.state
         for m in self.state_notifier_list:
             m(state, status_msg)
+        self.state_change_signal.emit(state, status_msg)
 
     def set_progress(self, progress):
         self.logger.debug("Setting progress to {0}".format(progress))
@@ -373,6 +375,16 @@ class QuadScanController(QtCore.QObject):
             except KeyError:
                 value = None
         return value
+
+    def update_attribute(self, result):
+        self.logger.info("Updating result")
+        try:
+            self.logger.debug("Result for {0}: {1}".format(result.name, result.value))
+        except AttributeError:
+            return
+        with self.controller.state_lock:
+            self.controller.attr_result[result.name.lower()] = result
+        self.attribute_ready_signal.emit(result)
 
     def process_image(self, k_ind, image_ind):
         """
@@ -549,6 +561,8 @@ class QuadScanController(QtCore.QObject):
         except IndexError as e:
             self.logger.warning("Could not address enabled sigma values. "
                                 "En_data: {0}, sigma_data: {1}".format(en_data, sigma_data))
+            return
+
         k = k_data[en_data]
         ind = np.isfinite(s2)
 
@@ -595,6 +609,7 @@ class QuadScanController(QtCore.QObject):
                                                                                          len(self.controller.scan_raw_data)))
 
     def populate_matching_sections(self):
+        self.logger.info("Populating matching sections by checking tango database")
         db = tango.Database()
         sections = self.get_parameter("scan", "sections")
         sect_quads = self.get_parameter("scan", "section_quads")
@@ -604,6 +619,8 @@ class QuadScanController(QtCore.QObject):
             screen_list = db.get_device_exported("*{0}*/dia/scrn*".format(s)).value_string
             sect_quads[s] = quad_list
             sect_screens[s] = screen_list
+        self.logger.debug("Found quads: {0}".format(quad_list))
+        self.logger.debug("Found screens: {1}".format(screen_list))
 
     def set_section(self, sect_name, quad_name, screen_name):
         self.logger.info("Setting section {0}, quad {1}, screen {2}".format(sect_name, quad_name, screen_name))
