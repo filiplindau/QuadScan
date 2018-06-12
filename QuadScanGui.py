@@ -158,8 +158,7 @@ class QuadScanGui(QtGui.QWidget):
         self.ui.fit_algo_combobox.addItem("Thin lens approx")
         self.ui.fit_algo_combobox.setCurrentIndex(0)
 
-        for sect in self.controller.get_parameter("scan", "sections").iterkeys():
-            self.ui.section_combobox.addItem(sect)
+        self.ui.section_combobox.addItems(self.controller.get_parameter("scan", "sections"))
 
         # This is to make sure . is the decimal character
         self.setLocale(QtCore.QLocale(QtCore.QLocale.English))
@@ -174,8 +173,13 @@ class QuadScanGui(QtGui.QWidget):
         val = self.settings.value("median_kernel", "3", type=int)
         self.ui.median_kernel_spinbox.setValue(val)
         self.controller.set_parameter("analysis", "median_kernel", val)
+        val = self.settings.value("fit_algo", "thin_lens", type=str)
+        self.ui.fit_algo_combobox.setCurrentIndex(self.ui.fit_algo_combobox.findText(val))
+        self.controller.set_parameter("analysis", "fit_algo", val)
         self.ui.k_start_spinbox.setValue(self.settings.value("k_start", "0", type=float))
         self.ui.k_end_spinbox.setValue(self.settings.value("k_end", "0", type=float))
+        ind = self.ui.section_combobox.findText(self.settings.value("section", "ms1", type=str))
+        self.ui.section_combobox.setCurrentIndex(ind)
 
         # Signal connections
         self.ui.energy_spinbox.editingFinished.connect(self.update_parameter_data)
@@ -196,6 +200,9 @@ class QuadScanGui(QtGui.QWidget):
         self.ui.set_min_button.clicked.connect(self.set_min_k)
         self.ui.process_button.clicked.connect(self.start_processing)
         self.ui.data_base_dir_button.clicked.connect(self.set_base_dir)
+
+        self.ui.screen_select_edit.editingFinished.connect(self.update_scan_devices)
+        self.ui.quad_select_edit.editingFinished.connect(self.update_scan_devices)
 
         # self.controller.image_done_signal.connect(self.update_fit_data)
 
@@ -220,6 +227,13 @@ class QuadScanGui(QtGui.QWidget):
             self.ui.status_label.setText(QtCore.QString(new_status))
         if self.current_state == "load" and new_state != "load":
             self.update_parameter_data()
+        elif self.current_state == "database" and new_state == "device_connect":
+            # Database query completed. Populate section selection comboboxes
+            quad_name = self.settings.value("quad_name", None)
+            self.controller.set_parameter("scan", "quad_name", quad_name)
+            screen_name = self.settings.value("screen_name", None)
+            self.controller.set_parameter("scan", "screen_name", screen_name)
+            self.update_section()
         self.current_state = new_state
 
     def change_progress(self, new_progress):
@@ -394,7 +408,17 @@ class QuadScanGui(QtGui.QWidget):
 
     def update_section(self):
         sect = str(self.ui.section_combobox.currentText())
-        quads = self.controller.get_parameter("scan", "sections_quads")[sect]
+        if sect != self.controller.get_parameter("scan", "section_name"):
+            quads = self.controller.get_parameter("scan", "section_quads")[sect]
+            self.ui.quad_combobox.addItems(quads)
+            screens = self.controller.get_parameter("scan", "section_quads")[sect]
+            self.ui.screen_combobox.addItems(screens)
+
+    def update_scan_devices(self):
+        quad_dev = str(self.ui.quad_select_edit.text())
+        screen_dev = str(self.ui.screen_select_edit.text())
+        self.controller.set_parameter("scan", "screen_name", screen_dev)
+        self.controller.set_parameter("scan", "quad_name", quad_dev)
 
     def points_clicked(self, scatterplotitem, point_list, right=False):
         """
@@ -524,8 +548,13 @@ class QuadScanGui(QtGui.QWidget):
 
         self.settings.setValue("threshold", self.controller.get_parameter("analysis", "threshold"))
         self.settings.setValue("median_kernel", self.controller.get_parameter("analysis", "median_kernel"))
+        self.settings.setValue("algo", self.controller.get_parameter("analysis", "fit_algo"))
         self.settings.setValue("k_start", self.ui.k_start_spinbox.value())
         self.settings.setValue("k_end", self.ui.k_end_spinbox.value())
+
+        self.settings.setValue("section", self.controller.get_parameter("scan", "section_name"))
+        self.settings.setValue("section_quad", self.controller.get_parameter("scan", "quad_name"))
+        self.settings.setValue("section_screen", self.controller.get_parameter("scan", "screen_name"))
 
 
 if __name__ == "__main__":

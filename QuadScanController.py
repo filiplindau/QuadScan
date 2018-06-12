@@ -32,9 +32,9 @@ from PyQt4 import QtCore
 
 
 class QuadScanController(QtCore.QObject):
-    progress_signal = QtCore.Signal(float)
-    processing_done_signal = QtCore.Signal()
-    image_done_signal = QtCore.Signal(int, int)      # Image number as argument
+    progress_signal = QtCore.Signal(float)          # Signal for updating progress bar. Argument is completion 0-1
+    processing_done_signal = QtCore.Signal()        # signal when all processing is done
+    image_done_signal = QtCore.Signal(int, int)     # Emit when a single image is done processing. Image number as arg
     fit_done_signal = QtCore.Signal()
     state_change_signal = QtCore.Signal(str)
 
@@ -47,11 +47,11 @@ class QuadScanController(QtCore.QObject):
         :param screen_name: Tango device name of the camera used for capturing images of the screen
         """
         QtCore.QObject.__init__(self)
-        self.device_names = dict()
+        self.device_names = dict()                  # A dict containing the names of connected devices
         if quad_name is not None:
             self.device_names["quad"] = quad_name
         if screen_name is not None:
-            self.device_names["camera"] = screen_name
+            self.device_names["screen"] = screen_name
 
         self.device_factory_dict = dict()
 
@@ -75,17 +75,19 @@ class QuadScanController(QtCore.QObject):
         self.scan_params["num_k_values"] = 1
         self.scan_params["num_shots"] = 1
         self.scan_params["quad_name"] = ""
+        self.scan_params["quad_device_names"] = dict()
         self.scan_params["quad_length"] = 1.0
         self.scan_params["quad_screen_dist"] = 1.0
         self.scan_params["screen_name"] = ""
+        self.scan_params["screen_device_names"] = dict()
+        self.scan_params["section_name"] = ""
         self.scan_params["pixel_size"] = 1.0
         self.scan_params["beam_energy"] = 1.0
         self.scan_params["roi_center"] = [1.0, 1.0]
         self.scan_params["roi_dim"] = [1.0, 1.0]
-        self.scan_params["sections"] = ["MS1", "MS2", "MS3", "SP02"]
-        self.scan_params["sections"] = OrderedDict([("MS1", OrderedDict()), ("MS2", OrderedDict()),
-                                                    ("MS3", OrderedDict()), ("SP02", OrderedDict())])
+        self.scan_params["sections"] = ["ms1", "ms2", "ms3", "sp02"]
         self.scan_params["section_quads"] = dict()
+        self.scan_params["section_screens"] = dict()
         # self.scan_params["dev_name"] = "motor"
 
         self.scan_result = dict()
@@ -182,7 +184,38 @@ class QuadScanController(QtCore.QObject):
 
         return d
 
+    def add_device(self, dev_name):
+        if dev_name not in self.device_names:
+            fact = TangoAttributeFactory(dev_name)
+            d = fact.startFactory()
+            with self.state_lock:
+                self.device_factory_dict[dev_name] = fact
+            d.addErrback(self.add_device_error)
+        else:
+            d = defer.Deferred()
+            d.callback(True)
+        return d
+
+    def add_device_error(self, err):
+        self.logger.error("Error creating device: {0}".format(err))
+        return err
+
     def defer_later(self, delay, delayed_callable, *a, **kw):
+        """
+        Call a function after a time interval, firing the returned deferred when completing.
+
+        A deferred object is created with the delayed function set as the callback. Then a threading.Timer is
+        created and started with the deferred.callback as the function to execute. Additional callbacks can then
+        be added to the deferred, called when the delayed function completed.
+
+        The deferred can be cancelled, cancelling the timer object.
+
+        :param delay: Time to delay in s
+        :param delayed_callable: Callable object
+        :param a: Argument list
+        :param kw: Keyword arg list
+        :return: Deferred
+        """
         self.logger.info("Calling {0} in {1} seconds".format(delayed_callable, delay))
 
         def defer_later_cancel(deferred):
@@ -204,8 +237,8 @@ class QuadScanController(QtCore.QObject):
         If the read value is outside tolerance after retires attempts, the errback is fired.
         The maximum time to check is then period x retries
 
-        :param attr_name: Tango name of the attribute to check, e.g. "position"
-        :param dev_name: Tango device name to use, e.g. "gunlaser/motors/zaber01"
+        :param attr_name: Tango name of the attribute to check, e.g. "fieldB"
+        :param dev_name: Tango device name to use from the dict of stored devices self.device_names, e.g. "quad"
         :param target_value: Attribute value to wait for
         :param period: Polling period when checking the value
         :param timeout: Time to wait for the attribute to reach target value
@@ -518,9 +551,10 @@ class QuadScanController(QtCore.QObject):
                                 "En_data: {0}, sigma_data: {1}".format(en_data, sigma_data))
         k = k_data[en_data]
         ind = np.isfinite(s2)
-        k_sqrt = np.sqrt(k[ind])
-        A = np.cos(k_sqrt * L) - d * k_sqrt * np.sin(k_sqrt * L)
-        B = 1 / k_sqrt * np.sin(k_sqrt * L) + d * np.cos(k_sqrt * L)
+
+        k_sqrt = np.sqrt(k[ind]*(1+0j))
+        A = np.real(np.cos(k_sqrt * L) - d * k_sqrt * np.sin(k_sqrt * L))
+        B = np.real(1 / k_sqrt * np.sin(k_sqrt * L) + d * np.cos(k_sqrt * L))
         M = np.vstack((A*A, -2*A*B, B*B)).transpose()
         x = np.linalg.lstsq(M, s2[ind])
         self.logger.debug("Fit coefficients: {0}".format(x[0]))
@@ -539,9 +573,9 @@ class QuadScanController(QtCore.QObject):
         self.set_result("analysis", "alpha", alpha)
 
         x = np.linspace(k.min(), k.max(), 100)
-        x_sqrt = np.sqrt(x)
-        Ax = np.cos(x_sqrt * L) - d * x_sqrt * np.sin(x_sqrt * L)
-        Bx = 1 / x_sqrt * np.sin(x_sqrt * L) + d * np.cos(x_sqrt * L)
+        x_sqrt = np.sqrt(x*(1+0j))
+        Ax = np.real(np.cos(x_sqrt * L) - d * x_sqrt * np.sin(x_sqrt * L))
+        Bx = np.real(1 / x_sqrt * np.sin(x_sqrt * L) + d * np.cos(x_sqrt * L))
 
         y = Ax**2 * beta * eps - 2 * Ax * Bx * alpha * eps + Bx**2 * (1 + alpha**2) * eps / beta
         self.set_result("analysis", "fit_data", [x, np.sqrt(y)])
@@ -563,10 +597,57 @@ class QuadScanController(QtCore.QObject):
     def populate_matching_sections(self):
         db = tango.Database()
         sections = self.get_parameter("scan", "sections")
+        sect_quads = self.get_parameter("scan", "section_quads")
+        sect_screens = self.get_parameter("scan", "section_screens")
         for s in sections:
-            quad_list = db.get_device_exported("*{0}*kquad*".format(s)).value_string
-            screen_list = db.get_device_exported("*{0}*scrn*".format(s)).value_string
+            quad_list = db.get_device_exported("*{0}*/mag/q*".format(s)).value_string
+            screen_list = db.get_device_exported("*{0}*/dia/scrn*".format(s)).value_string
+            sect_quads[s] = quad_list
+            sect_screens[s] = screen_list
 
+    def set_section(self, sect_name, quad_name, screen_name):
+        self.logger.info("Setting section {0}, quad {1}, screen {2}".format(sect_name, quad_name, screen_name))
+        snl = sect_name.lower()
+        sn = None
+        if "ms1" in snl:
+            sn = "i-ms1"
+            self.set_parameter("scan", "section_name", "ms1")
+        elif "ms2" in snl:
+            sn = "i-ms2"
+            self.set_parameter("scan", "section_name", "ms2")
+        elif "ms3" in snl:
+            sn = "i-ms3"
+            self.set_parameter("scan", "section_name", "ms3")
+        elif "sp02" in snl:
+            sn = "i-sp02"
+            self.set_parameter("scan", "section_name", "i-sp02")
+        quad_devices = dict()
+        quad_num = quad_name.split("-")[-1]
+        quad_mag_name = "{0}/mag/{1}".format(sn, quad_name)
+        quad_crq_name = "{0}/mag/crq-{1}".format(sn, quad_num)
+        quad_devices["mag"] = quad_mag_name
+        quad_devices["crq"] = quad_crq_name
+
+        scrn_devices = dict()
+        screen_dev_name = "{0}/dia/{1}".format(sn, screen_name)
+        cam_name = "{0}-dia-{1}".format(sn, screen_name)
+        camera_ctrl_name = "lima/limaccd/{0}".format(cam_name)
+        camera_view_name = "lima/liveviewer/{0}".format(cam_name)
+        scrn_devices["ctrl"] = camera_ctrl_name
+        scrn_devices["view"] = camera_view_name
+        scrn_devices["screen"] = screen_dev_name
+
+        self.logger.debug("Connecting to quad devices {0}".format(quad_devices))
+        self.logger.debug("Connecting to screen devices {0}".format(scrn_devices))
+        dl = list()
+        for dev_name in quad_devices.itervalues():
+            dl.append(self.add_device(dev_name))
+        for dev_name in scrn_devices.itervalues():
+            dl.append(self.add_device(dev_name))
+        def_list = defer.DeferredList(dl)
+        self.set_parameter("scan", "screen_device_names", scrn_devices)
+        self.set_parameter("scan", "quad_device_names", quad_devices)
+        return def_list
 
 
 class Scan(object):
@@ -629,6 +710,8 @@ class Scan(object):
         :return:
         """
         self.logger.info("Scan step")
+        p = (self.current_pos - self.start_pos) / (self.stop_pos-self.start_pos)
+        self.controller.progress_signal.emit(p)
         tol = self.step * 0.1
         scan_pos = self.current_pos + self.step
         if scan_pos > self.stop_pos or self.cancel_flag is True:
@@ -687,6 +770,11 @@ class Scan(object):
         return True
 
     def meas_scan_store(self, result):
+        """
+        Called when the new measurement is done. Stores the data internally
+        :param result: Result from the read_attribute deferred
+        :return:
+        """
         self.logger.debug("Meas scan result: {0}".format(result.value))
         if result.time.totime() <= self.scan_arrive_time:
             self.logger.debug("Old data. Wait for new.")
@@ -704,7 +792,7 @@ class Scan(object):
         self.logger.debug("Measure at scan pos {0} result: {1}".format(self.current_pos, measure_value))
         self.meas_data.append(measure_value)
         self.pos_data.append(self.current_pos)
-        self.scan_step()
+        self.scan_step()    # Do a new step
         return True
 
     def scan_done(self):

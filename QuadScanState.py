@@ -167,7 +167,9 @@ class State(object):
         pass
 
     def state_error(self, err):
-        self.logger.error("Error {0} in state {1}".format(err, self.name.upper()))
+        err_str = "Error {0} in state {1}".format(err, self.name.upper())
+        self.logger.error(err_str)
+        self.controller.set_status(err_str)
 
     def get_name(self):
         return self.name
@@ -206,7 +208,13 @@ class StateDeviceConnect(State):
     def state_enter(self, prev_state):
         State.state_enter(self, prev_state)
         self.controller.set_status("Connecting to devices.")
+        sect_name = self.controller.get_parameter("scan", "section_name")
+        quad_name = self.controller.get_parameter("scan", "quad_name")
+        screen_name = self.controller.get_parameter("scan", "screen_name")
+        dev_names = list()
+        dev_names.append()
         dl = list()
+        dl.append()
         for key, dev_name in self.controller.device_names.items():
             self.logger.debug("Connect to device {0}".format(dev_name))
             fact = TangoAttributeFactory(dev_name)
@@ -446,15 +454,19 @@ class StateScan(State):
 
     def state_enter(self, prev_state=None):
         State.state_enter(self, prev_state)
-        dev_name = "quad"
-        attr_name = self.controller.scan_params["scan_attr"]
+        scan_dev_name = "quad"
+        meas_dev_name = "screen"
+        scan_dev_name = self.controller.get_parameter("scan", "quad_device_names")["crq"]
+        meas_dev_name = self.controller.get_parameter("scan", "screen_device_names")["view"]
+        scan_attr_name = "mainfieldcomponent"
+        meas_attr_name = "image"
         start_pos = self.controller.scan_params["start_pos"]
         end_pos = self.controller.scan_params["end_pos"]
         step_size = self.controller.scan_params["step_size"]
-        self.logger.info("Starting scan of {0} on {1}".format(attr_name, dev_name))
+        self.logger.info("Starting scan of {0} on {1}".format(scan_attr_name, scan_dev_name))
         self.controller.set_status("Scanning from {0} to {1} with step size {2}".format(start_pos, end_pos, step_size))
-        scan = QuadScanController.Scan(self.controller, attr_name, dev_name, start_pos, end_pos, step_size,
-                                       "spectrum", "spectrometer")
+        scan = QuadScanController.Scan(self.controller, scan_attr_name, scan_dev_name, start_pos, end_pos, step_size,
+                                       meas_dev_name, meas_attr_name)
         d = scan.start_scan()
         d.addCallbacks(self.check_requirements, self.state_error)
         self.deferred_list.append(d)
@@ -805,7 +817,7 @@ class StateUnknown(State):
 
     def check_requirements(self, result):
         self.logger.info("Check requirements result {0} for state {1}".format(result, self.name.upper()))
-        self.next_state = "device_connect"
+        self.next_state = "database"
         self.stop_run()
 
     def check_message(self, msg):
@@ -828,6 +840,53 @@ class StateUnknown(State):
             for d in self.deferred_list:
                 d.cancel()
             self.next_state = "connect"
+            self.stop_run()
+        elif msg == "process_images":
+            self.logger.debug("Message process_images")
+            d = self.controller.process_all_images()
+            d.addErrback(self.state_error)
+        elif msg == "fit_data":
+            self.logger.debug("Message fit_data")
+            d = defer.maybeDeferred(self.controller.fit_quad_data)
+            d.addErrback(self.state_error)
+        else:
+            self.logger.warning("Unknown command {0}".format(msg))
+
+
+class StateDatabase(State):
+    """
+    Query database for devices.
+
+    """
+    name = "database"
+
+    def __init__(self, controller):
+        State.__init__(self, controller)
+        self.deferred_list = list()
+        self.start_time = None
+        self.wait_time = 5.0
+
+    def state_enter(self, prev_state):
+        self.logger.info("Starting state {0}".format(self.name.upper()))
+        self.controller.set_status("Checking database for devices")
+        d = TangoTwisted.defer_to_thread(self.controller.populate_matching_sections)
+        self.start_time = time.time()
+        self.deferred_list.append(d)
+        d.addCallbacks(self.check_requirements, self.state_error)
+        self.running = True
+
+    def check_requirements(self, result):
+        self.logger.info("Check requirements result {0} for state {1}".format(result, self.name.upper()))
+        self.next_state = "device_connect"
+        self.stop_run()
+
+    def check_message(self, msg):
+        if msg == "load":
+            self.logger.debug("Message load... set next state and stop.")
+            self.controller.idle_params["paused"] = True
+            for d in self.deferred_list:
+                d.cancel()
+            self.next_state = "load"
             self.stop_run()
         elif msg == "process_images":
             self.logger.debug("Message process_images")
