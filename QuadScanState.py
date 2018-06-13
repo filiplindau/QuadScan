@@ -88,8 +88,8 @@ class StateDispatcher(object):
 
     def set_state(self, state_name):
         try:
-            self.logger.info("Current state: {0}, set new state {1}".format(self.current_state.upper(),
-                                                                            state_name.upper()))
+            self.logger.info("Switching state: {0} --> {1}".format(self.current_state.upper(),
+                                                                   state_name.upper()))
             self.current_state = state_name
         except AttributeError:
             self.logger.debug("New state unknown. Got {0}, setting to UNKNOWN".format(state_name))
@@ -168,7 +168,7 @@ class State(object):
         pass
 
     def state_error(self, err):
-        err_str = "Error {0} in state {1}".format(err, self.name.upper())
+        err_str = "Error in state {1}: {0}".format(err, self.name.upper())
         self.logger.error(err_str)
         self.controller.set_status(err_str)
 
@@ -216,7 +216,7 @@ class StateDeviceConnect(State):
             # If there is no current quad / screen selected, take the first one for the section.
             # If there are none in the section, exit
             try:
-                quad_name = self.controller.get_parameter("scan", "section_quads")[sect_name][0]
+                quad_name = self.controller.get_parameter("scan", "section_quads")[sect_name][0]["name"]
             except (IndexError, KeyError):
                 self.next_state = "idle"
                 self.stop_run()
@@ -224,7 +224,7 @@ class StateDeviceConnect(State):
             # If there is no current quad / screen selected, take the first one for the section.
             # If there are none in the section, exit
             try:
-                screen_name = self.controller.get_parameter("scan", "section_screens")[sect_name][0]
+                screen_name = self.controller.get_parameter("scan", "section_screens")[sect_name][0]["name"]
             except (IndexError, KeyError):
                 self.next_state = "idle"
                 self.stop_run()
@@ -415,8 +415,8 @@ class StateIdle(State):
             self.controller.set_parameter("scan", "section_name", args[0])
             self.controller.set_parameter("scan", "quad_name", args[1])
             self.controller.set_parameter("scan", "screen_name", args[2])
-            self.next_state("device_connect")
-            self.stop_run()
+#            self.next_state("device_connect")
+#            self.stop_run()
         else:
             self.logger.warning("Unknown command {0}".format(msg))
 
@@ -430,6 +430,7 @@ class StateIdle(State):
         self.controller.looping_calls = list()
 
     def start_looping_calls(self):
+        self.logger.info("Starting looping calls")
         self.stop_looping_calls()
         quad_devices = self.controller.get_parameter("scan", "quad_device_names")
         screen_devices = self.controller.get_parameter("scan", "screen_device_names")
@@ -438,21 +439,21 @@ class StateIdle(State):
         dev_name = quad_devices["crq"]
         attr_name = "mainfieldcomponent"
         self.logger.debug("Starting looping call for {0}".format(attr_name))
-        lc = TangoTwisted.LoopingCall(self.controller.read_attribute, attr_name, dev_name)
+        lc = TangoTwisted.LoopingCall(self.controller.read_attribute, attr_name, dev_name, use_tango_name=True)
         self.controller.looping_calls.append(lc)
         d = lc.start(interval)
-        d.addCallbacks(self.update_attribute, self.state_error)
-        lc.loop_deferred.addCallback(self.update_attribute)
+        d.addCallbacks(self.controller.update_attribute, self.state_error)
+        lc.loop_deferred.addCallback(self.controller.update_attribute)
         lc.loop_deferred.addErrback(self.state_error)
 
-        dev_name = screen_devices["image"]
-        attr_name = "mainfieldcomponent"
+        dev_name = screen_devices["view"]
+        attr_name = "image"
         self.logger.debug("Starting looping call for {0}".format(attr_name))
-        lc = TangoTwisted.LoopingCall(self.controller.read_attribute, attr_name, dev_name)
+        lc = TangoTwisted.LoopingCall(self.controller.read_attribute, attr_name, dev_name, use_tango_name=True)
         self.controller.looping_calls.append(lc)
         d = lc.start(interval)
-        d.addCallbacks(self.update_attribute, self.state_error)
-        lc.loop_deferred.addCallback(self.update_attribute)
+        d.addCallbacks(self.controller.update_attribute, self.state_error)
+        lc.loop_deferred.addCallback(self.controller.update_attribute)
         lc.loop_deferred.addErrback(self.state_error)
 
     def update_attribute(self, result):

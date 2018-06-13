@@ -206,6 +206,7 @@ class QuadScanGui(QtGui.QWidget):
         self.controller.fit_done_signal.connect(self.update_fit_data)
         self.controller.fit_done_signal.connect(self.update_result)
         self.controller.state_change_signal.connect(self.change_state)
+        self.controller.attribute_ready_signal.connect(self.update_attribute)
         self.sigma_x_plot.sigClicked.connect(self.points_clicked)
         self.sigma_x_plot.sigRightClicked.connect(self.points_clicked)
         self.ui.fit_algo_combobox.currentIndexChanged.connect(self.update_algo)
@@ -302,10 +303,12 @@ class QuadScanGui(QtGui.QWidget):
         self.update_image_selection()
 
     def update_attribute(self, attr):
-        if attr.name == "mainfieldcomponent":
+        root.info("Update attribute {0}".format(attr.name))
+        name = attr.name.lower()
+        if name == "mainfieldcomponent":
             self.ui.k_current_label.setText("{0:.3f}".format(attr.value))
-        elif attr.name == "image":
-            self.ui.image_raw_widget.setImage(attr.value)
+        elif name == "image":
+            self.ui.image_raw_widget.setImage(attr.value, autoRange=False)
 
     def update_image_processing(self):
         """
@@ -446,21 +449,29 @@ class QuadScanGui(QtGui.QWidget):
             self.controller.set_parameter("scan", "section_name", sect)
             return
 
+        # Check if a new section was chosen, then re-populate the comboboxes for magnets and screens
         if sect != self.controller.get_parameter("scan", "section_name"):
             for qd in quads:
-                self.ui.quad_combobox.addItem(qd.upper())
+                self.ui.quad_combobox.addItem(qd["name"].upper())
             for sc in screens:
-                self.ui.screen_combobox.addItem(sc.upper())
+                self.ui.screen_combobox.addItem(sc["name"].upper())
             try:
-                quad = quads[0]
-                screen = screens[0]
+                self.ui.quad_combobox.setCurrentIndex(0)
+                self.ui.screen_combobox.setCurrentIndex(0)
             except IndexError:
                 # Quad, screen lists not populated. Cannot select device yet
                 return
-        else:
-            quad = str(self.ui.quad_combobox.currentText()).lower()
-            screen = str(self.ui.screen_combobox.currentText()).lower()
-        self.state_dispatcher.send_command("set_section", sect, quad, screen)
+        quad_name = str(self.ui.quad_combobox.currentText()).lower()
+        screen_name = str(self.ui.screen_combobox.currentText()).lower()
+        # This will work since the combobox is populated in the same order as the stored section quadlist
+        qi = self.ui.quad_combobox.currentIndex()
+        quad_length = quads[qi]["length"]
+        quad_pos = quads[qi]["position"]
+        si = self.ui.screen_combobox.currentIndex()
+        screen_pos = screens[si]["position"]
+        self.ui.quad_length_label.setText("{0:.2f}".format(quad_length))
+        self.ui.quad_screen_distance_label.setText("{0:2f}".format(screen_pos - quad_pos))
+        self.state_dispatcher.send_command("set_section", sect, quad_name, screen_name)
 
     def update_scan_devices(self):
         quad_dev = str(self.ui.quad_select_edit.text())

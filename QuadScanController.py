@@ -87,8 +87,10 @@ class QuadScanController(QtCore.QObject):
         self.scan_params["roi_center"] = [1.0, 1.0]
         self.scan_params["roi_dim"] = [1.0, 1.0]
         self.scan_params["sections"] = ["ms1", "ms2", "ms3", "sp02"]
-        self.scan_params["section_quads"] = dict()
-        self.scan_params["section_screens"] = dict()
+        self.scan_params["section_quads"] = dict()      # Element is a list of quads, each quad a dict with keys
+                                                        # name, position, length, crq, polarity
+        self.scan_params["section_screens"] = dict()    # Element is a list of screens, each screen a dict with keys
+                                                        # name, position
         # self.scan_params["dev_name"] = "motor"
 
         self.scan_result = dict()
@@ -147,42 +149,85 @@ class QuadScanController(QtCore.QObject):
                 self.device_factory_dict[key] = TangoAttributeFactory(self.device_names[key])
                 self.device_factory_dict[key].startFactory()
 
-    def read_attribute(self, name, device_name):
+    def read_attribute(self, name, device_name, use_tango_name=False):
+        """
+        Read a tango attribute from a device opened as a TangoAttributeFactory.
+
+        :param name: Attribute name
+        :param device_name: Device name to read from. This could be a key to the dict self.device_names
+                            or be the tango device name xx/yy/zz
+        :param use_tango_name: If True, use the direct tango device name. If False, use dict name
+        :return: deferred that fires with the read attribute if successful
+        """
         self.logger.info("Read attribute \"{0}\" on \"{1}\"".format(name, device_name))
-        if device_name in self.device_names:
-            factory = self.device_factory_dict[self.device_names[device_name]]
+        if use_tango_name is False:
+            try:
+                dev_name = self.device_names[device_name]
+            except KeyError:
+                er = ValueError("Device name {0} not found in {1}".format(device_name, self.device_names))
+                self.logger.error(er)
+                d = defer.Deferred()
+                d.errback(er)
+                return d
+
+        else:
+            dev_name = device_name
+        try:
+            factory = self.device_factory_dict[dev_name]
             d = factory.buildProtocol("read", name)
-        else:
-            er = ValueError("Device name {0} not found among {1}".format(device_name, self.device_factory_dict))
+        except KeyError:
+            er = ValueError("Device name {0} not found among {1}".format(dev_name, self.device_factory_dict))
             self.logger.error(er)
             d = defer.Deferred()
             d.errback(er)
         return d
 
-    def write_attribute(self, name, device_name, data):
+    def write_attribute(self, name, device_name, data, use_tango_name=False):
         self.logger.info("Write attribute \"{0}\" on \"{1}\"".format(name, device_name))
-        if device_name in self.device_names:
-            factory = self.device_factory_dict[self.device_names[device_name]]
-            d = factory.buildProtocol("write", name, data)
+        if use_tango_name is False:
+            try:
+                dev_name = self.device_names[device_name]
+            except KeyError:
+                er = ValueError("Device name {0} not found among {1}".format(device_name, self.device_factory_dict))
+                self.logger.error(er)
+                d = defer.Deferred()
+                d.errback(er)
+                return d
+
         else:
-            er = ValueError("Device name {0} not found among {1}".format(device_name, self.device_factory_dict))
+            dev_name = device_name
+        try:
+            factory = self.device_factory_dict[dev_name]
+            d = factory.buildProtocol("write", name, data)
+        except KeyError:
+            er = ValueError("Device name {0} not found among {1}".format(dev_name, self.device_factory_dict))
             self.logger.error(er)
             d = defer.Deferred()
             d.errback(er)
         return d
 
-    def send_command(self, name, device_name, data):
+    def send_command(self, name, device_name, data, use_tango_name=False):
         self.logger.info("Send command \"{0}\" on \"{1}\"".format(name, device_name))
-        if device_name in self.device_names:
-            factory = self.device_factory_dict[self.device_names[device_name]]
-            d = factory.buildProtocol("command", name, data)
-        else:
-            self.logger.error("Device name {0} not found among {1}".format(device_name, self.device_factory_dict))
-            err = AttributeError("Device {0} not used. "
-                                 "The device is not in the list of devices used by this controller".format(device_name))
-            d = defer.Deferred()
-            d.errback(err)
+        if use_tango_name is False:
+            try:
+                dev_name = self.device_names[device_name]
+            except KeyError:
+                er = ValueError("Device name {0} not found among {1}".format(device_name, self.device_factory_dict))
+                self.logger.error(er)
+                d = defer.Deferred()
+                d.errback(er)
+                return d
 
+        else:
+            dev_name = device_name
+        try:
+            factory = self.device_factory_dict[dev_name]
+            d = factory.buildProtocol("command", name, data)
+        except KeyError:
+            er = ValueError("Device name {0} not found among {1}".format(dev_name, self.device_factory_dict))
+            self.logger.error(er)
+            d = defer.Deferred()
+            d.errback(er)
         return d
 
     def add_device(self, dev_name):
@@ -228,7 +273,8 @@ class QuadScanController(QtCore.QObject):
         delayed_call.start()
         return d
 
-    def check_attribute(self, attr_name, dev_name, target_value, period=0.3, timeout=1.0, tolerance=None, write=True):
+    def check_attribute(self, attr_name, device_name, target_value, period=0.3, timeout=1.0,
+                        tolerance=None, write=True, use_tango_name=False):
         """
         Check an attribute to see if it reaches a target value. Returns a deferred for the result of the
         check.
@@ -239,20 +285,33 @@ class QuadScanController(QtCore.QObject):
         The maximum time to check is then period x retries
 
         :param attr_name: Tango name of the attribute to check, e.g. "fieldB"
-        :param dev_name: Tango device name to use from the dict of stored devices self.device_names, e.g. "quad"
+        :param device_name: Device name to read from. This could be a key to the dict self.device_names
+                         or be the tango device name xx/yy/zz
         :param target_value: Attribute value to wait for
         :param period: Polling period when checking the value
         :param timeout: Time to wait for the attribute to reach target value
         :param tolerance: Absolute tolerance for the value to be accepted
         :param write: Set to True if the target value should be written initially
+        :param use_tango_name: If True, use the direct tango device name. If False, use dict name
         :return: Deferred that will fire depending on the result of the check
         """
-        self.logger.info("Check attribute \"{0}\" on \"{1}\"".format(attr_name, dev_name))
-        if dev_name in self.device_names:
-            factory = self.device_factory_dict[self.device_names[dev_name]]
+        self.logger.info("Check attribute \"{0}\" on \"{1}\"".format(attr_name, device_name))
+        if use_tango_name is False:
+            try:
+                dev_name = self.device_names[device_name]
+            except KeyError:
+                er = ValueError("Device name {0} not found among {1}".format(device_name, self.device_factory_dict))
+                self.logger.error(er)
+                d = defer.Deferred()
+                d.errback(er)
+                return d
+        else:
+            dev_name = device_name
+        try:
+            factory = self.device_factory_dict[dev_name]
             d = factory.buildProtocol("check", attr_name, None, write=write, target_value=target_value,
                                       tolerance=tolerance, period=period, timeout=timeout)
-        else:
+        except KeyError:
             er = ValueError("Device name {0} not found among {1}".format(dev_name, self.device_factory_dict))
             self.logger.error(er)
             d = defer.Deferred()
@@ -382,8 +441,8 @@ class QuadScanController(QtCore.QObject):
             self.logger.debug("Result for {0}: {1}".format(result.name, result.value))
         except AttributeError:
             return
-        with self.controller.state_lock:
-            self.controller.attr_result[result.name.lower()] = result
+        with self.state_lock:
+            self.attr_result[result.name.lower()] = result
         self.attribute_ready_signal.emit(result)
 
     def process_image(self, k_ind, image_ind):
@@ -615,12 +674,35 @@ class QuadScanController(QtCore.QObject):
         sect_quads = self.get_parameter("scan", "section_quads")
         sect_screens = self.get_parameter("scan", "section_screens")
         for s in sections:
-            quad_list = db.get_device_exported("*{0}*/mag/q*".format(s)).value_string
-            screen_list = db.get_device_exported("*{0}*/dia/scrn*".format(s)).value_string
+            quad_dev_list = db.get_device_exported("*{0}*/mag/q*".format(s)).value_string
+            quad_list = list()
+            for q in quad_dev_list:
+                quad = dict()
+                try:
+                    quad["name"] = q.split("/")[-1].lower()
+                    quad["position"] = np.double(db.get_device_property(q, "__si")["__si"][0])
+                    quad_list.append(quad)
+                except IndexError:
+                    pass
+            screen_dev_list = db.get_device_exported("*{0}*/dia/scrn*".format(s)).value_string
+            screen_list = list()
+            for sc in screen_dev_list:
+                scr = dict()
+                try:
+                    scr["name"] = sc.split("/")[-1].lower()
+                    p = db.get_device_property(sc, ["__si", "length", "polarity", "circuitproxies"])
+                    scr["position"] = np.double(p["__si"][0])
+                    scr["length"] = np.double(p["length"][0])
+                    scr["polarity"] = np.double(p["polarity"][0])
+                    scr["crq"] = np.double(p["crq"][0])
+                    screen_list.append(scr)
+                except IndexError:
+                    pass
             sect_quads[s] = quad_list
             sect_screens[s] = screen_list
-        self.logger.debug("Found quads: {0}".format(quad_list))
-        self.logger.debug("Found screens: {1}".format(screen_list))
+            self.logger.debug("Populating section {0}:".format(s.upper()))
+            self.logger.debug("Found quads: {0}".format(quad_list))
+            self.logger.debug("Found screens: {0}".format(screen_list))
 
     def set_section(self, sect_name, quad_name, screen_name):
         self.logger.info("Setting section {0}, quad {1}, screen {2}".format(sect_name, quad_name, screen_name))
@@ -638,12 +720,36 @@ class QuadScanController(QtCore.QObject):
         elif "sp02" in snl:
             sn = "i-sp02"
             self.set_parameter("scan", "section_name", "i-sp02")
+
+        # TODO: Make sure the quad_name and screen_name are in self.get_parameter("scan", "section_quads") and
+        # TODO: self.get_parameter("scan", "section_screens")
+
+        # We need to control the magnet and the corresponding crq device (which is where the actual
+        # k-value is set)
         quad_devices = dict()
         quad_num = quad_name.split("-")[-1]
         quad_mag_name = "{0}/mag/{1}".format(sn, quad_name)
         quad_crq_name = "{0}/mag/crq-{1}".format(sn, quad_num)
         quad_devices["mag"] = quad_mag_name
         quad_devices["crq"] = quad_crq_name
+        quad_list = self.get_parameter("scan", "section_quads")[sn]
+        L = None
+        d = None
+        q_pos = None
+        for qd in quad_list:
+            if qd["name"] == quad_name:
+                L = qd["length"]
+                q_pos = qd["position"]
+        screen_list = self.get_parameter("scan", "section_screens")[sn]
+        s_pos = None
+        for sc in screen_list:
+            if sc["name"] == screen_name:
+                s_pos = sc["position"]
+
+        self.set_parameter("scan", "quad_length", L)
+        if s_pos is not None and q_pos is not None:
+            d = s_pos - q_pos
+        self.set_parameter("scan", "quad_screen_distance", d)
 
         scrn_devices = dict()
         screen_dev_name = "{0}/dia/{1}".format(sn, screen_name)
@@ -682,6 +788,8 @@ class Scan(object):
         self.meas_attr = meas_attr_name
         self.meas_dev = meas_dev_name
 
+        self.use_tango_name = True
+
         self.current_pos = None
         self.pos_data = []
         self.meas_data = []
@@ -712,7 +820,7 @@ class Scan(object):
         tol = self.step * 0.1
 
         d0 = self.controller.check_attribute(self.scan_attr, self.scan_dev, scan_pos,
-                                             0.1, 10.0, tolerance=tol, write=True)
+                                             0.1, 10.0, tolerance=tol, write=True, use_tango_name=self.use_tango_name)
         d0.addCallbacks(self.scan_arrive, self.scan_error_cb)
         # d0.addCallback(lambda _: self.controller.read_attribute(self.meas_attr, self.meas_dev))
         # d0.addCallback(self.meas_scan)
@@ -736,7 +844,7 @@ class Scan(object):
             return self.d
 
         d0 = self.controller.check_attribute(self.scan_attr, self.scan_dev, scan_pos,
-                                             0.1, 3.0, tolerance=tol, write=True)
+                                             0.1, 3.0, tolerance=tol, write=True, use_tango_name=self.use_tango_name)
         d0.addCallbacks(self.scan_arrive, self.scan_error_cb)
         return d0
 
@@ -782,7 +890,7 @@ class Scan(object):
         :return:
         """
         self.logger.info("Reading measurement")
-        d0 = self.controller.read_attribute(self.meas_attr, self.meas_dev)
+        d0 = self.controller.read_attribute(self.meas_attr, self.meas_dev, use_tango_name=self.use_tango_name)
         d0.addCallbacks(self.meas_scan_store, self.scan_error_cb)
         return True
 
@@ -800,7 +908,7 @@ class Scan(object):
                 self.logger.error("Timeout waiting for new data. {0} s elapsed".format(t))
                 self.scan_error_cb(RuntimeError("Timeout waiting for new data"))
                 return False
-            d0 = self.controller.read_attribute(self.meas_attr, self.meas_dev)
+            d0 = self.controller.read_attribute(self.meas_attr, self.meas_dev, use_tango_name=self.use_tango_name)
             d0.addCallbacks(self.meas_scan_store, self.scan_error_cb)
             return False
         self.data_time = result.time.totime()
