@@ -282,7 +282,7 @@ class QuadScanGui(QtGui.QWidget):
         with self.gui_lock:
             self.ui.quad_length_label.setText(str(quad_length))
             self.ui.quad_screen_distance_label.setText(str(self.controller.get_parameter("scan", "quad_screen_distance")))
-            self.ui.energy_spinbox.setValue(self.controller.get_parameter("scan", "beam_energy"))
+            self.ui.energy_spinbox.setValue(self.controller.get_parameter("scan", "electron_energy"))
             self.ui.k_start_spinbox.setValue(self.controller.get_parameter("scan", "k_min"))
             self.ui.k_end_spinbox.setValue(self.controller.get_parameter("scan", "k_max"))
             self.ui.k_number_values_spinbox.setValue(self.controller.get_parameter("scan", "num_k_values"))

@@ -495,6 +495,10 @@ class StateScan(State):
         step_size = self.controller.scan_params["step_size"]
         self.logger.info("Starting scan of {0} on {1}".format(scan_attr_name, scan_dev_name))
         self.controller.set_status("Scanning from {0} to {1} with step size {2}".format(start_pos, end_pos, step_size))
+        L = self.controller.get_parameter("scan", "quad_length")
+        d = self.controller.get_parameter("scan", "quad_screen_distance")
+        E = self.controller.get_parameter("scan", "electron_energy")
+        self.controller.set_analysis_parameters(L, d, E)
         scan = QuadScanController.Scan(self.controller, scan_attr_name, scan_dev_name, start_pos, end_pos, step_size,
                                        meas_dev_name, meas_attr_name)
         d = scan.start_scan()
@@ -643,10 +647,10 @@ class StateLoad(State):
                     data_dict[key.strip()] = value.strip()
                 except ValueError:
                     pass
-        self.controller.set_parameter("scan", "beam_energy", np.double(data_dict["beam_energy"]))
+        self.controller.set_analysis_parameters(np.double(data_dict["quad_length"]),
+                                                np.double(data_dict["quad_2_screen"]),
+                                                np.double(data_dict["electron_energy"]))
         self.controller.set_parameter("scan", "quad_name", data_dict["quad"])
-        self.controller.set_parameter("scan", "quad_length", np.double(data_dict["quad_length"]))
-        self.controller.set_parameter("scan", "quad_screen_distance", np.double(data_dict["quad_2_screen"]))
         self.controller.set_parameter("scan", "screen_name", data_dict["screen"])
         self.controller.set_parameter("scan", "num_k_values", int(data_dict["num_k_values"]))
         self.controller.set_parameter("scan", "num_shots", int(data_dict["num_shots"]))

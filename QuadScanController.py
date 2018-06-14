@@ -83,7 +83,7 @@ class QuadScanController(QtCore.QObject):
         self.scan_params["screen_device_names"] = dict()
         self.scan_params["section_name"] = "ms1"
         self.scan_params["pixel_size"] = 1.0
-        self.scan_params["beam_energy"] = 1.0
+        self.scan_params["electron_energy"] = 1.0
         self.scan_params["roi_center"] = [1.0, 1.0]
         self.scan_params["roi_dim"] = [1.0, 1.0]
         self.scan_params["sections"] = ["ms1", "ms2", "ms3", "sp02"]
@@ -125,6 +125,9 @@ class QuadScanController(QtCore.QObject):
         self.analysis_params["threshold"] = 0.001
         self.analysis_params["median_kernel"] = 3
         self.analysis_params["background_subtract"] = True
+        self.analysis_params["quad_length"] = 1.0
+        self.analysis_params["quad_screen_dist"] = 1.0
+        self.analysis_params["electron_energy"] = 1.0
 
         self.load_params = dict()
         self.load_params["path"] = "."
@@ -587,9 +590,9 @@ class QuadScanController(QtCore.QObject):
         poly = np.polyfit(k[ind], s2[ind], 2)
         self.set_result("scan", "fit_poly", poly)
         self.logger.debug("Fit coefficients: {0}".format(poly))
-        d = self.get_parameter("scan", "quad_screen_distance")
-        L = self.get_parameter("scan", "quad_length")
-        gamma = self.get_parameter("scan", "beam_energy") / 0.511
+        d = self.get_parameter("analysis", "quad_screen_distance")
+        L = self.get_parameter("analysis", "quad_length")
+        gamma = self.get_parameter("analysis", "electron_energy") / 0.511
         eps = 1 / (d ** 2 * L) * np.sqrt(poly[0] * poly[2] - poly[1] ** 2 / 4)
         eps_n = eps * gamma
         beta = poly[0] / (eps * d ** 2 * L ** 2)
@@ -612,9 +615,9 @@ class QuadScanController(QtCore.QObject):
         k_data = np.array(self.get_result("scan", "k_data")).flatten()
         sigma_data = np.array(self.get_result("scan", "sigma_x")).flatten()
         en_data = np.array(self.get_result("scan", "enabled_data")).flatten()
-        d = self.get_parameter("scan", "quad_screen_distance")
-        L = self.get_parameter("scan", "quad_length")
-        gamma = self.get_parameter("scan", "beam_energy") / 0.511
+        d = self.get_parameter("analysis", "quad_screen_distance")
+        L = self.get_parameter("analysis", "quad_length")
+        gamma = self.get_parameter("analysis", "electron_energy") / 0.511
         try:
             s2 = (sigma_data[en_data]) ** 2
         except IndexError as e:
@@ -652,6 +655,14 @@ class QuadScanController(QtCore.QObject):
 
         y = Ax**2 * beta * eps - 2 * Ax * Bx * alpha * eps + Bx**2 * (1 + alpha**2) * eps / beta
         self.set_result("analysis", "fit_data", [x, np.sqrt(y)])
+
+    def set_analysis_parameters(self, quad_length, quad_screen_distance, electron_energy):
+        self.logger.info("Setting analysis accelerator parameters: L={0}, d={1}, E={2}".format(quad_length,
+                                                                                               quad_screen_distance,
+                                                                                               electron_energy))
+        self.set_parameter("analysis", "quad_length", quad_length)
+        self.set_parameter("analysis", "quad_screen_distance", quad_screen_distance)
+        self.set_parameter("analysis", "electron_energy", electron_energy)
 
     def add_raw_image(self, k_num, k_value, image):
         self.logger.info("Adding new image with k index {0}".format(k_num))
