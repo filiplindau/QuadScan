@@ -484,15 +484,14 @@ class StateScan(State):
 
     def state_enter(self, prev_state=None):
         State.state_enter(self, prev_state)
-        scan_dev_name = "quad"
-        meas_dev_name = "screen"
         scan_dev_name = self.controller.get_parameter("scan", "quad_device_names")["crq"]
         meas_dev_name = self.controller.get_parameter("scan", "screen_device_names")["view"]
         scan_attr_name = "mainfieldcomponent"
         meas_attr_name = "image"
-        start_pos = self.controller.scan_params["start_pos"]
-        end_pos = self.controller.scan_params["end_pos"]
-        step_size = self.controller.scan_params["step_size"]
+        start_pos = self.controller.get_parameter("scan", "k_min")
+        end_pos = self.controller.get_parameter("scan", "k_max")
+        step_size = (end_pos - start_pos) / self.controller.get_parameter("scan", "num_k_values")
+        averages = self.controller.get_parameter("scan", "num_shots")
         self.logger.info("Starting scan of {0} on {1}".format(scan_attr_name, scan_dev_name))
         self.controller.set_status("Scanning from {0} to {1} with step size {2}".format(start_pos, end_pos, step_size))
         L = self.controller.get_parameter("scan", "quad_length")
@@ -500,17 +499,14 @@ class StateScan(State):
         E = self.controller.get_parameter("scan", "electron_energy")
         self.controller.set_analysis_parameters(L, d, E)
         scan = QuadScanController.Scan(self.controller, scan_attr_name, scan_dev_name, start_pos, end_pos, step_size,
-                                       meas_dev_name, meas_attr_name)
+                                       meas_dev_name, meas_attr_name, averages, self.save_image)
         d = scan.start_scan()
-        d.addCallbacks(self.check_requirements, self.state_error)
+        d.addCallbacks(self.store_scan, self.state_error)
         self.deferred_list.append(d)
 
     def check_requirements(self, result):
         self.logger.debug("Check requirements result: {0}".format(result))
-        self.controller.scan_result["pos_data"] = result[0]
-        self.controller.scan_result["scan_data"] = result[1]
-        self.controller.scan_result["start_time"] = result[2]
-        self.next_state = "analyse"
+        self.next_state = "idle"
         self.stop_run()
         return "analyse"
 
@@ -520,6 +516,24 @@ class StateScan(State):
         # If the error was DB_DeviceNotDefined, go to UNKNOWN state and reconnect later
         self.next_state = "unknown"
         self.stop_run()
+
+    def save_image(self, pos_ind, meas_ind, pos, result):
+        filename = "{0}_{1}_{2:.5f}_.png".format(pos_ind, meas_ind, pos)
+        self.logger("Saving file during scan: {0}".format(filename))
+        d = TangoTwisted.defer_to_thread(PIL.Image.save, filename)
+        d.addErrback(self.state_error)
+
+    def store_scan(self, result):
+        self.logger.info("Store scan")
+        self.controller.scan_result["pos_data"] = result[0]
+        self.controller.scan_result["scan_data"] = result[1]
+        self.controller.scan_result["start_time"] = result[2]
+        d = self.controller.process_all_images()
+        d.addCallback(self.fit_data)
+
+    def fit_data(self, result):
+        self.controller.fit_quad_data()
+        self.check_requirements(result)
 
     def check_message(self, msg):
         if msg == "pause":

@@ -104,6 +104,14 @@ class QuadScanGui(QtGui.QWidget):
         :return:
         """
         # Plotting widgets:
+        self.ui.camera_raw_widget.ui.histogram.gradient.loadPreset('thermalclip')
+        self.ui.camera_raw_widget.setSizePolicy(QtGui.QSizePolicy.Expanding, QtGui.QSizePolicy.Expanding)
+        self.ui.camera_raw_widget.getView().setAspectLocked(False)
+        self.ui.camera_raw_widget.setImage(np.random.random((64, 64)))
+        self.ui.camera_raw_widget.ui.roiBtn.hide()
+        self.ui.camera_raw_widget.ui.menuBtn.hide()
+        self.ui.camera_raw_widget.roi.sigRegionChanged.disconnect()
+
         self.ui.image_raw_widget.ui.histogram.gradient.loadPreset('thermalclip')
         self.ui.image_raw_widget.setSizePolicy(QtGui.QSizePolicy.Expanding, QtGui.QSizePolicy.Expanding)
         self.ui.image_raw_widget.getView().setAspectLocked(False)
@@ -308,7 +316,7 @@ class QuadScanGui(QtGui.QWidget):
         if name == "mainfieldcomponent":
             self.ui.k_current_label.setText("{0:.3f}".format(attr.value))
         elif name == "image":
-            self.ui.image_raw_widget.setImage(attr.value, autoRange=False)
+            self.ui.camera_raw_widget.setImage(attr.value, autoRange=False)
 
     def update_image_processing(self):
         """

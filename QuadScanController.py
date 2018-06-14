@@ -789,7 +789,7 @@ class Scan(object):
     Run a scan of one attribute while measuring another
     """
     def __init__(self, controller, scan_attr_name, scan_dev_name, start_pos, stop_pos, step,
-                 meas_attr_name, meas_dev_name):
+                 meas_attr_name, meas_dev_name, averages=1, meas_callable=None):
         self.controller = controller    # type: QuadScanController.QuadScanController
         self.scan_attr = scan_attr_name
         self.scan_dev = scan_dev_name
@@ -802,6 +802,9 @@ class Scan(object):
         self.use_tango_name = True
 
         self.current_pos = None
+        self.current_meas_ind = 0
+        self.current_pos_ind = 0
+        self.averages = averages
         self.pos_data = []
         self.meas_data = []
         self.scan_start_time = None
@@ -809,6 +812,8 @@ class Scan(object):
         self.data_time = time.time()
         self.status_update_time = time.time()
         self.status_update_interval = 1.0
+
+        self.meas_callable = meas_callable
 
         self.logger = logging.getLogger("QuadScanController.Scan_{0}_{1}".format(self.scan_attr, self.meas_attr))
         self.logger.setLevel(logging.DEBUG)
@@ -889,13 +894,13 @@ class Scan(object):
             wait_time = (self.scan_arrive_time - self.data_time) % self.controller.idle_params["reprate"]
         except KeyError:
             wait_time = 0.1
-        d0 = defer_later(wait_time, self.meas_read_issue)
+        d0 = defer_later(wait_time, self.meas_issue_new_read)
         d0.addErrback(self.scan_error_cb)
         self.logger.debug("Scheduling read in {0} s".format(wait_time))
 
         return True
 
-    def meas_read_issue(self):
+    def meas_issue_new_read(self):
         """
         Called after scan_arrive to read a new data point.
         :return:
@@ -912,6 +917,7 @@ class Scan(object):
         :return:
         """
         self.logger.debug("Meas scan result: {0}".format(result.value))
+        # First check if this was taken before the scan arrived to the new position, then re-read
         if result.time.totime() <= self.scan_arrive_time:
             self.logger.debug("Old data. Wait for new.")
             t = time.time() - result.time.totime()
@@ -928,7 +934,20 @@ class Scan(object):
         self.logger.debug("Measure at scan pos {0} result: {1}".format(self.current_pos, measure_value))
         self.meas_data.append(measure_value)
         self.pos_data.append(self.current_pos)
-        self.scan_step()    # Do a new step
+        if self.meas_callable is not None:
+            self.meas_callable(self.current_pos_ind, self.current_meas_ind, self.current_pos, result)
+        self.current_meas_ind += 1
+        if self.current_meas_ind < self.averages or self.cancel_flag is True:
+            t = time.time()
+            try:
+                wait_time = (t - self.data_time) % self.controller.idle_params["reprate"]
+            except KeyError:
+                wait_time = 0.1
+            d0 = defer_later(wait_time, self.meas_issue_new_read)
+            d0.addErrback(self.scan_error_cb)
+        else:
+            self.current_meas_ind = 0
+            self.scan_step()    # Do a new step
         return True
 
     def scan_done(self):
