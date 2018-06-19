@@ -41,6 +41,7 @@ class QuadScanController(QtCore.QObject):
     fit_done_signal = QtCore.Signal()
     state_change_signal = QtCore.Signal(str, str)   # State, Status strings
     attribute_ready_signal = QtCore.Signal(object)  # Returns with a pytango.Attribute
+    load_parameters_signal = QtCore.Signal()        # Scan parameters loaded
 
     def __init__(self, quad_name=None, screen_name=None, start=False):
         """
@@ -470,10 +471,10 @@ class QuadScanController(QtCore.QObject):
         th = self.get_parameter("analysis", "threshold")
         roi_cent = self.get_parameter("scan", "roi_center")
         roi_dim = self.get_parameter("scan", "roi_dim")
-        x = np.array([int(roi_cent[0] - roi_dim[0]/2.0), int(roi_cent[0] + roi_dim[1]/2.0)])
+        x = np.array([int(roi_cent[0] - roi_dim[0]/2.0), int(roi_cent[0] + roi_dim[0]/2.0)])
         y = np.array([int(roi_cent[1] - roi_dim[1]/2.0), int(roi_cent[1] + roi_dim[1]/2.0)])
-        # self.logger.debug("Threshold: {0}".format(th))
-        # self.logger.debug("ROI: {0}-{1}, {2}-{3}".format(x[0], x[1], y[0], y[1]))
+        self.logger.debug("Threshold: {0}".format(th))
+        self.logger.debug("ROI: {0}-{1}, {2}-{3}".format(x[0], x[1], y[0], y[1]))
         with self.state_lock:
             image_list = self.scan_result["raw_data"]
             # image_list = self.get_result("scan", "raw_data")
@@ -622,7 +623,7 @@ class QuadScanController(QtCore.QObject):
         k_data = np.array(self.get_result("scan", "k_data")).flatten()
         sigma_data = np.array(self.get_result("scan", "sigma_x")).flatten()
         en_data = np.array(self.get_result("scan", "enabled_data")).flatten()
-        d = self.get_parameter("analysis", "quad_screen_distance")
+        d = self.get_parameter("analysis", "quad_screen_dist")
         L = self.get_parameter("analysis", "quad_length")
         gamma_energy = self.get_parameter("analysis", "electron_energy") / 0.511
         try:
@@ -669,7 +670,7 @@ class QuadScanController(QtCore.QObject):
                                                                                                quad_screen_distance,
                                                                                                electron_energy))
         self.set_parameter("analysis", "quad_length", quad_length)
-        self.set_parameter("analysis", "quad_screen_distance", quad_screen_distance)
+        self.set_parameter("analysis", "quad_screen_dist", quad_screen_distance)
         self.set_parameter("analysis", "electron_energy", electron_energy)
 
     def add_raw_image(self, k_num, k_value, image):
@@ -688,12 +689,8 @@ class QuadScanController(QtCore.QObject):
 
     def populate_matching_sections(self):
         self.logger.info("Populating matching sections by checking tango database")
-        db_def = TangoTwisted.defer_to_thread(tango.Database())
-        db_def.addCallback(self.populate_matching_sections_cont)
-        return db_def
+        db = tango.Database()
 
-    def populate_matching_sections_cont(self, result):
-        db = result
         sections = self.get_parameter("scan", "sections")
         sect_quads = self.get_parameter("scan", "section_quads")
         sect_screens = self.get_parameter("scan", "section_screens")

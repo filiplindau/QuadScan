@@ -15,16 +15,17 @@ import threading
 import time
 import logging
 import os
-try:
-    import tango
-except ImportError:
-    import PyTango as tango
+
 import numpy as np
 from twisted_cut import defer, failure
 import TangoTwisted
 import QuadScanController
 from TangoTwisted import TangoAttributeFactory, defer_later
 import PIL
+try:
+    import tango
+except ImportError:
+    import PyTango as tango
 
 logger = logging.getLogger("QuadScanState")
 logger.setLevel(logging.DEBUG)
@@ -373,9 +374,11 @@ class StateIdle(State):
         self.logger.debug("Error type: {0}".format(err.type))
         if err.type == defer.CancelledError:
             self.logger.info("Cancelled error, ignore")
-        elif err.type == tango.CommuncationFailed:
+        elif err.type == tango.CommunicationFailed:
             self.logger.info("Tango communication failed")
             pass
+        elif err.type == KeyError:
+            self.logger.error("KeyError: {0}".format(err))
         else:
             if self.running is True:
                 self.controller.set_status("Error: {0}".format(err))
@@ -454,31 +457,33 @@ class StateIdle(State):
 
             try:
                 dev_name = quad_devices["crq"]
+                attr_name = "mainfieldcomponent"
+                self.logger.debug("Starting looping call for {0}".format(attr_name))
+                lc = TangoTwisted.LoopingCall(self.controller.read_attribute, attr_name, dev_name, use_tango_name=True)
+                self.controller.looping_calls.append(lc)
+                d = lc.start(interval)
+                d.addCallbacks(self.controller.update_attribute, self.state_error)
+                lc.loop_deferred.addCallback(self.controller.update_attribute)
+                lc.loop_deferred.addErrback(self.state_error)
             except KeyError as err:
                 self.logger.error("Magnet device not found.")
+                self.controller.set_status("Magnet device not found.")
                 self.state_error(failure.Failure(err))
-            attr_name = "mainfieldcomponent"
-            self.logger.debug("Starting looping call for {0}".format(attr_name))
-            lc = TangoTwisted.LoopingCall(self.controller.read_attribute, attr_name, dev_name, use_tango_name=True)
-            self.controller.looping_calls.append(lc)
-            d = lc.start(interval)
-            d.addCallbacks(self.controller.update_attribute, self.state_error)
-            lc.loop_deferred.addCallback(self.controller.update_attribute)
-            lc.loop_deferred.addErrback(self.state_error)
 
             try:
                 dev_name = screen_devices["view"]
+                attr_name = "image"
+                self.logger.debug("Starting looping call for {0}".format(attr_name))
+                lc = TangoTwisted.LoopingCall(self.controller.read_attribute, attr_name, dev_name, use_tango_name=True)
+                self.controller.looping_calls.append(lc)
+                d = lc.start(interval)
+                d.addCallbacks(self.controller.update_attribute, self.state_error)
+                lc.loop_deferred.addCallback(self.controller.update_attribute)
+                lc.loop_deferred.addErrback(self.state_error)
             except KeyError as err:
                 self.logger.error("Screen device not found.")
+                self.controller.set_status("Screen device not found.")
                 self.state_error(failure.Failure(err))
-            attr_name = "image"
-            self.logger.debug("Starting looping call for {0}".format(attr_name))
-            lc = TangoTwisted.LoopingCall(self.controller.read_attribute, attr_name, dev_name, use_tango_name=True)
-            self.controller.looping_calls.append(lc)
-            d = lc.start(interval)
-            d.addCallbacks(self.controller.update_attribute, self.state_error)
-            lc.loop_deferred.addCallback(self.controller.update_attribute)
-            lc.loop_deferred.addErrback(self.state_error)
 
     def update_attribute(self, result):
         self.logger.info("Updating result")
@@ -702,6 +707,7 @@ class StateLoad(State):
         self.controller.set_parameter("scan", "roi_center", [np.double(rc[1]), np.double(rc[0])])
         rd = data_dict["roi_dim"].split(" ")
         self.controller.set_parameter("scan", "roi_dim", [np.double(rd[1]), np.double(rd[0])])
+        self.controller.load_parameters_signal.emit()
 
         file_list = os.listdir(".")
         for file_name in file_list:
@@ -976,6 +982,7 @@ class StateDatabase(State):
         State.state_error(self, err)
         self.next_state = "unknown"
         self.stop_run()
+
 
 def test_cb(result):
     logger.debug("Returned {0}".format(result))

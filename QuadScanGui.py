@@ -123,7 +123,7 @@ class QuadScanGui(QtGui.QWidget):
         h = self.ui.image_raw_widget.getHistogramWidget()
         # h.item.sigLevelChangeFinished.connect(self.update_image_threshold)
         self.ui.image_raw_widget.roi.show()
-        self.ui.image_raw_widget.roi.sigRegionChangeFinished.connect(self.update_roi)
+
         self.ui.image_raw_widget.roi.blockSignals(True)
         self.ui.image_raw_widget.roi.setPos((0, 0))
         self.ui.image_raw_widget.roi.setSize((64, 64))
@@ -210,6 +210,7 @@ class QuadScanGui(QtGui.QWidget):
         self.ui.median_kernel_spinbox.editingFinished.connect(self.update_image_processing)
         self.ui.k_slider.valueChanged.connect(self.update_image_selection)
         self.ui.image_slider.valueChanged.connect(self.update_image_selection)
+        self.controller.load_parameters_signal.connect(self.update_load_parameters)
         self.controller.progress_signal.connect(self.change_progress)
         self.controller.processing_done_signal.connect(self.update_image_selection)
         self.controller.fit_done_signal.connect(self.update_fit_data)
@@ -226,6 +227,11 @@ class QuadScanGui(QtGui.QWidget):
         self.ui.data_base_dir_button.clicked.connect(self.set_base_dir)
         self.ui.camera_start_button.clicked.connect(self.start_camera)
         self.ui.camera_stop_button.clicked.connect(self.stop_camera)
+        self.ui.image_raw_widget.roi.sigRegionChangeFinished.connect(self.update_roi)
+        self.ui.roi_x_spinbox.editingFinished.connect(self.set_roi)
+        self.ui.roi_y_spinbox.editingFinished.connect(self.set_roi)
+        self.ui.roi_width_spinbox.editingFinished.connect(self.set_roi)
+        self.ui.roi_height_spinbox.editingFinished.connect(self.set_roi)
 
         self.ui.section_combobox.currentIndexChanged.connect(self.update_section)
         self.ui.quad_combobox.currentIndexChanged.connect(self.update_section)
@@ -348,6 +354,25 @@ class QuadScanGui(QtGui.QWidget):
         rp = self.ui.image_raw_widget.roi.pos()
         self.controller.set_parameter("scan", "roi_center", [rp[0] + rs[0]/2, rp[1] + rs[1]/2])
         self.controller.set_parameter("scan", "roi_dim", [rs[0], rs[1]])
+        self.ui.roi_x_spinbox.setValue(rp[0] + rs[0]/2)
+        self.ui.roi_y_spinbox.setValue(rp[1] + rs[1] / 2)
+        self.ui.roi_width_spinbox.setValue(rs[0])
+        self.ui.roi_height_spinbox.setValue(rs[1])
+        self.state_dispatcher.send_command("process_images")
+
+    def set_roi(self):
+        """
+        Set new roi in the raw image used for beam emittance calculations
+        from spinboxes
+        :return:
+        """
+        root.info("Set roi")
+        rp = [self.ui.roi_x_spinbox.value(), self.ui.roi_y_spinbox.value()]
+        rs = [self.ui.roi_width_spinbox.value(), self.ui.roi_height_spinbox.value()]
+        self.controller.set_parameter("scan", "roi_center", [rp[0] + rs[0]/2, rp[1] + rs[1]/2])
+        self.controller.set_parameter("scan", "roi_dim", [rs[0], rs[1]])
+        self.ui.image_raw_widget.roi.setPos((rp[0] - rs[0]/2, rp[1] - rs[1]/2))
+        self.ui.image_raw_widget.roi.setSize((rs[0], rs[1]))
         self.state_dispatcher.send_command("process_images")
 
     def update_image_selection(self, result=None):
@@ -393,7 +418,10 @@ class QuadScanGui(QtGui.QWidget):
 
     def update_fit_data(self, result=None):
         root.info("Updating fit data")
-        k_data = np.array(list(itertools.chain.from_iterable(self.controller.get_result("scan", "k_data"))))
+        k_result = self.controller.get_result("scan", "k_data")
+        if k_result is None:
+            return
+        k_data = np.array(list(itertools.chain.from_iterable(k_result)))
         sigma_data = np.array(list(itertools.chain.from_iterable(self.controller.get_result("scan", "sigma_x"))))
         q = np.array(list(itertools.chain.from_iterable(self.controller.get_result("scan", "charge_data"))))
         en_data = np.array(list(itertools.chain.from_iterable(self.controller.get_result("scan", "enabled_data"))))
@@ -437,8 +465,12 @@ class QuadScanGui(QtGui.QWidget):
         eps = self.controller.get_result("analysis", "eps")
         beta = self.controller.get_result("analysis", "beta")
         alpha = self.controller.get_result("analysis", "alpha")
-        self.ui.eps_label.setText("{0:.4g}".format(eps*1e6))
-        self.ui.beta_label.setText("{0:.4g}".format(beta))
+        if eps is not None:
+            self.ui.eps_label.setText("{0:.4g} mm x mmrad".format(eps*1e6))
+        else:
+            # Set label text for None value:
+            self.ui.eps_label.setText("{0:.4g}".format(eps))
+        self.ui.beta_label.setText("{0:.4g} m".format(beta))
         self.ui.alpha_label.setText("{0:.4g}".format(alpha))
 
     def update_algo(self):
@@ -482,19 +514,26 @@ class QuadScanGui(QtGui.QWidget):
                 # Quad, screen lists not populated. Cannot select device yet
                 return
             self.section_init = False
-        quad_name = str(self.ui.quad_combobox.currentText()).lower()
-        screen_name = str(self.ui.screen_combobox.currentText()).lower()
-        # This will work since the combobox is populated in the same order as the stored section quadlist
-        qi = self.ui.quad_combobox.currentIndex()
-        quad_length = quads[qi]["length"]
-        quad_pos = quads[qi]["position"]
-        si = self.ui.screen_combobox.currentIndex()
-        screen_pos = screens[si]["position"]
-        self.ui.quad_length_label.setText("{0:.2f}".format(quad_length))
-        self.ui.quad_screen_distance_label.setText("{0:2f}".format(screen_pos - quad_pos))
-        self.ui.quad_combobox.blockSignals(False)
-        self.ui.screen_combobox.blockSignals(False)
-        self.state_dispatcher.send_command("set_section", sect, quad_name, screen_name)
+        if len(quads) > 0:
+            quad_name = str(self.ui.quad_combobox.currentText()).lower()
+            # This will work since the combobox is populated in the same order as the stored section quadlist
+            qi = self.ui.quad_combobox.currentIndex()
+            quad_length = quads[qi]["length"]
+            quad_pos = quads[qi]["position"]
+            self.ui.quad_length_label.setText("{0:.2f}".format(quad_length))
+            self.ui.quad_combobox.blockSignals(False)
+        else:
+            quad_name = None
+        if len(screens) > 0:
+            screen_name = str(self.ui.screen_combobox.currentText()).lower()
+            si = self.ui.screen_combobox.currentIndex()
+            screen_pos = screens[si]["position"]
+            self.ui.screen_combobox.blockSignals(False)
+        else:
+            screen_name = None
+        if quad_name is not None and screen_name is not None:
+            self.state_dispatcher.send_command("set_section", sect, quad_name, screen_name)
+            self.ui.quad_screen_distance_label.setText("{0:2f}".format(screen_pos - quad_pos))
 
     def update_scan_devices(self):
         quad_dev = str(self.ui.quad_select_edit.text())
@@ -593,6 +632,26 @@ class QuadScanGui(QtGui.QWidget):
         source_name = QtCore.QDir.fromNativeSeparators(load_dir).split("/")[-1]
         self.ui.data_source_label.setText(source_name)
 
+    def update_load_parameters(self):
+        root.info("Updating load parameters")
+        s = "{0:.2f} m".format(self.controller.get_parameter("analysis", "quad_screen_dist"))
+        self.ui.quad_screen_dist_data_label.setText(s)
+        s = "{0:.2f} m".format(self.controller.get_parameter("analysis", "quad_length"))
+        self.ui.quad_length_data_label.setText(s)
+        s = "{0:.1f} MeV".format(self.controller.get_parameter("analysis", "electron_energy"))
+        self.ui.electron_energy_data_label.setText(s)
+        s = "{0:.2f} m<sup>-2</sup>".format(self.controller.get_parameter("scan", "k_min"))
+        self.ui.k_min_data_label.setText(s)
+        s = "{0:.2f} m<sup>-2</sup>".format(self.controller.get_parameter("scan", "k_max"))
+        self.ui.k_max_data_label.setText(s)
+
+        roi_center = self.controller.get_parameter("scan", "roi_center")
+        roi_dim = self.controller.get_parameter("scan", "roi_dim")
+        self.ui.roi_x_spinbox.setValue(roi_center[0])
+        self.ui.roi_y_spinbox.setValue(roi_center[1])
+        self.ui.roi_width_spinbox.setValue(roi_dim[0])
+        self.ui.roi_height_spinbox.setValue(roi_dim[1])
+
     def start_processing(self):
         root.info("Sending process_images command")
         self.state_dispatcher.send_command("process_images")
@@ -638,7 +697,7 @@ class QuadScanGui(QtGui.QWidget):
 
         self.settings.setValue("threshold", self.controller.get_parameter("analysis", "threshold"))
         self.settings.setValue("median_kernel", self.controller.get_parameter("analysis", "median_kernel"))
-        self.settings.setValue("algo", self.controller.get_parameter("analysis", "fit_algo"))
+        self.settings.setValue("fit_algo", self.controller.get_parameter("analysis", "fit_algo"))
         self.settings.setValue("k_start", self.ui.k_start_spinbox.value())
         self.settings.setValue("k_end", self.ui.k_end_spinbox.value())
 
