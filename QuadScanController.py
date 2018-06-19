@@ -13,7 +13,10 @@ from twisted_cut.failure import Failure
 import TangoTwisted
 from TangoTwisted import TangoAttributeFactory, defer_later
 from collections import OrderedDict
-import PyTango as tango
+try:
+    import tango
+except ImportError:
+    import PyTango as tango
 import QuadScanState as qs
 import numpy as np
 from scipy.signal import medfilt2d
@@ -162,7 +165,7 @@ class QuadScanController(QtCore.QObject):
         :param use_tango_name: If True, use the direct tango device name. If False, use dict name
         :return: deferred that fires with the read attribute if successful
         """
-        self.logger.info("Read attribute \"{0}\" on \"{1}\"".format(name, device_name))
+        # self.logger.info("Read attribute \"{0}\" on \"{1}\"".format(name, device_name))
         if use_tango_name is False:
             try:
                 dev_name = self.device_names[device_name]
@@ -439,11 +442,15 @@ class QuadScanController(QtCore.QObject):
         return value
 
     def update_attribute(self, result):
-        self.logger.info("Updating result")
         try:
-            self.logger.debug("Result for {0}: {1}".format(result.name, result.value))
+            result.name
         except AttributeError:
             return
+        # self.logger.info("Updating result")
+        # try:
+        #     self.logger.debug("Result for {0}: {1}".format(result.name, result.value))
+        # except AttributeError:
+        #     return
         with self.state_lock:
             self.attr_result[result.name.lower()] = result
         self.attribute_ready_signal.emit(result)
@@ -617,7 +624,7 @@ class QuadScanController(QtCore.QObject):
         en_data = np.array(self.get_result("scan", "enabled_data")).flatten()
         d = self.get_parameter("analysis", "quad_screen_distance")
         L = self.get_parameter("analysis", "quad_length")
-        gamma = self.get_parameter("analysis", "electron_energy") / 0.511
+        gamma_energy = self.get_parameter("analysis", "electron_energy") / 0.511
         try:
             s2 = (sigma_data[en_data]) ** 2
         except IndexError as e:
@@ -629,13 +636,14 @@ class QuadScanController(QtCore.QObject):
         ind = np.isfinite(s2)
 
         k_sqrt = np.sqrt(k[ind]*(1+0j))
+        self.logger.debug("k_sqrt = {0}".format(k_sqrt))
         A = np.real(np.cos(k_sqrt * L) - d * k_sqrt * np.sin(k_sqrt * L))
         B = np.real(1 / k_sqrt * np.sin(k_sqrt * L) + d * np.cos(k_sqrt * L))
         M = np.vstack((A*A, -2*A*B, B*B)).transpose()
         x = np.linalg.lstsq(M, s2[ind])
         self.logger.debug("Fit coefficients: {0}".format(x[0]))
         eps = np.sqrt(x[0][2] * x[0][0] - x[0][1]**2)
-        eps_n = eps * gamma
+        eps_n = eps * gamma_energy
         beta = x[0][0] / eps
         alpha = x[0][1] / eps
 
@@ -680,7 +688,12 @@ class QuadScanController(QtCore.QObject):
 
     def populate_matching_sections(self):
         self.logger.info("Populating matching sections by checking tango database")
-        db = tango.Database()
+        db_def = TangoTwisted.defer_to_thread(tango.Database())
+        db_def.addCallback(self.populate_matching_sections_cont)
+        return db_def
+
+    def populate_matching_sections_cont(self, result):
+        db = result
         sections = self.get_parameter("scan", "sections")
         sect_quads = self.get_parameter("scan", "section_quads")
         sect_screens = self.get_parameter("scan", "section_screens")
@@ -691,24 +704,30 @@ class QuadScanController(QtCore.QObject):
                 quad = dict()
                 try:
                     quad["name"] = q.split("/")[-1].lower()
-                    quad["position"] = np.double(db.get_device_property(q, "__si")["__si"][0])
+                    p = db.get_device_property(q, ["__si", "length", "polarity", "circuitproxies"])
+                    quad["position"] = np.double(p["__si"][0])
+                    quad["length"] = np.double(p["length"][0])
+                    quad["polarity"] = np.double(p["polarity"][0])
+                    quad["crq"] = p["circuitproxies"][0]
+
                     quad_list.append(quad)
-                except IndexError:
-                    pass
+                except IndexError as e:
+                    self.logger.error("Index error when parsing quad {0}: {1}".format(q, e))
+                except KeyError as e:
+                    self.logger.error("Key error when parsing quad {0}: {1}".format(q, e))
             screen_dev_list = db.get_device_exported("*{0}*/dia/scrn*".format(s)).value_string
             screen_list = list()
             for sc in screen_dev_list:
                 scr = dict()
                 try:
                     scr["name"] = sc.split("/")[-1].lower()
-                    p = db.get_device_property(sc, ["__si", "length", "polarity", "circuitproxies"])
-                    scr["position"] = np.double(p["__si"][0])
-                    scr["length"] = np.double(p["length"][0])
-                    scr["polarity"] = np.double(p["polarity"][0])
-                    scr["crq"] = np.double(p["crq"][0])
+                    scr["position"] = np.double(db.get_device_property(sc, "__si")["__si"][0])
                     screen_list.append(scr)
-                except IndexError:
-                    pass
+                except IndexError as e:
+                    self.logger.error("Index error when parsing screen {0}: {1}".format(sc, e))
+                except KeyError as e:
+                    self.logger.error("Key error when parsing screen {0}: {1}".format(sc, e))
+
             sect_quads[s] = quad_list
             sect_screens[s] = screen_list
             self.logger.debug("Populating section {0}:".format(s.upper()))
@@ -716,71 +735,106 @@ class QuadScanController(QtCore.QObject):
             self.logger.debug("Found screens: {0}".format(screen_list))
 
     def set_section(self, sect_name, quad_name, screen_name):
+        """
+        Set the current section, quad, and screen. Update the name of current sect, quad , scrn in
+        scan_params dict. If a new setting is selected: load aux devices into quad_device_names and
+        screen_device_names. Update quad and screen parameters (pos, length, ...)
+
+        :param sect_name:
+        :param quad_name:
+        :param screen_name:
+        :return:
+        """
         self.logger.info("Setting section {0}, quad {1}, screen {2}".format(sect_name, quad_name, screen_name))
         snl = sect_name.lower()
         sn = None
+        current_sect = self.get_parameter("scan", "section_name")
+        update_all = False
         if "ms1" in snl:
-            sn = "i-ms1"
-            self.set_parameter("scan", "section_name", "ms1")
+            sn = "ms1"
+            if sn != current_sect:
+                self.set_parameter("scan", "section_name", "ms1")
+                update_all = True
         elif "ms2" in snl:
-            sn = "i-ms2"
-            self.set_parameter("scan", "section_name", "ms2")
+            sn = "ms2"
+            if sn != current_sect:
+                self.set_parameter("scan", "section_name", "ms2")
+                update_all = True
         elif "ms3" in snl:
-            sn = "i-ms3"
-            self.set_parameter("scan", "section_name", "ms3")
+            sn = "ms3"
+            if sn != current_sect:
+                self.set_parameter("scan", "section_name", "ms3")
+                update_all = True
         elif "sp02" in snl:
-            sn = "i-sp02"
-            self.set_parameter("scan", "section_name", "i-sp02")
+            sn = "sp02"
+            if sn != current_sect:
+                self.set_parameter("scan", "section_name", "sp02")
+                update_all = True
 
         # TODO: Make sure the quad_name and screen_name are in self.get_parameter("scan", "section_quads") and
         # TODO: self.get_parameter("scan", "section_screens")
 
-        # We need to control the magnet and the corresponding crq device (which is where the actual
-        # k-value is set)
-        quad_devices = dict()
-        quad_num = quad_name.split("-")[-1]
-        quad_mag_name = "{0}/mag/{1}".format(sn, quad_name)
-        quad_crq_name = "{0}/mag/crq-{1}".format(sn, quad_num)
-        quad_devices["mag"] = quad_mag_name
-        quad_devices["crq"] = quad_crq_name
-        quad_list = self.get_parameter("scan", "section_quads")[sn]
-        L = None
-        d = None
+        dl = list()
         q_pos = None
-        for qd in quad_list:
-            if qd["name"] == quad_name:
-                L = qd["length"]
-                q_pos = qd["position"]
-        screen_list = self.get_parameter("scan", "section_screens")[sn]
-        s_pos = None
-        for sc in screen_list:
-            if sc["name"] == screen_name:
-                s_pos = sc["position"]
+        if update_all is True or self.get_parameter("scan", "quad_name") != quad_name:
+            # We need to control the magnet and the corresponding crq device (which is where the actual
+            # k-value is set)
+            quad_devices = dict()
+            quad_num = quad_name.split("-")[-1]
+            quad_mag_name = "i-{0}/mag/{1}".format(sn, quad_name)
+            quad_crq_name = "i-{0}/mag/crq-{1}".format(sn, quad_num)
+            quad_devices["mag"] = quad_mag_name
+            quad_devices["crq"] = quad_crq_name
+            try:
+                quad_list = self.get_parameter("scan", "section_quads")[sn]
+            except KeyError:
+                self.logger.error("Section {0} not found in section_quads dict".format(sn))
+                return
+            L = None
+            d = None
 
-        self.set_parameter("scan", "quad_length", L)
+            for qd in quad_list:
+                if qd["name"] == quad_name:
+                    L = qd["length"]
+                    q_pos = qd["position"]
+            self.set_parameter("scan", "quad_length", L)
+            self.logger.debug("Connecting to quad devices {0}".format(quad_devices))
+            for dev_name in quad_devices.itervalues():
+                dl.append(self.add_device(dev_name))
+            self.set_parameter("scan", "quad_device_names", quad_devices)
+            self.set_parameter("scan", "quad_name", quad_name)
+
+        s_pos = None
+        if update_all is True or self.get_parameter("scan", "screen_name") != quad_name:
+            try:
+                screen_list = self.get_parameter("scan", "section_screens")[sn]
+            except KeyError:
+                self.logger.error("Section {0} not found in section_screens dict".format(sn))
+                return
+
+            for sc in screen_list:
+                if sc["name"] == screen_name:
+                    s_pos = sc["position"]
+
+            scrn_devices = dict()
+            screen_dev_name = "i-{0}/dia/{1}".format(sn, screen_name)
+            cam_name = "i-{0}-dia-{1}".format(sn, screen_name)
+            camera_ctrl_name = "lima/limaccd/{0}".format(cam_name)
+            camera_view_name = "lima/liveviewer/{0}".format(cam_name)
+            scrn_devices["ctrl"] = camera_ctrl_name
+            scrn_devices["view"] = camera_view_name
+            scrn_devices["screen"] = screen_dev_name
+            self.logger.debug("Connecting to screen devices {0}".format(scrn_devices))
+            for dev_name in scrn_devices.itervalues():
+                dl.append(self.add_device(dev_name))
+            self.set_parameter("scan", "screen_device_names", scrn_devices)
+            self.set_parameter("scan", "screen_name", screen_name)
+
         if s_pos is not None and q_pos is not None:
             d = s_pos - q_pos
-        self.set_parameter("scan", "quad_screen_distance", d)
+            self.set_parameter("scan", "quad_screen_distance", d)
 
-        scrn_devices = dict()
-        screen_dev_name = "{0}/dia/{1}".format(sn, screen_name)
-        cam_name = "{0}-dia-{1}".format(sn, screen_name)
-        camera_ctrl_name = "lima/limaccd/{0}".format(cam_name)
-        camera_view_name = "lima/liveviewer/{0}".format(cam_name)
-        scrn_devices["ctrl"] = camera_ctrl_name
-        scrn_devices["view"] = camera_view_name
-        scrn_devices["screen"] = screen_dev_name
-
-        self.logger.debug("Connecting to quad devices {0}".format(quad_devices))
-        self.logger.debug("Connecting to screen devices {0}".format(scrn_devices))
-        dl = list()
-        for dev_name in quad_devices.itervalues():
-            dl.append(self.add_device(dev_name))
-        for dev_name in scrn_devices.itervalues():
-            dl.append(self.add_device(dev_name))
         def_list = defer.DeferredList(dl)
-        self.set_parameter("scan", "screen_device_names", scrn_devices)
-        self.set_parameter("scan", "quad_device_names", quad_devices)
         return def_list
 
 

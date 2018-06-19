@@ -76,6 +76,7 @@ class QuadScanGui(QtGui.QWidget):
         self.current_state = "unknown"
         self.last_load_dir = "."
         self.data_base_dir = "."
+        self.section_init = False
 
         self.line_x_plot = None
         self.line_y_plot = None
@@ -223,6 +224,8 @@ class QuadScanGui(QtGui.QWidget):
         self.ui.set_min_button.clicked.connect(self.set_min_k)
         self.ui.process_button.clicked.connect(self.start_processing)
         self.ui.data_base_dir_button.clicked.connect(self.set_base_dir)
+        self.ui.camera_start_button.clicked.connect(self.start_camera)
+        self.ui.camera_stop_button.clicked.connect(self.stop_camera)
 
         self.ui.section_combobox.currentIndexChanged.connect(self.update_section)
         self.ui.quad_combobox.currentIndexChanged.connect(self.update_section)
@@ -262,6 +265,7 @@ class QuadScanGui(QtGui.QWidget):
             self.controller.set_parameter("scan", "quad_name", quad_name)
             screen_name = self.settings.value("screen_name", None)
             self.controller.set_parameter("scan", "screen_name", screen_name)
+            self.section_init = True
             self.update_section()
         if new_state != "idle":
             # Only enable changing section etc. when idle.
@@ -311,7 +315,7 @@ class QuadScanGui(QtGui.QWidget):
         self.update_image_selection()
 
     def update_attribute(self, attr):
-        root.info("Update attribute {0}".format(attr.name))
+        # root.info("Update attribute {0}".format(attr.name))
         name = attr.name.lower()
         if name == "mainfieldcomponent":
             self.ui.k_current_label.setText("{0:.3f}".format(attr.value))
@@ -451,14 +455,22 @@ class QuadScanGui(QtGui.QWidget):
         sect = str(self.ui.section_combobox.currentText()).lower()
         try:
             quads = self.controller.get_parameter("scan", "section_quads")[sect]
-            screens = self.controller.get_parameter("scan", "section_quads")[sect]
+            screens = self.controller.get_parameter("scan", "section_screens")[sect]
         except KeyError:
             # Section not in dict. Exit
             self.controller.set_parameter("scan", "section_name", sect)
             return
 
         # Check if a new section was chosen, then re-populate the comboboxes for magnets and screens
-        if sect != self.controller.get_parameter("scan", "section_name"):
+        self.ui.quad_combobox.blockSignals(True)
+        self.ui.screen_combobox.blockSignals(True)
+        if sect != self.controller.get_parameter("scan", "section_name") or self.section_init is True:
+            root.debug("New section, populating comboboxes")
+            root.debug("Number of quads: {0}".format(len(quads)))
+            self.ui.quad_combobox.clear()
+            self.ui.screen_combobox.clear()
+
+            root.debug("Quad combobox count: {0}".format(self.ui.quad_combobox.count()))
             for qd in quads:
                 self.ui.quad_combobox.addItem(qd["name"].upper())
             for sc in screens:
@@ -469,6 +481,7 @@ class QuadScanGui(QtGui.QWidget):
             except IndexError:
                 # Quad, screen lists not populated. Cannot select device yet
                 return
+            self.section_init = False
         quad_name = str(self.ui.quad_combobox.currentText()).lower()
         screen_name = str(self.ui.screen_combobox.currentText()).lower()
         # This will work since the combobox is populated in the same order as the stored section quadlist
@@ -479,6 +492,8 @@ class QuadScanGui(QtGui.QWidget):
         screen_pos = screens[si]["position"]
         self.ui.quad_length_label.setText("{0:.2f}".format(quad_length))
         self.ui.quad_screen_distance_label.setText("{0:2f}".format(screen_pos - quad_pos))
+        self.ui.quad_combobox.blockSignals(False)
+        self.ui.screen_combobox.blockSignals(False)
         self.state_dispatcher.send_command("set_section", sect, quad_name, screen_name)
 
     def update_scan_devices(self):
@@ -581,6 +596,14 @@ class QuadScanGui(QtGui.QWidget):
     def start_processing(self):
         root.info("Sending process_images command")
         self.state_dispatcher.send_command("process_images")
+
+    def start_camera(self):
+        root.info("Starting camera")
+        self.state_dispatcher.send_command("start")
+
+    def stop_camera(self):
+        root.info("Stopping camera")
+        self.state_dispatcher.send_command("stop")
 
     def set_base_dir(self):
         root.info("Setting data base directory")

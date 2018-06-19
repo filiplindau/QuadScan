@@ -11,7 +11,10 @@ import traceback
 
 from twisted_cut.protocol import Protocol, Factory
 from twisted_cut import reflect, defer, error
-import tango.futures as tangof
+try:
+    import PyTango.futures as tangof
+except ImportError:
+    import tango.futures as tangof
 
 logger = logging.getLogger("TangoTwisted")
 logger.setLevel(logging.DEBUG)
@@ -402,6 +405,7 @@ class LoopingCall(object):
             self.running = False
             df, self._deferred = self._deferred, None
             self.logger.error("Looping call error: {0}".format(failure))
+
             df.errback(failure)
 
         self.call = None

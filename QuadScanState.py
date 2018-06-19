@@ -15,9 +15,12 @@ import threading
 import time
 import logging
 import os
-import tango as tango
+try:
+    import tango
+except ImportError:
+    import PyTango as tango
 import numpy as np
-from twisted_cut import defer
+from twisted_cut import defer, failure
 import TangoTwisted
 import QuadScanController
 from TangoTwisted import TangoAttributeFactory, defer_later
@@ -350,7 +353,8 @@ class StateIdle(State):
     def __init__(self, controller):
         State.__init__(self, controller)
         self.t0 = time.time()
-        self.logger.setLevel(logging.WARNING)
+        self.logger.setLevel(logging.DEBUG)
+        self.run_looping_calls_flag = True
 
     def state_enter(self, prev_state=None):
         State.state_enter(self, prev_state)
@@ -366,8 +370,12 @@ class StateIdle(State):
 
     def state_error(self, err):
         self.logger.error("Error: {0}".format(err))
+        self.logger.debug("Error type: {0}".format(err.type))
         if err.type == defer.CancelledError:
             self.logger.info("Cancelled error, ignore")
+        elif err.type == tango.CommuncationFailed:
+            self.logger.info("Tango communication failed")
+            pass
         else:
             if self.running is True:
                 self.controller.set_status("Error: {0}".format(err))
@@ -398,10 +406,15 @@ class StateIdle(State):
             self.next_state = "save"
             self.stop_run()
         elif msg == "stop":
-            self.logger.debug("Message stop... set next state.")
+            self.logger.debug("Message stop... stop looping calls.")
             for d in self.deferred_list:
                 d.cancel()
+            self.run_looping_calls_flag = False
             self.stop_looping_calls()
+        elif msg == "start":
+            self.logger.debug("Message start... start looping calls.")
+            self.run_looping_calls_flag = True
+            self.start_looping_calls()
         elif msg == "process_images":
             self.logger.debug("Message process_images")
             d = self.controller.process_all_images()
@@ -411,10 +424,12 @@ class StateIdle(State):
             d = defer.maybeDeferred(self.controller.fit_quad_data)
             d.addErrback(self.state_error)
         elif msg == "set_section":
-            self.logger.debug("Message set section")
-            self.controller.set_parameter("scan", "section_name", args[0])
-            self.controller.set_parameter("scan", "quad_name", args[1])
-            self.controller.set_parameter("scan", "screen_name", args[2])
+            self.logger.debug("Message set section: {0}, {1}, {2}".format(args[0], args[1], args[2]))
+            self.controller.set_section(args[0], args[1], args[2])
+            self.start_looping_calls()
+            # self.controller.set_parameter("scan", "section_name", args[0])
+            # self.controller.set_parameter("scan", "quad_name", args[1])
+            # self.controller.set_parameter("scan", "screen_name", args[2])
 #            self.next_state("device_connect")
 #            self.stop_run()
         else:
@@ -432,29 +447,38 @@ class StateIdle(State):
     def start_looping_calls(self):
         self.logger.info("Starting looping calls")
         self.stop_looping_calls()
-        quad_devices = self.controller.get_parameter("scan", "quad_device_names")
-        screen_devices = self.controller.get_parameter("scan", "screen_device_names")
-        interval = 1.0 / self.controller.idle_params["reprate"]
+        if self.run_looping_calls_flag is True:
+            quad_devices = self.controller.get_parameter("scan", "quad_device_names")
+            screen_devices = self.controller.get_parameter("scan", "screen_device_names")
+            interval = 1.0 / self.controller.idle_params["reprate"]
 
-        dev_name = quad_devices["crq"]
-        attr_name = "mainfieldcomponent"
-        self.logger.debug("Starting looping call for {0}".format(attr_name))
-        lc = TangoTwisted.LoopingCall(self.controller.read_attribute, attr_name, dev_name, use_tango_name=True)
-        self.controller.looping_calls.append(lc)
-        d = lc.start(interval)
-        d.addCallbacks(self.controller.update_attribute, self.state_error)
-        lc.loop_deferred.addCallback(self.controller.update_attribute)
-        lc.loop_deferred.addErrback(self.state_error)
+            try:
+                dev_name = quad_devices["crq"]
+            except KeyError as err:
+                self.logger.error("Magnet device not found.")
+                self.state_error(failure.Failure(err))
+            attr_name = "mainfieldcomponent"
+            self.logger.debug("Starting looping call for {0}".format(attr_name))
+            lc = TangoTwisted.LoopingCall(self.controller.read_attribute, attr_name, dev_name, use_tango_name=True)
+            self.controller.looping_calls.append(lc)
+            d = lc.start(interval)
+            d.addCallbacks(self.controller.update_attribute, self.state_error)
+            lc.loop_deferred.addCallback(self.controller.update_attribute)
+            lc.loop_deferred.addErrback(self.state_error)
 
-        dev_name = screen_devices["view"]
-        attr_name = "image"
-        self.logger.debug("Starting looping call for {0}".format(attr_name))
-        lc = TangoTwisted.LoopingCall(self.controller.read_attribute, attr_name, dev_name, use_tango_name=True)
-        self.controller.looping_calls.append(lc)
-        d = lc.start(interval)
-        d.addCallbacks(self.controller.update_attribute, self.state_error)
-        lc.loop_deferred.addCallback(self.controller.update_attribute)
-        lc.loop_deferred.addErrback(self.state_error)
+            try:
+                dev_name = screen_devices["view"]
+            except KeyError as err:
+                self.logger.error("Screen device not found.")
+                self.state_error(failure.Failure(err))
+            attr_name = "image"
+            self.logger.debug("Starting looping call for {0}".format(attr_name))
+            lc = TangoTwisted.LoopingCall(self.controller.read_attribute, attr_name, dev_name, use_tango_name=True)
+            self.controller.looping_calls.append(lc)
+            d = lc.start(interval)
+            d.addCallbacks(self.controller.update_attribute, self.state_error)
+            lc.loop_deferred.addCallback(self.controller.update_attribute)
+            lc.loop_deferred.addErrback(self.state_error)
 
     def update_attribute(self, result):
         self.logger.info("Updating result")
@@ -661,9 +685,10 @@ class StateLoad(State):
                     data_dict[key.strip()] = value.strip()
                 except ValueError:
                     pass
+        self.logger.debug("Loaded data_dict: {0}".format(data_dict))
         self.controller.set_analysis_parameters(np.double(data_dict["quad_length"]),
                                                 np.double(data_dict["quad_2_screen"]),
-                                                np.double(data_dict["electron_energy"]))
+                                                np.double(data_dict["beam_energy"]))
         self.controller.set_parameter("scan", "quad_name", data_dict["quad"])
         self.controller.set_parameter("scan", "screen_name", data_dict["screen"])
         self.controller.set_parameter("scan", "num_k_values", int(data_dict["num_k_values"]))
