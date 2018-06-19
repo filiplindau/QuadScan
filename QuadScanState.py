@@ -22,6 +22,7 @@ import TangoTwisted
 import QuadScanController
 from TangoTwisted import TangoAttributeFactory, defer_later
 import PIL
+from collections import OrderedDict
 try:
     import tango
 except ImportError:
@@ -510,6 +511,8 @@ class StateScan(State):
     def __init__(self, controller):
         State.__init__(self, controller)
         self.logger.setLevel(logging.INFO)
+        self.save_path = None
+        self.old_path = None
 
     def state_enter(self, prev_state=None):
         State.state_enter(self, prev_state)
@@ -519,6 +522,17 @@ class StateScan(State):
         meas_attr_name = "image"
         start_pos = self.controller.get_parameter("scan", "k_min")
         end_pos = self.controller.get_parameter("scan", "k_max")
+        save_path = self.controller.get_parameter("save", "save_path")
+        if self.save_path is None:
+            self.logger.debug("No save path specified.")
+            self.next_state = "idle"
+            self.stop_run()
+            return "idle"
+        self.old_path = os.getcwd()
+        self.save_path = os.path.join(self.controller.get_parameter("save", "base_path"), save_path)
+        if not os.path.exists(self.save_path):
+            os.makedirs(self.save_path)
+        os.chdir(self.save_path)
         step_size = (end_pos - start_pos) / self.controller.get_parameter("scan", "num_k_values")
         averages = self.controller.get_parameter("scan", "num_shots")
         self.logger.info("Starting scan of {0} on {1}".format(scan_attr_name, scan_dev_name))
@@ -537,7 +551,7 @@ class StateScan(State):
         self.logger.debug("Check requirements result: {0}".format(result))
         self.next_state = "idle"
         self.stop_run()
-        return "analyse"
+        return "idle"
 
     def state_error(self, err):
         self.logger.error("Error: {0}".format(err))
@@ -545,6 +559,56 @@ class StateScan(State):
         # If the error was DB_DeviceNotDefined, go to UNKNOWN state and reconnect later
         self.next_state = "unknown"
         self.stop_run()
+
+    def stop_run(self):
+        State.stop_run(self)
+        os.chdir(self.old_path)
+
+    def generate_daq_info(self):
+        self.logger.info("Generating daq_info")
+        save_dict = OrderedDict()
+        try:
+            save_dict["main_dir"] = self.controller.get_parameter("save", "base_path")
+            save_dict["daq_dir"] = self.controller.get_parameter("save", "save_path")
+            save_dict["quad"] = self.controller.get_parameter("scan", "quad_name")
+            save_dict["quad_length"] = "{0}".format(self.controller.get_parameter("scan", "quad_length"))
+            save_dict["quad_2_screen"] = "{0}".format(self.controller.get_parameter("scan", "quad_screen_dist"))
+            save_dict["screen"] = self.controller.get_parameter("scan", "screen_name")
+            val = self.controller.get_parameter("scan", "pixel_size")
+            save_dict["pixel_dim"] = "{0} {1}".format(val[0], val[1])
+            save_dict["num_k_values"] = "{0}".format(self.controller.get_parameter("scan", "num_k_values"))
+            save_dict["num_shots"] = "{0}".format(self.controller.get_parameter("scan", "num_shots"))
+            save_dict["k_min"] = "{0}".format(self.controller.get_parameter("scan", "k_min"))
+            save_dict["k_max"] = "{0}".format(self.controller.get_parameter("scan", "k_max"))
+            val = self.controller.get_parameter("scan", "roi_center")
+            save_dict["roi_center"] = "{0} {1}".format(val[0], val[1])
+            val = self.controller.get_parameter("scan", "roi_dim")
+            save_dict["roi_dim"] = "{0} {1}".format(val[0], val[1])
+            save_dict["beam_energy"] = "{0}".format(self.controller.get_parameter("scan", "electron_energy"))
+        except KeyError as e:
+            msg = "Could not generate daq_info: {0}".format(e)
+            self.logger.error(msg)
+            self.controller.set_status(msg)
+            self.next_state = "idle"
+            self.stop_run()
+            return "idle"
+        except IndexError as e:
+            msg = "Could not generate daq_info: {0}".format(e)
+            self.logger.error(msg)
+            self.controller.set_status(msg)
+            self.next_state = "idle"
+            self.stop_run()
+            return "idle"
+        full_name = os.path.join(self.save_path, "daq_info.txt")
+        with open(full_name, "w") as f:
+            for key, value in save_dict.iteritems():
+                s = "{0} : {1}".format(key.ljust(13, " "), value)
+                f.write(s)
+            f.write("***** Starting loop over quadrupole k-values *****")
+            f.write("+------+-------+----------+----------+----------------------+")
+            f.write("|  k   |  shot |    set   |   read   |        saved         |")
+            f.write("|  #   |   #   |  k-value |  k-value |     image file       |")
+            f.write("+------+-------+----------+----------+----------------------+")
 
     def save_image(self, pos_ind, meas_ind, pos, result):
         filename = "{0}_{1}_{2:.5f}_.png".format(pos_ind, meas_ind, pos)

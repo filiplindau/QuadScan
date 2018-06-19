@@ -138,6 +138,7 @@ class QuadScanController(QtCore.QObject):
 
         self.save_params = dict()
         self.save_params["base_path"] = "."
+        self.save_params["save_path"] = None
 
         self.logger = logging.getLogger("QuadScanController.Controller")
         self.logger.setLevel(logging.DEBUG)

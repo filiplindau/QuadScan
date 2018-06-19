@@ -232,6 +232,8 @@ class QuadScanGui(QtGui.QWidget):
         self.ui.roi_y_spinbox.editingFinished.connect(self.set_roi)
         self.ui.roi_width_spinbox.editingFinished.connect(self.set_roi)
         self.ui.roi_height_spinbox.editingFinished.connect(self.set_roi)
+        self.ui.scan_start_button.clicked.connect(self.start_scan)
+        self.ui.scan_stop_button.clicked.connect(self.stop_scan)
 
         self.ui.section_combobox.currentIndexChanged.connect(self.update_section)
         self.ui.quad_combobox.currentIndexChanged.connect(self.update_section)
@@ -663,6 +665,20 @@ class QuadScanGui(QtGui.QWidget):
     def stop_camera(self):
         root.info("Stopping camera")
         self.state_dispatcher.send_command("stop")
+
+    def start_scan(self):
+        root.info("Starting scan")
+        t_str = time.strftime("%Y-%m-%d_%H-%M-%S")
+        quad_name = self.controller.get_parameter("scan", "quad_name")
+        screen_name = self.controller.get_parameter("scan", "screen_name")
+        save_path = "{0}_{1}_{2}".format(t_str, quad_name, screen_name)
+        root.info("Save directory: {0}")
+        self.controller.set_parameter("save", "save_path", save_path)
+        self.state_dispatcher.send_command("scan")
+
+    def stop_scan(self):
+        if self.current_state == "scan":
+            self.state_dispatcher.send_command("cancel")
 
     def set_base_dir(self):
         root.info("Setting data base directory")
