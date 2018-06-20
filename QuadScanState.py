@@ -541,6 +541,7 @@ class StateScan(State):
         d = self.controller.get_parameter("scan", "quad_screen_distance")
         E = self.controller.get_parameter("scan", "electron_energy")
         self.controller.set_analysis_parameters(L, d, E)
+        self.generate_daq_info()
         scan = QuadScanController.Scan(self.controller, scan_attr_name, scan_dev_name, start_pos, end_pos, step_size,
                                        meas_dev_name, meas_attr_name, averages, self.save_image)
         d = scan.start_scan()
@@ -608,12 +609,19 @@ class StateScan(State):
             f.write("+------+-------+----------+----------+----------------------+")
             f.write("|  k   |  shot |    set   |   read   |        saved         |")
             f.write("|  #   |   #   |  k-value |  k-value |     image file       |")
-            f.write("+------+-------+----------+----------+----------------------+")
 
     def save_image(self, pos_ind, meas_ind, pos, result):
         filename = "{0}_{1}_{2:.5f}_.png".format(pos_ind, meas_ind, pos)
+        full_name = os.path.join(self.save_path, filename)
+        with open(os.path.join(self.save_path, "daq_info.txt"), "a"):
+            if meas_ind == 1:
+                f.write("+------+-------+----------+----------+----------------------+")
+            s_pos = "{0:.4f}".format(pos).rjust(6, " ")
+            s = "|{0}  |{1}  |{2} |{3} |{4} |".format(str(pos_ind).rjust(6, " "),
+                                                      str(meas_ind).rjust(6, " "),
+                                                      s_pos, s_pos, filename)
         self.logger("Saving file during scan: {0}".format(filename))
-        d = TangoTwisted.defer_to_thread(PIL.Image.save, filename)
+        d = TangoTwisted.defer_to_thread(PIL.Image.save, full_name)
         d.addErrback(self.state_error)
 
     def store_scan(self, result):
@@ -621,6 +629,10 @@ class StateScan(State):
         self.controller.scan_result["pos_data"] = result[0]
         self.controller.scan_result["scan_data"] = result[1]
         self.controller.scan_result["start_time"] = result[2]
+        with open(os.path.join(self.save_path, "daq_info.txt"), "a"):
+            f.write("+------+-------+----------+----------+----------------------+")
+            f.write("***** Done with loop over quadrupole k-values *****")
+            f.write("\nGenerated with QuadScanGui.py\n")
         d = self.controller.process_all_images()
         d.addCallback(self.fit_data)
 

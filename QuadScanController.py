@@ -867,6 +867,8 @@ class Scan(object):
 
         self.meas_callable = meas_callable
 
+        self.simulation = False
+
         self.logger = logging.getLogger("QuadScanController.Scan_{0}_{1}".format(self.scan_attr, self.meas_attr))
         self.logger.setLevel(logging.DEBUG)
 
@@ -896,6 +898,27 @@ class Scan(object):
 
         return self.d
 
+    def simulate_scan(self):
+        self.simulation = True
+        self.logger.info("Starting scan simulation of {0} from {1} to {2} measuring {3}".format(self.scan_attr.upper(),
+                                                                                                self.start_pos,
+                                                                                                self.stop_pos,
+                                                                                                self.meas_attr.upper()))
+        self.scan_start_time = time.time()
+        self.data_time = time.time()
+        self.status_update_time = self.scan_start_time
+        self.cancel_flag = False
+        scan_pos = self.start_pos
+        tol = self.step * 0.1
+
+        d0 = self.controller.read_attribute(self.scan_attr, self.scan_dev, use_tango_name=self.use_tango_name)
+        d0.addCallbacks(self.scan_arrive, self.scan_error_cb)
+        # d0.addCallback(lambda _: self.controller.read_attribute(self.meas_attr, self.meas_dev))
+        # d0.addCallback(self.meas_scan)
+        self.d = defer.Deferred(self.cancel_scan)
+
+        return self.d
+
     def scan_step(self):
         """
         Check if it is time to end the scan. If not, issue a move to the next scan position.
@@ -911,8 +934,11 @@ class Scan(object):
             self.scan_done()
             return self.d
 
-        d0 = self.controller.check_attribute(self.scan_attr, self.scan_dev, scan_pos,
-                                             0.1, 3.0, tolerance=tol, write=True, use_tango_name=self.use_tango_name)
+        if self.simulation is True:
+            d0 = self.controller.read_attribute(self.scan_attr, self.scan_dev, use_tango_name=self.use_tango_name)
+        else:
+            d0 = self.controller.check_attribute(self.scan_attr, self.scan_dev, scan_pos, 0.1, 3.0, tolerance=tol,
+                                                 write=True, use_tango_name=self.use_tango_name)
         d0.addCallbacks(self.scan_arrive, self.scan_error_cb)
         return d0
 
