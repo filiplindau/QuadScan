@@ -436,6 +436,14 @@ class StateIdle(State):
             # self.controller.set_parameter("scan", "screen_name", args[2])
 #            self.next_state("device_connect")
 #            self.stop_run()
+        elif msg == "scan":
+            self.logger.debug("Message scan... stop looping calls.")
+            for d in self.deferred_list:
+                d.cancel()
+            self.run_looping_calls_flag = False
+            self.stop_looping_calls()
+            self.next_state = "scan"
+            self.stop_run()
         else:
             self.logger.warning("Unknown command {0}".format(msg))
 
@@ -523,16 +531,14 @@ class StateScan(State):
         start_pos = self.controller.get_parameter("scan", "k_min")
         end_pos = self.controller.get_parameter("scan", "k_max")
         save_path = self.controller.get_parameter("save", "save_path")
+        self.save_path = os.path.join(self.controller.get_parameter("save", "base_path"), save_path)
         if self.save_path is None:
             self.logger.debug("No save path specified.")
             self.next_state = "idle"
             self.stop_run()
             return "idle"
-        self.old_path = os.getcwd()
-        self.save_path = os.path.join(self.controller.get_parameter("save", "base_path"), save_path)
         if not os.path.exists(self.save_path):
             os.makedirs(self.save_path)
-        os.chdir(self.save_path)
         step_size = (end_pos - start_pos) / self.controller.get_parameter("scan", "num_k_values")
         averages = self.controller.get_parameter("scan", "num_shots")
         self.logger.info("Starting scan of {0} on {1}".format(scan_attr_name, scan_dev_name))
@@ -543,7 +549,7 @@ class StateScan(State):
         self.controller.set_analysis_parameters(L, d, E)
         self.generate_daq_info()
         scan = QuadScanController.Scan(self.controller, scan_attr_name, scan_dev_name, start_pos, end_pos, step_size,
-                                       meas_dev_name, meas_attr_name, averages, self.save_image)
+                                       meas_attr_name, meas_dev_name, averages, self.save_image)
         d = scan.start_scan()
         d.addCallbacks(self.store_scan, self.state_error)
         self.deferred_list.append(d)
@@ -558,12 +564,17 @@ class StateScan(State):
         self.logger.error("Error: {0}".format(err))
         self.controller.set_status("Error: {0}".format(err))
         # If the error was DB_DeviceNotDefined, go to UNKNOWN state and reconnect later
-        self.next_state = "unknown"
+        if err.type == tango.DevFailed:
+            err_t = err[0]
+            if err_t.reason == "API_WAttrOutsideLimit":
+                self.next_state = "idle"
+        else:
+            self.next_state = "unknown"
         self.stop_run()
 
     def stop_run(self):
         State.stop_run(self)
-        os.chdir(self.old_path)
+        # os.chdir(self.old_path)
 
     def generate_daq_info(self):
         self.logger.info("Generating daq_info")
@@ -576,7 +587,7 @@ class StateScan(State):
             save_dict["quad_2_screen"] = "{0}".format(self.controller.get_parameter("scan", "quad_screen_dist"))
             save_dict["screen"] = self.controller.get_parameter("scan", "screen_name")
             val = self.controller.get_parameter("scan", "pixel_size")
-            save_dict["pixel_dim"] = "{0} {1}".format(val[0], val[1])
+            save_dict["pixel_dim"] = "{0} {1}".format(val, val)
             save_dict["num_k_values"] = "{0}".format(self.controller.get_parameter("scan", "num_k_values"))
             save_dict["num_shots"] = "{0}".format(self.controller.get_parameter("scan", "num_shots"))
             save_dict["k_min"] = "{0}".format(self.controller.get_parameter("scan", "k_min"))
@@ -603,25 +614,31 @@ class StateScan(State):
         full_name = os.path.join(self.save_path, "daq_info.txt")
         with open(full_name, "w") as f:
             for key, value in save_dict.iteritems():
-                s = "{0} : {1}".format(key.ljust(13, " "), value)
+                s = "{0} : {1}\n".format(key.ljust(13, " "), value)
                 f.write(s)
-            f.write("***** Starting loop over quadrupole k-values *****")
-            f.write("+------+-------+----------+----------+----------------------+")
-            f.write("|  k   |  shot |    set   |   read   |        saved         |")
-            f.write("|  #   |   #   |  k-value |  k-value |     image file       |")
+            f.write("***** Starting loop over quadrupole k-values *****\n")
+            f.write("+------+-------+----------+----------+----------------------+\n")
+            f.write("|  k   |  shot |    set   |   read   |        saved         |\n")
+            f.write("|  #   |   #   |  k-value |  k-value |     image file       |\n")
 
     def save_image(self, pos_ind, meas_ind, pos, result):
         filename = "{0}_{1}_{2:.5f}_.png".format(pos_ind, meas_ind, pos)
         full_name = os.path.join(self.save_path, filename)
-        with open(os.path.join(self.save_path, "daq_info.txt"), "a"):
+        with open(os.path.join(self.save_path, "daq_info.txt"), "a") as f:
             if meas_ind == 1:
-                f.write("+------+-------+----------+----------+----------------------+")
+                f.write("+------+-------+----------+----------+----------------------+\n")
             s_pos = "{0:.4f}".format(pos).rjust(6, " ")
-            s = "|{0}  |{1}  |{2} |{3} |{4} |".format(str(pos_ind).rjust(6, " "),
-                                                      str(meas_ind).rjust(6, " "),
-                                                      s_pos, s_pos, filename)
-        self.logger("Saving file during scan: {0}".format(filename))
-        d = TangoTwisted.defer_to_thread(PIL.Image.save, full_name)
+            s = "|{0}  |{1}  |{2} |{3} |{4} |\n".format(str(pos_ind).rjust(6, " "),
+                                                        str(meas_ind).rjust(6, " "),
+                                                        s_pos, s_pos, filename)
+        self.logger.debug("Saving file during scan: {0}".format(filename))
+        try:
+            image = PIL.Image.fromarray(result.value)
+            d = TangoTwisted.defer_to_thread(image.save, full_name)
+        except Exception as e:
+            self.logger.error("Image error: {0}".format(e))
+            self.logger.error("Image type: {0}".format(type(result.value)))
+            d = defer.Deferred()
         d.addErrback(self.state_error)
 
     def store_scan(self, result):
@@ -629,9 +646,9 @@ class StateScan(State):
         self.controller.scan_result["pos_data"] = result[0]
         self.controller.scan_result["scan_data"] = result[1]
         self.controller.scan_result["start_time"] = result[2]
-        with open(os.path.join(self.save_path, "daq_info.txt"), "a"):
-            f.write("+------+-------+----------+----------+----------------------+")
-            f.write("***** Done with loop over quadrupole k-values *****")
+        with open(os.path.join(self.save_path, "daq_info.txt"), "a") as f:
+            f.write("+------+-------+----------+----------+----------------------+\n")
+            f.write("***** Done with loop over quadrupole k-values *****\n")
             f.write("\nGenerated with QuadScanGui.py\n")
         d = self.controller.process_all_images()
         d.addCallback(self.fit_data)

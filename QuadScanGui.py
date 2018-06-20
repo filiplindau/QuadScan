@@ -196,13 +196,25 @@ class QuadScanGui(QtGui.QWidget):
         self.ui.fit_algo_combobox.setCurrentIndex(ind)
         self.controller.set_parameter("analysis", "fit_algo", val)
 
-        self.ui.k_start_spinbox.setValue(self.settings.value("k_start", "0", type=float))
-        self.ui.k_end_spinbox.setValue(self.settings.value("k_end", "0", type=float))
+        k_start = self.settings.value("k_start", "0", type=float)
+        self.ui.k_start_spinbox.setValue(k_start)
+        self.controller.set_parameter("scan", "k_min", k_start)
+
+        k_end = self.settings.value("k_end", "0", type=float)
+        self.ui.k_end_spinbox.setValue(k_end)
+        self.controller.set_parameter("scan", "k_max", k_end)
 
         val = str(self.settings.value("section", "ms1", type=str)).upper()
         ind = self.ui.section_combobox.findText(val)
         root.debug("Section {1} index: {0}".format(ind, val))
         self.ui.section_combobox.setCurrentIndex(ind)
+
+        val = self.settings.value("num_k_values", "10", type=int)
+        self.controller.set_parameter("scan", "num_k_values", val)
+        self.ui.k_number_values_spinbox.setValue(val)
+        val = self.settings.value("num_shots", "2", type=int)
+        self.controller.set_parameter("scan", "num_shots", val)
+        self.ui.images_number_spinbox.setValue(val)
 
         # Signal connections
         self.ui.energy_spinbox.editingFinished.connect(self.update_parameter_data)
@@ -223,6 +235,7 @@ class QuadScanGui(QtGui.QWidget):
         self.ui.load_data_button.clicked.connect(self.load_data)
         self.ui.set_max_button.clicked.connect(self.set_max_k)
         self.ui.set_min_button.clicked.connect(self.set_min_k)
+        self.ui.k_current_spinbox.editingFinished.connect(self.set_current_k)
         self.ui.process_button.clicked.connect(self.start_processing)
         self.ui.data_base_dir_button.clicked.connect(self.set_base_dir)
         self.ui.camera_start_button.clicked.connect(self.start_camera)
@@ -328,7 +341,7 @@ class QuadScanGui(QtGui.QWidget):
         if name == "mainfieldcomponent":
             self.ui.k_current_label.setText("{0:.3f}".format(attr.value))
         elif name == "image":
-            self.ui.camera_raw_widget.setImage(attr.value, autoRange=False)
+            self.ui.camera_raw_widget.setImage(attr.value, autoRange=False, autoLevels=False)
 
     def update_image_processing(self):
         """
@@ -624,6 +637,13 @@ class QuadScanGui(QtGui.QWidget):
         self.ui.k_start_spinbox.setValue(k_current)
         self.controller.set_parameter("scan", "k_min", k_current)
 
+    def set_current_k(self):
+        k_current = self.ui.k_current_spinbox.value()
+        root.info("Setting current k-value {0} to magnet".format(k_current))
+        dev_name = self.controller.get_parameter("scan", "quad_device_names")["crq"]
+        attr_name = "mainfieldcomponent"
+        self.controller.write_attribute(attr_name, dev_name, k_current, use_tango_name=True)
+
     def load_data(self):
         root.info("Loading data")
         load_dir = QtGui.QFileDialog.getExistingDirectory(self, "Select directory", self.last_load_dir)
@@ -716,6 +736,8 @@ class QuadScanGui(QtGui.QWidget):
         self.settings.setValue("fit_algo", self.controller.get_parameter("analysis", "fit_algo"))
         self.settings.setValue("k_start", self.ui.k_start_spinbox.value())
         self.settings.setValue("k_end", self.ui.k_end_spinbox.value())
+        self.settings.setValue("num_shots", self.controller.get_parameter("scan", "num_shots"))
+        self.settings.setValue("num_k_values", self.controller.get_parameter("scan", "num_k_values"))
 
         self.settings.setValue("section", self.controller.get_parameter("scan", "section_name"))
         self.settings.setValue("section_quad", self.controller.get_parameter("scan", "quad_name"))

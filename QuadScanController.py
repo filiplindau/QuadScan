@@ -593,7 +593,12 @@ class QuadScanController(QtCore.QObject):
         k_data = np.array(self.get_result("scan", "k_data")).flatten()
         sigma_data = np.array(self.get_result("scan", "sigma_x")).flatten()
         en_data = np.array(self.get_result("scan", "enabled_data")).flatten()
-        s2 = (sigma_data[en_data]) ** 2
+        try:
+            s2 = (sigma_data[en_data]) ** 2
+        except IndexError as e:
+            self.logger.warning("Could not address enabled sigma values. "
+                                "En_data: {0}, sigma_data: {1}".format(en_data, sigma_data))
+            return
         k = k_data[en_data]
         ind = np.isfinite(s2)
         poly = np.polyfit(k[ind], s2[ind], 2)
@@ -994,7 +999,8 @@ class Scan(object):
         :param result: Result from the read_attribute deferred
         :return:
         """
-        self.logger.debug("Meas scan result: {0}".format(result.value))
+        measure_value = result.value
+        self.logger.debug("Measure at scan pos {0} result: {1}".format(self.current_pos, measure_value))
         # First check if this was taken before the scan arrived to the new position, then re-read
         if result.time.totime() <= self.scan_arrive_time:
             self.logger.debug("Old data. Wait for new.")
@@ -1007,9 +1013,7 @@ class Scan(object):
             d0.addCallbacks(self.meas_scan_store, self.scan_error_cb)
             return False
         self.data_time = result.time.totime()
-        measure_value = result.value
 
-        self.logger.debug("Measure at scan pos {0} result: {1}".format(self.current_pos, measure_value))
         self.meas_data.append(measure_value)
         self.pos_data.append(self.current_pos)
         if self.meas_callable is not None:
@@ -1041,6 +1045,11 @@ class Scan(object):
         # propagate the error to the calling callback chain:
         if err.type in []:
             pass
+        elif err.type == tango.DevFailed:
+            err_t = err[0]
+            if err_t.reason == "API_WAttrOutsideLimit":
+                self.controller.set_status("Scan parameter outside limit")
+                self.d.errback(err)
         else:
             self.d.errback(err)
 
