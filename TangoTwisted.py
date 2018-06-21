@@ -26,7 +26,7 @@ f = logging.Formatter("%(asctime)s - %(name)s.   %(funcName)s - %(levelname)s - 
 fh = logging.StreamHandler()
 fh.setFormatter(f)
 logger.addHandler(fh)
-logger.setLevel(logging.WARNING)
+logger.setLevel(logging.DEBUG)
 
 
 def deferred_from_future(future):
@@ -868,6 +868,29 @@ def defer_to_thread(f, *args, **kwargs):
     return d
 
 
+def f_wrapper(f, *f_args, **f_kwargs):
+    try:
+        result = f(*f_args, **f_kwargs)
+    except Exception as e:
+        result = e
+    return result
+
+
+def defer_to_pool(pool, f, *args, **kwargs):
+    df = defer.Deferred()
+
+    def pool_callback(result):
+        if isinstance(result, Exception):
+            df.errback(result)
+        else:
+            df.callback(result)
+
+    logger.info("Deferring function {0} to process pool.".format(f))
+    args_wrapper = (f,) + args
+    pool.apply_async(f_wrapper, args=args_wrapper, kwds=kwargs, callback=pool_callback)
+    return df
+
+
 def test_cb2(result):
     logger.info("Test CB2 result: {0}".format(result))
     return result
@@ -905,12 +928,26 @@ def looping_test_cb(result):
 def looping_test_eb(err):
     logger.error("Callback error: {0}".format(err))
 
+
+def pool_test(a, b):
+    print("a: {0}, b:{1}".format(a, b))
+    return a/b
+
+
 if __name__ == "__main__":
     t0 = time.time()
     count = 0
-    lc = LoopingCall(looping_test, count)
-    d = lc.start(0.001)
-    d.addCallback(test_cb2)
-    d.addErrback(looping_test_eb)
+    # lc = LoopingCall(looping_test, count)
+    # d = lc.start(0.001)
+    import multiprocessing
+    pool = multiprocessing.Pool(processes=4)
+    dl = list()
+    a = [1.0 * x + 1 for x in range(1)]
+    b = [1.0 * x for x in range(1)]
+    for k in range(len(a)):
+        d = defer_to_pool(pool, pool_test, a[k], b[k])
+        d.addCallback(test_cb2)
+        d.addErrback(looping_test_eb)
+        dl.append(d)
     # lc.loop_deferred.addCallback(looping_test_cb)
     # lc.loop_deferred.addErrback(looping_test_eb)
