@@ -888,6 +888,7 @@ def defer_to_pool(pool, f, *args, **kwargs):
     logger.info("Deferring function {0} to process pool.".format(f))
     args_wrapper = (f,) + args
     pool.apply_async(f_wrapper, args=args_wrapper, kwds=kwargs, callback=pool_callback)
+    # pool.apply_async(f, args=args, kwds=kwargs, callback=pool_callback)
     return df
 
 
@@ -930,7 +931,6 @@ def looping_test_eb(err):
 
 
 def pool_test(a, b):
-    print("a: {0}, b:{1}".format(a, b))
     return a/b
 
 
@@ -942,12 +942,13 @@ if __name__ == "__main__":
     import multiprocessing
     pool = multiprocessing.Pool(processes=4)
     dl = list()
-    a = [1.0 * x + 1 for x in range(1)]
-    b = [1.0 * x for x in range(1)]
+    a = [1.0 * x + 1 for x in range(10)]
+    b = [1.0 * x for x in range(10)]
     for k in range(len(a)):
         d = defer_to_pool(pool, pool_test, a[k], b[k])
         d.addCallback(test_cb2)
         d.addErrback(looping_test_eb)
         dl.append(d)
+    pool.close()
     # lc.loop_deferred.addCallback(looping_test_cb)
     # lc.loop_deferred.addErrback(looping_test_eb)

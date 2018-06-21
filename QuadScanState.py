@@ -421,7 +421,7 @@ class StateIdle(State):
             self.start_looping_calls()
         elif msg == "process_images":
             self.logger.debug("Message process_images")
-            d = self.controller.process_all_images()
+            d = self.controller.process_all_images_pool()
             d.addErrback(self.state_error)
         elif msg == "fit_data":
             self.logger.debug("Message fit_data")
@@ -650,7 +650,7 @@ class StateScan(State):
             f.write("+------+-------+----------+----------+----------------------+\n")
             f.write("***** Done with loop over quadrupole k-values *****\n")
             f.write("\nGenerated with QuadScanGui.py\n")
-        d = self.controller.process_all_images()
+        d = self.controller.process_all_images_pool()
         d.addCallback(self.fit_data)
 
     def fit_data(self, result):
@@ -678,7 +678,7 @@ class StateScan(State):
             d.cancel()
         elif msg == "process_images":
             self.logger.debug("Message process_images")
-            d = self.controller.process_all_images()
+            d = self.controller.process_all_images_pool()
             d.addErrback(self.state_error)
         elif msg == "fit_data":
             self.logger.debug("Message fit_data")
@@ -905,7 +905,7 @@ class StateLoad(State):
             self.stop_run()
         elif msg == "process_images":
             self.logger.debug("Message process_images")
-            d = self.controller.process_all_images()
+            d = self.controller.process_all_images_pool()
             d.addErrback(self.state_error)
         else:
             self.logger.warning("Unknown command {0}".format(msg))
@@ -1015,7 +1015,7 @@ class StateUnknown(State):
             self.stop_run()
         elif msg == "process_images":
             self.logger.debug("Message process_images")
-            d = self.controller.process_all_images()
+            d = self.controller.process_all_images_pool()
             d.addErrback(self.state_error)
         elif msg == "fit_data":
             self.logger.debug("Message fit_data")
@@ -1062,7 +1062,7 @@ class StateDatabase(State):
             self.stop_run()
         elif msg == "process_images":
             self.logger.debug("Message process_images")
-            d = self.controller.process_all_images()
+            d = self.controller.process_all_images_pool()
             d.addErrback(self.state_error)
         elif msg == "fit_data":
             self.logger.debug("Message fit_data")
