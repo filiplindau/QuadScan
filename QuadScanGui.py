@@ -357,6 +357,8 @@ class QuadScanGui(QtGui.QWidget):
             self.ui.k_current_label.setText("{0:.3f}".format(attr.value))
         elif name == "image":
             self.ui.camera_raw_widget.setImage(attr.value, autoRange=False, autoLevels=False)
+            self.ui.camera_raw_widget.roi.show()
+            self.update_camera_roi()
 
     def update_image_processing(self):
         """
@@ -707,7 +709,7 @@ class QuadScanGui(QtGui.QWidget):
 
     def start_camera(self):
         root.info("Starting camera")
-        self.state_dispatcher.send_command("start")
+        self.state_dispatcher.send_command("start_camera")
 
     def stop_camera(self):
         root.info("Stopping camera")

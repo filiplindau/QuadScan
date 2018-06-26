@@ -445,6 +445,26 @@ class StateIdle(State):
             self.stop_looping_calls()
             self.next_state = "scan"
             self.stop_run()
+        elif msg == "start_camera":
+            self.logger.info("Starting camera")
+            try:
+                cam_dev = self.controller.get_parameter("scan", "screen_device_names")["view"]
+
+            except KeyError:
+                self.logger.error("No camera liveviewer device found.")
+                self.controller.set_status("No camera liveviewer device found.")
+                return
+            self.controller.send_command("start", cam_dev, None, use_tango_name=True)
+        elif msg == "stop_camera":
+            self.logger.info("Stopping camera")
+            try:
+                cam_dev = self.controller.get_parameter("scan", "screen_device_names")["view"]
+
+            except KeyError:
+                self.logger.error("No camera liveviewer device found.")
+                self.controller.set_status("No camera liveviewer device found.")
+                return
+            self.controller.send_command("stop", cam_dev, None, use_tango_name=True)
         else:
             self.logger.warning("Unknown command {0}".format(msg))
 
