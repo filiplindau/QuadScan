@@ -112,6 +112,20 @@ class QuadScanGui(QtGui.QWidget):
         self.ui.camera_raw_widget.ui.roiBtn.hide()
         self.ui.camera_raw_widget.ui.menuBtn.hide()
         self.ui.camera_raw_widget.roi.sigRegionChanged.disconnect()
+        self.ui.camera_raw_widget.roi.show()
+
+        self.ui.camera_raw_widget.roi.blockSignals(True)
+        self.ui.camera_raw_widget.roi.setPos((0, 0))
+        self.ui.camera_raw_widget.roi.setSize((64, 64))
+        self.ui.camera_raw_widget.roi.blockSignals(False)
+
+        self.ui.camera_roi_widget.ui.histogram.gradient.loadPreset('thermalclip')
+        self.ui.camera_roi_widget.setSizePolicy(QtGui.QSizePolicy.Expanding, QtGui.QSizePolicy.Expanding)
+        self.ui.camera_roi_widget.getView().setAspectLocked(False)
+        self.ui.camera_roi_widget.setImage(np.random.random((64, 64)))
+        self.ui.camera_roi_widget.ui.roiBtn.hide()
+        self.ui.camera_roi_widget.ui.menuBtn.hide()
+        self.ui.camera_roi_widget.roi.sigRegionChanged.disconnect()
 
         self.ui.image_raw_widget.ui.histogram.gradient.loadPreset('thermalclip')
         self.ui.image_raw_widget.setSizePolicy(QtGui.QSizePolicy.Expanding, QtGui.QSizePolicy.Expanding)
@@ -241,6 +255,7 @@ class QuadScanGui(QtGui.QWidget):
         self.ui.camera_start_button.clicked.connect(self.start_camera)
         self.ui.camera_stop_button.clicked.connect(self.stop_camera)
         self.ui.image_raw_widget.roi.sigRegionChangeFinished.connect(self.update_roi)
+        self.ui.camera_raw_widget.roi.sigRegionChangeFinished.connect(self.update_camera_roi)
         self.ui.roi_x_spinbox.editingFinished.connect(self.set_roi)
         self.ui.roi_y_spinbox.editingFinished.connect(self.set_roi)
         self.ui.roi_width_spinbox.editingFinished.connect(self.set_roi)
@@ -374,6 +389,18 @@ class QuadScanGui(QtGui.QWidget):
         self.ui.roi_width_spinbox.setValue(rs[0])
         self.ui.roi_height_spinbox.setValue(rs[1])
         self.state_dispatcher.send_command("process_images")
+
+    def update_camera_roi(self):
+        """
+        Update the roi in the raw camera image
+        :return:
+        """
+        root.info("Update camera roi")
+        rs = self.ui.camera_raw_widget.roi.size()
+        rp = self.ui.camera_raw_widget.roi.pos()
+        pic = self.ui.camera_raw_widget.getProcessedImage()
+        pic_roi = pic[rp[0]:rp[0] + rs[0], rp[1]:rp[1] + rs[1]]
+        self.ui.camera_roi_widget.setImage(pic_roi)
 
     def set_roi(self):
         """
@@ -694,6 +721,13 @@ class QuadScanGui(QtGui.QWidget):
         save_path = "{0}_{1}_{2}".format(t_str, quad_name, screen_name)
         root.info("Save directory: {0}")
         self.controller.set_parameter("save", "save_path", save_path)
+
+        rs = self.ui.camera_raw_widget.roi.size()
+        rp = self.ui.camera_raw_widget.roi.pos()
+        root.info("Camera roi: {0} pos, {1} size".format(rp, rs))
+        self.controller.set_parameter("scan", "roi_center", [rp[0] + rs[0]/2, rp[1] + rs[1]/2])
+        self.controller.set_parameter("scan", "roi_dim", [rs[0], rs[1]])
+
         self.state_dispatcher.send_command("scan")
 
     def stop_scan(self):

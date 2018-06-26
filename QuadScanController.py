@@ -155,7 +155,7 @@ class QuadScanController(QtCore.QObject):
 
         self.load_pool = None
         self.save_pool = None
-        self.process_pool = None
+        self.process_pool = None            # type: TangoTwisted.ClearablePool
         self.process_count = 4
 
         if start is True:
@@ -556,7 +556,8 @@ class QuadScanController(QtCore.QObject):
                 self.scan_result["sigma_x"][k_ind].append(sigma_x)
                 self.scan_result["sigma_y"][k_ind].append(sigma_y)
                 self.scan_result["charge_data"][k_ind].append(q)
-        # self.logger.debug("Image process time: {0}".format(time.time() - t0))
+        self.logger.debug("Image process time: {0}".format(time.time() - t0))
+
         self.image_done_signal.emit(k_ind, image_ind)
         return pic_roi
 
@@ -589,7 +590,9 @@ class QuadScanController(QtCore.QObject):
         image_list = self.get_result("scan", "raw_data")
 
         if self.process_pool is None:
-            self.process_pool = Pool(processes=self.process_count)
+            self.process_pool = TangoTwisted.ClearablePool(processes=self.process_count)
+        # else:
+        #     self.process_pool.clear_pending_tasks()
 
         for k_ind in range(k_num):
             for i_ind in range(im_num):
@@ -604,75 +607,44 @@ class QuadScanController(QtCore.QObject):
                     continue
                 # d = TangoTwisted.defer_to_pool(self.process_pool, self.process_image_pool, pic, k_ind, i_ind,
                 #                                th, roi_cent, roi_dim, cal, kernel)
-                d = TangoTwisted.defer_to_pool(self.process_pool, test_image_pool, pic, k_ind, i_ind,
-                                               th, roi_cent, roi_dim, cal, kernel)
+                # d = TangoTwisted.defer_to_pool(self.process_pool, test_image_pool, pic, k_ind, i_ind,
+                #                                th, roi_cent, roi_dim, cal, kernel)
+                d = self.process_pool.add_task(process_image_func,
+                                               pic, k_ind, i_ind, th, roi_cent, roi_dim, cal, kernel)
+                # d = self.process_pool.add_task(test_image_pool, k_ind, i_ind)
+
                 d_list.append(d)
                 d.addCallback(self.process_image_pool_store)
         dl = defer.DeferredList(d_list)
         dl.addCallbacks(self.process_images_done, self.process_image_error)
         return dl
 
-    def process_image_pool(self, image, k_ind, image_ind, threshold, roi_cent, roi_dim, cal=1, kernel=3):
-        print("Processing image {0}, {1} in pool".format(k_ind, image_ind))
+    def process_image_pool(self, k_ind, image_ind):
         self.logger.info("Processing image {0}, {1} in pool".format(k_ind, image_ind))
         t0 = time.time()
-        x = np.array([int(roi_cent[0] - roi_dim[0] / 2.0), int(roi_cent[0] + roi_dim[0] / 2.0)])
-        y = np.array([int(roi_cent[1] - roi_dim[1] / 2.0), int(roi_cent[1] + roi_dim[1] / 2.0)])
-        self.logger.debug("Threshold: {0}".format(threshold))
-        self.logger.debug("ROI: {0}-{1}, {2}-{3}".format(x[0], x[1], y[0], y[1]))
+        if self.process_pool is None:
+            self.process_pool = TangoTwisted.ClearablePool(processes=self.process_count)
 
-        # Extract ROI and convert to double:
-        pic_roi = np.double(image[x[0]:x[1], y[0]:y[1]])
+        th = self.get_parameter("analysis", "threshold")
+        roi_cent = self.get_parameter("scan", "roi_center")
+        roi_dim = self.get_parameter("scan", "roi_dim")
+        kernel = self.analysis_params["median_kernel"]
+        cal = self.scan_params["pixel_size"]
 
-        # Normalize pic to 0-1 range, where 1 is saturation:
-        if image.dtype == np.int32:
-            n = 2 ** 16
-        elif image.dtype == np.uint8:
-            n = 2 ** 8
-        else:
-            n = 1
+        image_list = self.get_result("scan", "raw_data")
 
-        # Median filtering:
-        pic_roi = medfilt2d(pic_roi / n, kernel)
+        if self.process_pool is None:
+            self.process_pool = TangoTwisted.ClearablePool(processes=self.process_count)
 
-        # Threshold image
-        pic_roi[pic_roi < threshold] = 0.0
+        pic = image_list[k_ind][image_ind]
+        d = self.process_pool.add_task(process_image_func,
+                                       pic, k_ind, image_ind, th, roi_cent, roi_dim, cal, kernel)
+        d.addCallback(self.process_image_pool_store)
 
-        line_x = pic_roi.sum(0)
-        line_y = pic_roi.sum(1)
-        q = line_x.sum()  # Total signal (charge) in the image
-
-        enabled = False
-        l_x_n = np.sum(line_x)
-        l_y_n = np.sum(line_y)
-        # Enable point only if there is data:
-        if l_x_n > 0.0:
-            enabled = True
-        x_v = cal[0] * np.arange(line_x.shape[0])
-        y_v = cal[1] * np.arange(line_y.shape[0])
-        x_cent = np.sum(x_v * line_x) / l_x_n
-        sigma_x = np.sqrt(np.sum((x_v - x_cent) ** 2 * line_x) / l_x_n)
-        y_cent = np.sum(y_v * line_y) / l_y_n
-        sigma_y = np.sqrt(np.sum((y_v - y_cent) ** 2 * line_y) / l_y_n)
-
-        # Store processed data
-        result = dict()
-        result["k_ind"] = k_ind
-        result["image_imd"] = image_ind
-        result["pic_roi"] = pic_roi
-        result["line_x"] = line_x
-        result["line_y"] = line_y
-        result["x_cent"] = x_cent
-        result["y_cent"] = y_cent
-        result["sigma_x"] = sigma_x
-        result["sigma_y"] = sigma_y
-        result["q"] = q
-        result["enabled"] = enabled
-        # result = [k_ind, image_ind, pic_roi, line_x, line_y, x_cent, y_cent, sigma_x, sigma_y, q, enabled]
-
-        return result
+        return d
 
     def process_image_pool_store(self, result):
+        self.logger.info("Storing processed image")
         k_ind = result["k_ind"]
         image_ind = result["image_ind"]
         self.logger.info("Storing processed image {0}, {1}".format(k_ind, image_ind))
@@ -685,29 +657,31 @@ class QuadScanController(QtCore.QObject):
         sigma_y = result["sigma_y"]
         q = result["q"]
         enabled = result["enabled"]
-        with self.state_lock:
-            proc_list = self.scan_result["proc_data"]
-            line_data_x = self.scan_result["line_data_x"]
-            line_data_y = self.scan_result["line_data_y"]
-            self.scan_result["enabled_data"][k_ind][image_ind] = enabled
-            try:
-                proc_list[k_ind][image_ind] = pic_roi
-                line_data_x[k_ind][image_ind] = line_x
-                line_data_y[k_ind][image_ind] = line_y
-                self.scan_result["x_cent"][k_ind][image_ind] = x_cent
-                self.scan_result["y_cent"][k_ind][image_ind] = y_cent
-                self.scan_result["sigma_x"][k_ind][image_ind] = sigma_x
-                self.scan_result["sigma_y"][k_ind][image_ind] = sigma_y
-                self.scan_result["charge_data"][k_ind][image_ind] = q
-            except IndexError:
-                proc_list[k_ind].append(pic_roi)
-                line_data_x[k_ind].append(pic_roi.sum(0))
-                line_data_y[k_ind].append(pic_roi.sum(1))
-                self.scan_result["x_cent"][k_ind].append(x_cent)
-                self.scan_result["y_cent"][k_ind].append(y_cent)
-                self.scan_result["sigma_x"][k_ind].append(sigma_x)
-                self.scan_result["sigma_y"][k_ind].append(sigma_y)
-                self.scan_result["charge_data"][k_ind].append(q)
+
+        proc_list = self.scan_result["proc_data"]
+        line_data_x = self.scan_result["line_data_x"]
+        line_data_y = self.scan_result["line_data_y"]
+        old_enabled = self.scan_result["enabled_data"][k_ind][image_ind]
+        self.logger.debug("Old enabled: {0}".format(old_enabled))
+        self.scan_result["enabled_data"][k_ind][image_ind] = enabled
+        try:
+            proc_list[k_ind][image_ind] = pic_roi
+            line_data_x[k_ind][image_ind] = line_x
+            line_data_y[k_ind][image_ind] = line_y
+            self.scan_result["x_cent"][k_ind][image_ind] = x_cent
+            self.scan_result["y_cent"][k_ind][image_ind] = y_cent
+            self.scan_result["sigma_x"][k_ind][image_ind] = sigma_x
+            self.scan_result["sigma_y"][k_ind][image_ind] = sigma_y
+            self.scan_result["charge_data"][k_ind][image_ind] = q
+        except IndexError:
+            proc_list[k_ind].append(pic_roi)
+            line_data_x[k_ind].append(pic_roi.sum(0))
+            line_data_y[k_ind].append(pic_roi.sum(1))
+            self.scan_result["x_cent"][k_ind].append(x_cent)
+            self.scan_result["y_cent"][k_ind].append(y_cent)
+            self.scan_result["sigma_x"][k_ind].append(sigma_x)
+            self.scan_result["sigma_y"][k_ind].append(sigma_y)
+            self.scan_result["charge_data"][k_ind].append(q)
         self.image_done_signal.emit(k_ind, image_ind)
         return result
 
@@ -778,6 +752,7 @@ class QuadScanController(QtCore.QObject):
         d = self.get_parameter("analysis", "quad_screen_dist")
         L = self.get_parameter("analysis", "quad_length")
         gamma_energy = self.get_parameter("analysis", "electron_energy") / 0.511
+        self.logger.debug("sigma_data: {0}, en_data: {1}".format(sigma_data.shape, en_data.shape))
         try:
             s2 = (sigma_data[en_data]) ** 2
         except IndexError as e:
@@ -985,6 +960,24 @@ class QuadScanController(QtCore.QObject):
 
         def_list = defer.DeferredList(dl)
         return def_list
+
+    def exit(self):
+        self.logger.info("Exiting controller. Process pools stopping.")
+        if self.process_pool is not None:
+            try:
+                self.process_pool.stop()
+            except AttributeError:
+                pass
+        if self.load_pool is not None:
+            try:
+                self.load_pool.stop()
+            except AttributeError:
+                pass
+        if self.save_pool is not None:
+            try:
+                self.save_pool.stop()
+            except AttributeError:
+                pass
 
 
 class Scan(object):
@@ -1347,7 +1340,12 @@ class QuadScanAnalyse(object):
         self.d.errback(err)
 
 
-def test_image_pool(image, k_ind, image_ind, threshold, roi_cent, roi_dim, cal=1, kernel=3):
+def test_image_pool(a, b):
+    print("Yo! {0}, {1}".format(a, b))
+    return a
+
+
+def process_image_func(image, k_ind, image_ind, threshold, roi_cent, roi_dim, cal=1, kernel=3):
     print("Processing image {0}, {1} in pool".format(k_ind, image_ind))
     t0 = time.time()
     x = np.array([int(roi_cent[0] - roi_dim[0] / 2.0), int(roi_cent[0] + roi_dim[0] / 2.0)])
@@ -1425,6 +1423,7 @@ if __name__ == "__main__":
     loaddir3 = "C:/Users/filip/Documents/workspace/emittancescansinglequad/saved-images/2018-04-16_13-38-53_I-MS1-MAG-QB-01_I-MS1-DIA-SCRN-01"
     controller.set_parameter("load", "path", str(loaddir3))
     sh.send_command("load")
+
 
 
 

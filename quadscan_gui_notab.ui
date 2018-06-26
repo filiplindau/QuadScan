@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>1111</width>
-    <height>940</height>
+    <width>1124</width>
+    <height>1022</height>
    </rect>
   </property>
   <property name="sizePolicy">
@@ -51,12 +51,12 @@
     </widget>
    </item>
    <item>
-    <layout class="QHBoxLayout" name="horizontalLayout_3" stretch="1,1,1,1,1,2">
+    <layout class="QHBoxLayout" name="horizontalLayout_3" stretch="1,1,1,1,2,2">
      <property name="topMargin">
       <number>0</number>
      </property>
      <property name="rightMargin">
-      <number>0</number>
+      <number>6</number>
      </property>
      <item>
       <layout class="QGridLayout" name="gridLayout_3">
@@ -66,21 +66,91 @@
        <property name="rightMargin">
         <number>0</number>
        </property>
-       <item row="1" column="1">
-        <widget class="QLineEdit" name="screen_select_edit"/>
-       </item>
-       <item row="5" column="0">
-        <widget class="QLabel" name="label_19">
+       <item row="15" column="0">
+        <widget class="QLabel" name="label_20">
          <property name="text">
-          <string>Info</string>
-         </property>
-         <property name="alignment">
-          <set>Qt::AlignLeading|Qt::AlignLeft|Qt::AlignTop</set>
+          <string>Screen control</string>
          </property>
         </widget>
        </item>
+       <item row="15" column="1">
+        <layout class="QHBoxLayout" name="horizontalLayout_7">
+         <item>
+          <widget class="QPushButton" name="screen_in_button">
+           <property name="maximumSize">
+            <size>
+             <width>120</width>
+             <height>16777215</height>
+            </size>
+           </property>
+           <property name="text">
+            <string>In</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QPushButton" name="screen_out_button">
+           <property name="maximumSize">
+            <size>
+             <width>120</width>
+             <height>16777215</height>
+            </size>
+           </property>
+           <property name="text">
+            <string>Out</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QLabel" name="screen_state_label">
+           <property name="minimumSize">
+            <size>
+             <width>60</width>
+             <height>0</height>
+            </size>
+           </property>
+           <property name="text">
+            <string>--</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <spacer name="horizontalSpacer_5">
+           <property name="orientation">
+            <enum>Qt::Horizontal</enum>
+           </property>
+           <property name="sizeHint" stdset="0">
+            <size>
+             <width>40</width>
+             <height>20</height>
+            </size>
+           </property>
+          </spacer>
+         </item>
+        </layout>
+       </item>
+       <item row="1" column="1">
+        <widget class="QLineEdit" name="screen_select_edit"/>
+       </item>
        <item row="2" column="2">
         <widget class="QLabel" name="label_13">
+         <property name="text">
+          <string>Valid</string>
+         </property>
+        </widget>
+       </item>
+       <item row="2" column="0">
+        <widget class="QLabel" name="label_12">
+         <property name="text">
+          <string>Quad select</string>
+         </property>
+        </widget>
+       </item>
+       <item row="2" column="1">
+        <widget class="QLineEdit" name="quad_select_edit"/>
+       </item>
+       <item row="1" column="2">
+        <widget class="QLabel" name="label_15">
          <property name="text">
           <string>Valid</string>
          </property>
@@ -90,13 +160,6 @@
         <widget class="QLabel" name="label_14">
          <property name="text">
           <string>Screen select</string>
-         </property>
-        </widget>
-       </item>
-       <item row="2" column="0">
-        <widget class="QLabel" name="label_12">
-         <property name="text">
-          <string>Quad select</string>
          </property>
         </widget>
        </item>
@@ -140,15 +203,28 @@
          </item>
         </layout>
        </item>
-       <item row="2" column="1">
-        <widget class="QLineEdit" name="quad_select_edit"/>
-       </item>
-       <item row="1" column="2">
-        <widget class="QLabel" name="label_15">
+       <item row="5" column="0">
+        <widget class="QLabel" name="label_19">
          <property name="text">
-          <string>Valid</string>
+          <string>Info</string>
+         </property>
+         <property name="alignment">
+          <set>Qt::AlignLeading|Qt::AlignLeft|Qt::AlignTop</set>
          </property>
         </widget>
+       </item>
+       <item row="14" column="0">
+        <spacer name="verticalSpacer_5">
+         <property name="orientation">
+          <enum>Qt::Vertical</enum>
+         </property>
+         <property name="sizeHint" stdset="0">
+          <size>
+           <width>20</width>
+           <height>10</height>
+          </size>
+         </property>
+        </spacer>
        </item>
        <item row="5" column="1">
         <layout class="QGridLayout" name="gridLayout_6">
@@ -250,18 +326,71 @@
          </item>
         </layout>
        </item>
-       <item row="14" column="0">
-        <spacer name="verticalSpacer_5">
-         <property name="orientation">
-          <enum>Qt::Vertical</enum>
+       <item row="16" column="0">
+        <widget class="QLabel" name="label_22">
+         <property name="text">
+          <string>Camera control</string>
          </property>
-         <property name="sizeHint" stdset="0">
-          <size>
-           <width>20</width>
-           <height>10</height>
-          </size>
+        </widget>
+       </item>
+       <item row="16" column="1">
+        <layout class="QHBoxLayout" name="horizontalLayout_6">
+         <property name="topMargin">
+          <number>0</number>
          </property>
-        </spacer>
+         <item>
+          <widget class="QPushButton" name="camera_start_button">
+           <property name="maximumSize">
+            <size>
+             <width>120</width>
+             <height>16777215</height>
+            </size>
+           </property>
+           <property name="text">
+            <string>Start</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QPushButton" name="camera_stop_button">
+           <property name="maximumSize">
+            <size>
+             <width>120</width>
+             <height>16777215</height>
+            </size>
+           </property>
+           <property name="text">
+            <string>Stop</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QLabel" name="camera_state_label">
+           <property name="minimumSize">
+            <size>
+             <width>60</width>
+             <height>0</height>
+            </size>
+           </property>
+           <property name="text">
+            <string>--</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <spacer name="horizontalSpacer_4">
+           <property name="orientation">
+            <enum>Qt::Horizontal</enum>
+           </property>
+           <property name="sizeHint" stdset="0">
+            <size>
+             <width>40</width>
+             <height>20</height>
+            </size>
+           </property>
+          </spacer>
+         </item>
+        </layout>
        </item>
       </layout>
      </item>
@@ -283,73 +412,127 @@
        <property name="bottomMargin">
         <number>6</number>
        </property>
-       <item row="4" column="2">
-        <widget class="QSpinBox" name="k_number_values_spinbox">
-         <property name="maximumSize">
-          <size>
-           <width>100</width>
-           <height>16777215</height>
-          </size>
-         </property>
-         <property name="minimum">
-          <number>1</number>
-         </property>
-         <property name="maximum">
-          <number>9999</number>
-         </property>
-         <property name="value">
-          <number>10</number>
-         </property>
-        </widget>
-       </item>
-       <item row="6" column="0">
-        <spacer name="verticalSpacer_2">
-         <property name="orientation">
-          <enum>Qt::Vertical</enum>
-         </property>
-         <property name="sizeHint" stdset="0">
-          <size>
-           <width>20</width>
-           <height>40</height>
-          </size>
-         </property>
-        </spacer>
-       </item>
-       <item row="2" column="0">
-        <widget class="QLabel" name="label_43">
+       <item row="8" column="0">
+        <widget class="QLabel" name="label_5">
          <property name="text">
-          <string>Current K-value</string>
+          <string>Data base dir</string>
          </property>
         </widget>
        </item>
-       <item row="0" column="2">
-        <widget class="QDoubleSpinBox" name="energy_spinbox">
-         <property name="minimumSize">
-          <size>
-           <width>100</width>
-           <height>0</height>
-          </size>
+       <item row="7" column="0">
+        <widget class="QLabel" name="label_11">
+         <property name="text">
+          <string>Scan</string>
          </property>
-         <property name="maximumSize">
-          <size>
-           <width>100</width>
-           <height>16777215</height>
-          </size>
+        </widget>
+       </item>
+       <item row="7" column="2">
+        <layout class="QHBoxLayout" name="horizontalLayout_4">
+         <property name="topMargin">
+          <number>0</number>
          </property>
-         <property name="suffix">
-          <string> MeV</string>
+         <item>
+          <widget class="QPushButton" name="scan_start_button">
+           <property name="sizePolicy">
+            <sizepolicy hsizetype="Minimum" vsizetype="Fixed">
+             <horstretch>0</horstretch>
+             <verstretch>0</verstretch>
+            </sizepolicy>
+           </property>
+           <property name="maximumSize">
+            <size>
+             <width>120</width>
+             <height>16777215</height>
+            </size>
+           </property>
+           <property name="text">
+            <string>Start</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QPushButton" name="scan_stop_button">
+           <property name="sizePolicy">
+            <sizepolicy hsizetype="Minimum" vsizetype="Fixed">
+             <horstretch>0</horstretch>
+             <verstretch>0</verstretch>
+            </sizepolicy>
+           </property>
+           <property name="maximumSize">
+            <size>
+             <width>120</width>
+             <height>16777215</height>
+            </size>
+           </property>
+           <property name="text">
+            <string>Stop</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <spacer name="horizontalSpacer_2">
+           <property name="orientation">
+            <enum>Qt::Horizontal</enum>
+           </property>
+           <property name="sizeType">
+            <enum>QSizePolicy::Expanding</enum>
+           </property>
+           <property name="sizeHint" stdset="0">
+            <size>
+             <width>20</width>
+             <height>20</height>
+            </size>
+           </property>
+          </spacer>
+         </item>
+        </layout>
+       </item>
+       <item row="9" column="0">
+        <widget class="QLabel" name="label_45">
+         <property name="text">
+          <string>Save name</string>
          </property>
-         <property name="decimals">
-          <number>1</number>
-         </property>
-         <property name="maximum">
-          <double>6000.000000000000000</double>
-         </property>
-         <property name="singleStep">
-          <double>10.000000000000000</double>
-         </property>
-         <property name="value">
-          <double>2998.000000000000000</double>
+        </widget>
+       </item>
+       <item row="9" column="2">
+        <layout class="QHBoxLayout" name="horizontalLayout_12">
+         <item>
+          <widget class="QLabel" name="label_47">
+           <property name="toolTip">
+            <string>E.g. 2018-04-16_13-40-48_I-MS1-MAG-QB-01_MS1-DIA-SCRN-01</string>
+           </property>
+           <property name="text">
+            <string>DATE_TIME_QUAD_SCREEN_</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QLineEdit" name="savename_edit">
+           <property name="toolTip">
+            <string>Extra identifying text in save directory</string>
+           </property>
+          </widget>
+         </item>
+        </layout>
+       </item>
+       <item row="8" column="2">
+        <layout class="QHBoxLayout" name="horizontalLayout_13">
+         <item>
+          <widget class="QLineEdit" name="data_base_dir_edit"/>
+         </item>
+         <item>
+          <widget class="QToolButton" name="data_base_dir_button">
+           <property name="text">
+            <string>...</string>
+           </property>
+          </widget>
+         </item>
+        </layout>
+       </item>
+       <item row="4" column="0">
+        <widget class="QLabel" name="label_18">
+         <property name="text">
+          <string>Number of k-values</string>
          </property>
         </widget>
        </item>
@@ -408,6 +591,87 @@
           </spacer>
          </item>
         </layout>
+       </item>
+       <item row="2" column="0">
+        <widget class="QLabel" name="label_43">
+         <property name="text">
+          <string>Current K-value</string>
+         </property>
+        </widget>
+       </item>
+       <item row="0" column="2">
+        <widget class="QDoubleSpinBox" name="energy_spinbox">
+         <property name="minimumSize">
+          <size>
+           <width>100</width>
+           <height>0</height>
+          </size>
+         </property>
+         <property name="maximumSize">
+          <size>
+           <width>100</width>
+           <height>16777215</height>
+          </size>
+         </property>
+         <property name="suffix">
+          <string> MeV</string>
+         </property>
+         <property name="decimals">
+          <number>1</number>
+         </property>
+         <property name="maximum">
+          <double>6000.000000000000000</double>
+         </property>
+         <property name="singleStep">
+          <double>10.000000000000000</double>
+         </property>
+         <property name="value">
+          <double>2998.000000000000000</double>
+         </property>
+        </widget>
+       </item>
+       <item row="3" column="0">
+        <widget class="QLabel" name="label_16">
+         <property name="text">
+          <string>K value range</string>
+         </property>
+        </widget>
+       </item>
+       <item row="5" column="0">
+        <widget class="QLabel" name="label_36">
+         <property name="text">
+          <string>Number of images</string>
+         </property>
+        </widget>
+       </item>
+       <item row="5" column="2">
+        <widget class="QSpinBox" name="images_number_spinbox">
+         <property name="maximumSize">
+          <size>
+           <width>100</width>
+           <height>16777215</height>
+          </size>
+         </property>
+        </widget>
+       </item>
+       <item row="4" column="2">
+        <widget class="QSpinBox" name="k_number_values_spinbox">
+         <property name="maximumSize">
+          <size>
+           <width>100</width>
+           <height>16777215</height>
+          </size>
+         </property>
+         <property name="minimum">
+          <number>1</number>
+         </property>
+         <property name="maximum">
+          <number>9999</number>
+         </property>
+         <property name="value">
+          <number>10</number>
+         </property>
+        </widget>
        </item>
        <item row="3" column="2">
         <layout class="QHBoxLayout" name="horizontalLayout_5">
@@ -542,354 +806,8 @@
          </item>
         </layout>
        </item>
-       <item row="5" column="2">
-        <widget class="QSpinBox" name="images_number_spinbox">
-         <property name="maximumSize">
-          <size>
-           <width>100</width>
-           <height>16777215</height>
-          </size>
-         </property>
-        </widget>
-       </item>
-       <item row="5" column="0">
-        <widget class="QLabel" name="label_36">
-         <property name="text">
-          <string>Number of images</string>
-         </property>
-        </widget>
-       </item>
-       <item row="3" column="0">
-        <widget class="QLabel" name="label_16">
-         <property name="text">
-          <string>K value range</string>
-         </property>
-        </widget>
-       </item>
-       <item row="4" column="0">
-        <widget class="QLabel" name="label_18">
-         <property name="text">
-          <string>Number of k-values</string>
-         </property>
-        </widget>
-       </item>
-      </layout>
-     </item>
-     <item>
-      <widget class="Line" name="line_10">
-       <property name="orientation">
-        <enum>Qt::Vertical</enum>
-       </property>
-      </widget>
-     </item>
-     <item>
-      <layout class="QGridLayout" name="gridLayout_2" rowstretch="0,0,0,0,0,0,1,1,1">
-       <property name="topMargin">
-        <number>6</number>
-       </property>
-       <property name="rightMargin">
-        <number>6</number>
-       </property>
-       <property name="bottomMargin">
-        <number>6</number>
-       </property>
-       <property name="verticalSpacing">
-        <number>6</number>
-       </property>
-       <item row="0" column="2">
-        <layout class="QHBoxLayout" name="horizontalLayout_7">
-         <item>
-          <widget class="QPushButton" name="screen_in_button">
-           <property name="maximumSize">
-            <size>
-             <width>120</width>
-             <height>16777215</height>
-            </size>
-           </property>
-           <property name="text">
-            <string>In</string>
-           </property>
-          </widget>
-         </item>
-         <item>
-          <widget class="QPushButton" name="screen_out_button">
-           <property name="maximumSize">
-            <size>
-             <width>120</width>
-             <height>16777215</height>
-            </size>
-           </property>
-           <property name="text">
-            <string>Out</string>
-           </property>
-          </widget>
-         </item>
-         <item>
-          <widget class="QLabel" name="screen_state_label">
-           <property name="minimumSize">
-            <size>
-             <width>60</width>
-             <height>0</height>
-            </size>
-           </property>
-           <property name="text">
-            <string>--</string>
-           </property>
-          </widget>
-         </item>
-         <item>
-          <spacer name="horizontalSpacer_5">
-           <property name="orientation">
-            <enum>Qt::Horizontal</enum>
-           </property>
-           <property name="sizeHint" stdset="0">
-            <size>
-             <width>40</width>
-             <height>20</height>
-            </size>
-           </property>
-          </spacer>
-         </item>
-        </layout>
-       </item>
-       <item row="4" column="0">
-        <widget class="QLabel" name="label_5">
-         <property name="text">
-          <string>Data base dir</string>
-         </property>
-        </widget>
-       </item>
-       <item row="3" column="0">
-        <spacer name="verticalSpacer_3">
-         <property name="orientation">
-          <enum>Qt::Vertical</enum>
-         </property>
-         <property name="sizeHint" stdset="0">
-          <size>
-           <width>20</width>
-           <height>20</height>
-          </size>
-         </property>
-        </spacer>
-       </item>
-       <item row="5" column="0">
-        <widget class="QLabel" name="label_6">
-         <property name="text">
-          <string>Load data</string>
-         </property>
-        </widget>
-       </item>
-       <item row="4" column="2">
-        <widget class="QLineEdit" name="data_base_dir_edit"/>
-       </item>
-       <item row="1" column="0">
-        <widget class="QLabel" name="label_22">
-         <property name="text">
-          <string>Camera control</string>
-         </property>
-        </widget>
-       </item>
-       <item row="0" column="0">
-        <widget class="QLabel" name="label_20">
-         <property name="text">
-          <string>Screen control</string>
-         </property>
-        </widget>
-       </item>
-       <item row="4" column="3">
-        <widget class="QToolButton" name="data_base_dir_button">
-         <property name="text">
-          <string>...</string>
-         </property>
-        </widget>
-       </item>
-       <item row="5" column="2">
-        <layout class="QHBoxLayout" name="horizontalLayout_9">
-         <item>
-          <widget class="QPushButton" name="load_data_button">
-           <property name="maximumSize">
-            <size>
-             <width>120</width>
-             <height>16777215</height>
-            </size>
-           </property>
-           <property name="text">
-            <string>Load</string>
-           </property>
-          </widget>
-         </item>
-         <item>
-          <spacer name="horizontalSpacer">
-           <property name="orientation">
-            <enum>Qt::Horizontal</enum>
-           </property>
-           <property name="sizeHint" stdset="0">
-            <size>
-             <width>40</width>
-             <height>20</height>
-            </size>
-           </property>
-          </spacer>
-         </item>
-        </layout>
-       </item>
-       <item row="1" column="2">
-        <layout class="QHBoxLayout" name="horizontalLayout_6">
-         <property name="topMargin">
-          <number>0</number>
-         </property>
-         <item>
-          <widget class="QPushButton" name="camera_start_button">
-           <property name="maximumSize">
-            <size>
-             <width>120</width>
-             <height>16777215</height>
-            </size>
-           </property>
-           <property name="text">
-            <string>Start</string>
-           </property>
-          </widget>
-         </item>
-         <item>
-          <widget class="QPushButton" name="camera_stop_button">
-           <property name="maximumSize">
-            <size>
-             <width>120</width>
-             <height>16777215</height>
-            </size>
-           </property>
-           <property name="text">
-            <string>Stop</string>
-           </property>
-          </widget>
-         </item>
-         <item>
-          <widget class="QLabel" name="camera_state_label">
-           <property name="minimumSize">
-            <size>
-             <width>60</width>
-             <height>0</height>
-            </size>
-           </property>
-           <property name="text">
-            <string>--</string>
-           </property>
-          </widget>
-         </item>
-         <item>
-          <spacer name="horizontalSpacer_4">
-           <property name="orientation">
-            <enum>Qt::Horizontal</enum>
-           </property>
-           <property name="sizeHint" stdset="0">
-            <size>
-             <width>40</width>
-             <height>20</height>
-            </size>
-           </property>
-          </spacer>
-         </item>
-        </layout>
-       </item>
-       <item row="2" column="2">
-        <layout class="QHBoxLayout" name="horizontalLayout_4">
-         <property name="topMargin">
-          <number>0</number>
-         </property>
-         <item>
-          <widget class="QPushButton" name="scan_start_button">
-           <property name="sizePolicy">
-            <sizepolicy hsizetype="Minimum" vsizetype="Fixed">
-             <horstretch>0</horstretch>
-             <verstretch>0</verstretch>
-            </sizepolicy>
-           </property>
-           <property name="maximumSize">
-            <size>
-             <width>120</width>
-             <height>16777215</height>
-            </size>
-           </property>
-           <property name="text">
-            <string>Start</string>
-           </property>
-          </widget>
-         </item>
-         <item>
-          <widget class="QPushButton" name="scan_stop_button">
-           <property name="sizePolicy">
-            <sizepolicy hsizetype="Minimum" vsizetype="Fixed">
-             <horstretch>0</horstretch>
-             <verstretch>0</verstretch>
-            </sizepolicy>
-           </property>
-           <property name="maximumSize">
-            <size>
-             <width>120</width>
-             <height>16777215</height>
-            </size>
-           </property>
-           <property name="text">
-            <string>Stop</string>
-           </property>
-          </widget>
-         </item>
-         <item>
-          <spacer name="horizontalSpacer_2">
-           <property name="orientation">
-            <enum>Qt::Horizontal</enum>
-           </property>
-           <property name="sizeType">
-            <enum>QSizePolicy::Expanding</enum>
-           </property>
-           <property name="sizeHint" stdset="0">
-            <size>
-             <width>20</width>
-             <height>20</height>
-            </size>
-           </property>
-          </spacer>
-         </item>
-        </layout>
-       </item>
-       <item row="2" column="0">
-        <widget class="QLabel" name="label_11">
-         <property name="text">
-          <string>Scan</string>
-         </property>
-        </widget>
-       </item>
        <item row="6" column="0">
-        <widget class="QLabel" name="label_45">
-         <property name="text">
-          <string>Save name</string>
-         </property>
-        </widget>
-       </item>
-       <item row="6" column="2" colspan="2">
-        <layout class="QHBoxLayout" name="horizontalLayout_12">
-         <item>
-          <widget class="QLabel" name="label_47">
-           <property name="toolTip">
-            <string>E.g. 2018-04-16_13-40-48_I-MS1-MAG-QB-01_MS1-DIA-SCRN-01</string>
-           </property>
-           <property name="text">
-            <string>DATE_TIME_QUAD_SCREEN_</string>
-           </property>
-          </widget>
-         </item>
-         <item>
-          <widget class="QLineEdit" name="savename_edit">
-           <property name="toolTip">
-            <string>Extra identifying text in save directory</string>
-           </property>
-          </widget>
-         </item>
-        </layout>
-       </item>
-       <item row="8" column="0">
-        <spacer name="verticalSpacer_4">
+        <spacer name="verticalSpacer_2">
          <property name="orientation">
           <enum>Qt::Vertical</enum>
          </property>
@@ -901,52 +819,43 @@
          </property>
         </spacer>
        </item>
-       <item row="7" column="2">
-        <spacer name="verticalSpacer_9">
-         <property name="orientation">
-          <enum>Qt::Vertical</enum>
-         </property>
-         <property name="sizeType">
-          <enum>QSizePolicy::Expanding</enum>
-         </property>
-         <property name="sizeHint" stdset="0">
-          <size>
-           <width>20</width>
-           <height>10</height>
-          </size>
-         </property>
-        </spacer>
-       </item>
-       <item row="7" column="0">
-        <spacer name="verticalSpacer_10">
-         <property name="orientation">
-          <enum>Qt::Vertical</enum>
-         </property>
-         <property name="sizeType">
-          <enum>QSizePolicy::Fixed</enum>
-         </property>
-         <property name="sizeHint" stdset="0">
-          <size>
-           <width>20</width>
-           <height>10</height>
-          </size>
-         </property>
-        </spacer>
-       </item>
       </layout>
+     </item>
+     <item>
+      <widget class="Line" name="line_10">
+       <property name="orientation">
+        <enum>Qt::Vertical</enum>
+       </property>
+      </widget>
      </item>
      <item>
       <widget class="ImageView" name="camera_raw_widget" native="true">
        <property name="sizePolicy">
         <sizepolicy hsizetype="Expanding" vsizetype="Preferred">
-         <horstretch>0</horstretch>
+         <horstretch>1</horstretch>
          <verstretch>0</verstretch>
         </sizepolicy>
        </property>
        <property name="minimumSize">
         <size>
-         <width>20</width>
+         <width>50</width>
          <height>20</height>
+        </size>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="ImageView" name="camera_roi_widget" native="true">
+       <property name="sizePolicy">
+        <sizepolicy hsizetype="Expanding" vsizetype="Preferred">
+         <horstretch>2</horstretch>
+         <verstretch>0</verstretch>
+        </sizepolicy>
+       </property>
+       <property name="minimumSize">
+        <size>
+         <width>50</width>
+         <height>0</height>
         </size>
        </property>
       </widget>
@@ -966,7 +875,7 @@
       <number>0</number>
      </property>
      <property name="rightMargin">
-      <number>0</number>
+      <number>6</number>
      </property>
      <item>
       <widget class="QLabel" name="label_10">
@@ -977,7 +886,7 @@
         </sizepolicy>
        </property>
        <property name="text">
-        <string>Data:</string>
+        <string>Current data set:</string>
        </property>
       </widget>
      </item>
@@ -985,7 +894,7 @@
       <widget class="QLabel" name="data_source_label">
        <property name="minimumSize">
         <size>
-         <width>10</width>
+         <width>50</width>
          <height>0</height>
         </size>
        </property>
@@ -1010,6 +919,26 @@
        </property>
       </spacer>
      </item>
+     <item>
+      <widget class="QLabel" name="label_6">
+       <property name="text">
+        <string>Load data</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QPushButton" name="load_data_button">
+       <property name="maximumSize">
+        <size>
+         <width>120</width>
+         <height>16777215</height>
+        </size>
+       </property>
+       <property name="text">
+        <string>Load</string>
+       </property>
+      </widget>
+     </item>
     </layout>
    </item>
    <item>
@@ -1029,51 +958,27 @@
        <property name="rightMargin">
         <number>6</number>
        </property>
-       <item row="0" column="0">
-        <widget class="QLabel" name="label_48">
-         <property name="text">
-          <string>d</string>
-         </property>
-        </widget>
-       </item>
-       <item row="2" column="0">
-        <widget class="QLabel" name="label_52">
-         <property name="text">
-          <string>W</string>
-         </property>
-        </widget>
-       </item>
-       <item row="2" column="1">
-        <widget class="QLabel" name="electron_energy_data_label">
+       <item row="4" column="1">
+        <widget class="QLabel" name="k_min_data_label">
          <property name="toolTip">
-          <string>Electron energy</string>
+          <string>Minimum k-value of scan</string>
          </property>
          <property name="text">
           <string/>
          </property>
         </widget>
        </item>
-       <item row="4" column="0">
-        <widget class="QLabel" name="label_56">
+       <item row="0" column="1">
+        <widget class="QLabel" name="quad_screen_dist_data_label">
+         <property name="toolTip">
+          <string>Quad - Screen distance</string>
+         </property>
          <property name="text">
-          <string>k&lt;sub&gt;min&lt;/sub&gt;</string>
+          <string/>
          </property>
         </widget>
        </item>
-       <item row="6" column="0">
-        <spacer name="verticalSpacer_6">
-         <property name="orientation">
-          <enum>Qt::Vertical</enum>
-         </property>
-         <property name="sizeHint" stdset="0">
-          <size>
-           <width>20</width>
-           <height>40</height>
-          </size>
-         </property>
-        </spacer>
-       </item>
-       <item row="8" column="0">
+       <item row="7" column="0">
         <widget class="QLabel" name="label_4">
          <property name="text">
           <string>ROI</string>
@@ -1087,16 +992,6 @@
          </property>
         </widget>
        </item>
-       <item row="4" column="1">
-        <widget class="QLabel" name="k_min_data_label">
-         <property name="toolTip">
-          <string>Minimum k-value of scan</string>
-         </property>
-         <property name="text">
-          <string/>
-         </property>
-        </widget>
-       </item>
        <item row="3" column="1">
         <widget class="QLabel" name="k_max_data_label">
          <property name="toolTip">
@@ -1107,17 +1002,17 @@
          </property>
         </widget>
        </item>
-       <item row="9" column="0">
+       <item row="8" column="0">
         <widget class="QLabel" name="label_2">
          <property name="text">
           <string>x center</string>
          </property>
         </widget>
        </item>
-       <item row="0" column="1">
-        <widget class="QLabel" name="quad_screen_dist_data_label">
+       <item row="2" column="1">
+        <widget class="QLabel" name="electron_energy_data_label">
          <property name="toolTip">
-          <string>Quad - Screen distance</string>
+          <string>Electron energy</string>
          </property>
          <property name="text">
           <string/>
@@ -1141,7 +1036,7 @@
          </property>
         </widget>
        </item>
-       <item row="9" column="1">
+       <item row="8" column="1">
         <widget class="QSpinBox" name="roi_x_spinbox">
          <property name="minimumSize">
           <size>
@@ -1157,7 +1052,7 @@
          </property>
         </widget>
        </item>
-       <item row="11" column="1">
+       <item row="10" column="1">
         <widget class="QSpinBox" name="roi_width_spinbox">
          <property name="maximum">
           <number>9999</number>
@@ -1167,68 +1062,35 @@
          </property>
         </widget>
        </item>
-       <item row="10" column="1">
-        <widget class="QSpinBox" name="roi_y_spinbox">
-         <property name="maximum">
-          <number>9999</number>
-         </property>
-         <property name="singleStep">
-          <number>5</number>
+       <item row="0" column="0">
+        <widget class="QLabel" name="label_48">
+         <property name="text">
+          <string>d</string>
          </property>
         </widget>
        </item>
-       <item row="12" column="1">
-        <widget class="QSpinBox" name="roi_height_spinbox">
-         <property name="maximum">
-          <number>9999</number>
-         </property>
-         <property name="singleStep">
-          <number>5</number>
+       <item row="2" column="0">
+        <widget class="QLabel" name="label_52">
+         <property name="text">
+          <string>W</string>
          </property>
         </widget>
        </item>
-       <item row="12" column="0">
+       <item row="4" column="0">
+        <widget class="QLabel" name="label_56">
+         <property name="text">
+          <string>k&lt;sub&gt;min&lt;/sub&gt;</string>
+         </property>
+        </widget>
+       </item>
+       <item row="11" column="0">
         <widget class="QLabel" name="label_46">
          <property name="text">
           <string>Height</string>
          </property>
         </widget>
        </item>
-       <item row="11" column="0">
-        <widget class="QLabel" name="label_49">
-         <property name="text">
-          <string>Width</string>
-         </property>
-        </widget>
-       </item>
-       <item row="10" column="0">
-        <widget class="QLabel" name="label_51">
-         <property name="text">
-          <string>y center</string>
-         </property>
-        </widget>
-       </item>
-       <item row="15" column="0">
-        <widget class="QLabel" name="label_21">
-         <property name="text">
-          <string>Threshold</string>
-         </property>
-        </widget>
-       </item>
-       <item row="14" column="0">
-        <spacer name="verticalSpacer_7">
-         <property name="orientation">
-          <enum>Qt::Vertical</enum>
-         </property>
-         <property name="sizeHint" stdset="0">
-          <size>
-           <width>20</width>
-           <height>40</height>
-          </size>
-         </property>
-        </spacer>
-       </item>
-       <item row="15" column="1">
+       <item row="14" column="1">
         <widget class="QDoubleSpinBox" name="threshold_spinbox">
          <property name="toolTip">
           <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Threshold intensity for processed image. &lt;/p&gt;&lt;p&gt;Range 0.0 - 1.0 in absolute units&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
@@ -1244,14 +1106,44 @@
          </property>
         </widget>
        </item>
-       <item row="16" column="0">
-        <widget class="QLabel" name="label_34">
-         <property name="text">
-          <string>Median kernel size</string>
+       <item row="11" column="1">
+        <widget class="QSpinBox" name="roi_height_spinbox">
+         <property name="maximum">
+          <number>9999</number>
+         </property>
+         <property name="singleStep">
+          <number>5</number>
          </property>
         </widget>
        </item>
-       <item row="16" column="1">
+       <item row="9" column="0">
+        <widget class="QLabel" name="label_51">
+         <property name="text">
+          <string>y center</string>
+         </property>
+        </widget>
+       </item>
+       <item row="13" column="0">
+        <spacer name="verticalSpacer_7">
+         <property name="orientation">
+          <enum>Qt::Vertical</enum>
+         </property>
+         <property name="sizeHint" stdset="0">
+          <size>
+           <width>20</width>
+           <height>40</height>
+          </size>
+         </property>
+        </spacer>
+       </item>
+       <item row="16" column="0">
+        <widget class="QLabel" name="label_33">
+         <property name="text">
+          <string>Fit algo</string>
+         </property>
+        </widget>
+       </item>
+       <item row="15" column="1">
         <widget class="QSpinBox" name="median_kernel_spinbox">
          <property name="maximum">
           <number>7</number>
@@ -1264,17 +1156,55 @@
          </property>
         </widget>
        </item>
-       <item row="17" column="0">
-        <widget class="QLabel" name="label_33">
+       <item row="14" column="0">
+        <widget class="QLabel" name="label_21">
          <property name="text">
-          <string>Fit algo</string>
+          <string>Threshold</string>
+         </property>
+        </widget>
+       </item>
+       <item row="10" column="0">
+        <widget class="QLabel" name="label_49">
+         <property name="text">
+          <string>Width</string>
+         </property>
+        </widget>
+       </item>
+       <item row="6" column="0" colspan="2">
+        <widget class="Line" name="line_9">
+         <property name="orientation">
+          <enum>Qt::Horizontal</enum>
+         </property>
+        </widget>
+       </item>
+       <item row="9" column="1">
+        <widget class="QSpinBox" name="roi_y_spinbox">
+         <property name="maximum">
+          <number>9999</number>
+         </property>
+         <property name="singleStep">
+          <number>5</number>
+         </property>
+        </widget>
+       </item>
+       <item row="15" column="0">
+        <widget class="QLabel" name="label_34">
+         <property name="text">
+          <string>Median kernel size</string>
+         </property>
+        </widget>
+       </item>
+       <item row="16" column="1">
+        <widget class="QComboBox" name="fit_algo_combobox"/>
+       </item>
+       <item row="12" column="0" colspan="2">
+        <widget class="Line" name="line_4">
+         <property name="orientation">
+          <enum>Qt::Horizontal</enum>
          </property>
         </widget>
        </item>
        <item row="17" column="1">
-        <widget class="QComboBox" name="fit_algo_combobox"/>
-       </item>
-       <item row="18" column="1">
         <widget class="QPushButton" name="process_button">
          <property name="minimumSize">
           <size>
@@ -1293,22 +1223,8 @@
          </property>
         </widget>
        </item>
-       <item row="13" column="0" colspan="2">
-        <widget class="Line" name="line_4">
-         <property name="orientation">
-          <enum>Qt::Horizontal</enum>
-         </property>
-        </widget>
-       </item>
-       <item row="7" column="0" colspan="2">
-        <widget class="Line" name="line_9">
-         <property name="orientation">
-          <enum>Qt::Horizontal</enum>
-         </property>
-        </widget>
-       </item>
        <item row="5" column="0">
-        <spacer name="verticalSpacer_8">
+        <spacer name="verticalSpacer_6">
          <property name="orientation">
           <enum>Qt::Vertical</enum>
          </property>
@@ -1476,16 +1392,6 @@
          </property>
         </widget>
        </item>
-       <item>
-        <layout class="QGridLayout" name="gridLayout_4">
-         <property name="topMargin">
-          <number>6</number>
-         </property>
-         <property name="rightMargin">
-          <number>6</number>
-         </property>
-        </layout>
-       </item>
       </layout>
      </item>
      <item>
@@ -1593,7 +1499,7 @@
       </layout>
      </item>
      <item>
-      <layout class="QGridLayout" name="gridLayout_5" columnstretch="0,0,0">
+      <layout class="QGridLayout" name="gridLayout_5" columnstretch="0,0">
        <property name="topMargin">
         <number>6</number>
        </property>
@@ -1607,6 +1513,11 @@
            <width>0</width>
            <height>0</height>
           </size>
+         </property>
+         <property name="font">
+          <font>
+           <pointsize>12</pointsize>
+          </font>
          </property>
          <property name="text">
           <string>Result:</string>

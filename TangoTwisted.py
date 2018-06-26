@@ -8,6 +8,7 @@ import threading
 import time
 import logging
 import traceback
+import multiprocessing
 
 from twisted_cut.protocol import Protocol, Factory
 from twisted_cut import reflect, defer, error
@@ -892,6 +893,121 @@ def defer_to_pool(pool, f, *args, **kwargs):
     return df
 
 
+def clearable_pool_worker(in_queue, out_queue):
+    while True:
+        task = in_queue.get()
+        f = task[0]
+        args = task[1]
+        kwargs = task[2]
+        d = task[3]
+        try:
+            retval = f(*args, **kwargs)
+        except Exception as e:
+            retval = e
+        out_queue.put((retval, d))
+
+
+class ClearablePool(object):
+    def __init__(self, processes=multiprocessing.cpu_count()):
+        self.logger = logging.getLogger("TangoTwisted.ClearablePool")
+        self.logger.setLevel(logging.WARNING)
+        self.logger.info("ClearablePool.__init__")
+
+        self.in_queue = multiprocessing.Queue()
+        self.out_queue = multiprocessing.Queue()
+        self.num_processes = processes
+        self.processes = None
+        self.next_process_id = 0
+        self.id_lock = threading.Lock()
+        self.deferred_dict = dict()
+
+        self.result_thread = None
+        self.stop_thread_flag = False
+
+        self.start_processes()
+
+    def start_processes(self):
+        if self.processes is not None:
+            self.stop_processes()
+
+        self.stop_thread_flag = False
+        self.result_thread = threading.Thread(target=self.result_thread_func)
+        self.result_thread.start()
+
+        self.logger.info("Starting {0} processes".format(self.num_processes))
+        p_list = list()
+        for p in range(self.num_processes):
+            p = multiprocessing.Process(target=clearable_pool_worker, args=(self.in_queue, self.out_queue))
+            p.start()
+            p_list.append(p)
+        self.processes = p_list
+
+    def stop_processes(self):
+        self.logger.info("Stopping processes")
+        if self.processes is not None:
+            for p in self.processes:
+                p.terminate()
+        # self.processes = None
+        self.stop_thread_flag = True
+        try:
+            self.result_thread.join(1.0)
+        except AttributeError:
+            pass
+        self.result_thread = None
+
+    def stop(self):
+        self.stop_processes()
+
+    def close(self):
+        self.stop_processes()
+
+    def add_task(self, f, *args, **kwargs):
+        d = defer.Deferred()
+        self.logger.debug("Putting task in queue. Args: {0}".format(args))
+        with self.id_lock:
+            id = self.next_process_id
+            self.next_process_id += 1
+        self.in_queue.put((f, args, kwargs, id))
+        self.deferred_dict[id] = d
+        return d
+
+    def clear_pending_tasks(self):
+        self.logger.info("Clearing pending tasks")
+        while self.in_queue.empty() is False:
+            print("Not empty")
+            try:
+                self.logger.debug("get no wait")
+                task = self.in_queue.get_nowait()
+                id = task[3]
+                self.logger.debug("Removing task {0}".format(id))
+                try:
+                    self.deferred_dict.pop(id)
+                except KeyError:
+                    pass
+            except multiprocessing.queues.Empty:
+                self.logger.debug("In-queue empty")
+                break
+
+    def result_thread_func(self):
+        while self.stop_thread_flag is False:
+            try:
+                result = self.out_queue.get(True, 0.1)
+            except multiprocessing.queues.Empty:
+                continue
+            self.logger.debug("Result: {0}".format(result))
+            retval = result[0]
+            id = result[1]
+            try:
+                d = self.deferred_dict.pop(id)
+            except KeyError as e:
+                self.logger.error("Task id {0} not found.".format(id))
+                raise e
+            if isinstance(retval, Exception):
+                d.errback(retval)
+            else:
+                d.callback(retval)
+
+
 def test_cb2(result):
     logger.info("Test CB2 result: {0}".format(result))
     return result
@@ -931,6 +1047,7 @@ def looping_test_eb(err):
 
 
 def pool_test(a, b):
+    time.sleep(0.5)
     return a/b
 
 
@@ -939,16 +1056,29 @@ if __name__ == "__main__":
     count = 0
     # lc = LoopingCall(looping_test, count)
     # d = lc.start(0.001)
-    import multiprocessing
-    pool = multiprocessing.Pool(processes=4)
     dl = list()
     a = [1.0 * x + 1 for x in range(10)]
     b = [1.0 * x for x in range(10)]
+
+    # import multiprocessing
+    # pool = multiprocessing.Pool(processes=4)
+    # for k in range(len(a)):
+    #     d = defer_to_pool(pool, pool_test, a[k], b[k])
+    #     d.addCallback(test_cb2)
+    #     d.addErrback(looping_test_eb)
+    #     dl.append(d)
+    # pool.close()
+
+    cp = ClearablePool(4)
+
+    dl = list()
     for k in range(len(a)):
-        d = defer_to_pool(pool, pool_test, a[k], b[k])
+        print("a: {0}, b: {1}".format(a[k], b[k]))
+        d = cp.add_task(pool_test, a[k], b[k])
         d.addCallback(test_cb2)
         d.addErrback(looping_test_eb)
-        dl.append(d)
-    pool.close()
+    time.sleep(1.1)
+    cp.clear_pending_tasks()
+
     # lc.loop_deferred.addCallback(looping_test_cb)
     # lc.loop_deferred.addErrback(looping_test_eb)

@@ -42,7 +42,7 @@ logger.setLevel(logging.DEBUG)
 
 class StateDispatcher(object):
     def __init__(self, controller):
-        self.controller = controller
+        self.controller = controller            # type: QuadScanController.QuadScanController
         self.stop_flag = False
         self.statehandler_dict = dict()
         self.statehandler_dict[StateUnknown.name] = StateUnknown
@@ -84,6 +84,7 @@ class StateDispatcher(object):
             self.set_state(new_state)
             prev_state = state_name
         self._state_thread = None
+        self.controller.exit()
 
     def get_state(self):
         return self._state_obj
@@ -747,6 +748,8 @@ class StateLoad(State):
         self.old_raw_data = None
         self.old_proc_data = None
 
+        self.proc_deferred_list = list()
+
     def state_enter(self, prev_state=None):
         State.state_enter(self, prev_state)
         self.controller.set_status("Load scan data")
@@ -860,7 +863,9 @@ class StateLoad(State):
             self.logger.debug("np pic size: {0}".format(pic.shape))
 
             self.controller.add_raw_image(k_num, k_value, pic)
-            self.controller.process_image(k_num, image_num)
+            # self.controller.process_image(k_num, image_num)
+            d = self.controller.process_image_pool(k_num, image_num)
+            self.proc_deferred_list.append(d)
         try:
             filename = self.image_file_iterator.next()
             self.logger.debug("Loading file {0}".format(filename))
@@ -870,10 +875,17 @@ class StateLoad(State):
             return True
         except StopIteration:
             self.logger.debug("No more files, stopping image read.")
-            self.controller.fit_quad_data()
-            self.controller.processing_done_signal.emit()
-            self.check_requirements(True)
+            dl = defer.DeferredList(self.deferred_list)
+            dl.addCallback(self.loading_finished)
+
             return False
+
+    def loading_finished(self, result):
+        self.logger.info("Loading and processing finished.")
+        self.controller.fit_quad_data()
+        self.controller.processing_done_signal.emit()
+        self.check_requirements(True)
+        return True
 
     def check_requirements(self, result):
         self.logger.info("Check requirements result: {0}".format(result))
