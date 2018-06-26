@@ -1103,6 +1103,8 @@ class Scan(object):
 
         self.logger.info("Scan arrive at pos {0}".format(self.current_pos))
         t = time.time()
+        # If the time since last update is larger than the update interval,
+        # set a new status message
         if t - self.status_update_time > self.status_update_interval:
             status = "Scanning from {0} to {1} with step size {2}\n" \
                      "Position: {3}".format(self.start_pos, self.stop_pos, self.step, self.current_pos)

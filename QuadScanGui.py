@@ -231,7 +231,6 @@ class QuadScanGui(QtGui.QWidget):
         self.ui.images_number_spinbox.setValue(val)
 
         # Signal connections
-        self.ui.energy_spinbox.editingFinished.connect(self.update_parameter_data)
         self.ui.threshold_spinbox.editingFinished.connect(self.update_image_processing)
         self.ui.median_kernel_spinbox.editingFinished.connect(self.update_image_processing)
         self.ui.k_slider.valueChanged.connect(self.update_image_selection)
@@ -673,7 +672,15 @@ class QuadScanGui(QtGui.QWidget):
         attr_name = "mainfieldcomponent"
         self.controller.write_attribute(attr_name, dev_name, k_current, use_tango_name=True)
 
+    def set_electron_energy(self):
+        energy = self.ui.energy_spinbox.value()
+        root.info("Setting current electron energy.")
+
     def load_data(self):
+        """
+        Initiate load data state
+        :return:
+        """
         root.info("Loading data")
         load_dir = QtGui.QFileDialog.getExistingDirectory(self, "Select directory", self.last_load_dir)
         self.last_load_dir = load_dir
@@ -716,19 +723,42 @@ class QuadScanGui(QtGui.QWidget):
         self.state_dispatcher.send_command("stop")
 
     def start_scan(self):
+        """
+        Setup scan parameters:
+        - roi
+        - electron energy
+        - k min and max
+        - number of points
+
+        Prepare save directory path name
+
+        Initiate scan state.
+        :return:
+        """
         root.info("Starting scan")
         t_str = time.strftime("%Y-%m-%d_%H-%M-%S")
+
+        electron_energy = self.ui.energy_spinbox.value()
+        rs = self.ui.camera_raw_widget.roi.size()
+        rp = self.ui.camera_raw_widget.roi.pos()
+        root.info("Camera roi: {0} pos, {1} size".format(rp, rs))
+        k_min = self.ui.k_start_spinbox.value()
+        k_max = self.ui.k_end_spinbox.value()
+        n_k = self.ui.k_number_values_spinbox.value()
+        n_i = self.ui.images_number_spinbox.value()
+        self.controller.set_parameter("scan", "roi_center", [rp[0] + rs[0]/2, rp[1] + rs[1]/2])
+        self.controller.set_parameter("scan", "roi_dim", [rs[0], rs[1]])
+        self.controller.set_parameter("scan", "electron_energy", electron_energy)
+        self.controller.set_parameter("scan", "k_min", k_min)
+        self.controller.set_parameter("scan", "k_max", k_max)
+        self.controller.set_parameter("scan", "num_k_values", n_k)
+        self.controller.set_parameter("scan", "num_shots", n_i)
+
         quad_name = self.controller.get_parameter("scan", "quad_name")
         screen_name = self.controller.get_parameter("scan", "screen_name")
         save_path = "{0}_{1}_{2}".format(t_str, quad_name, screen_name)
         root.info("Save directory: {0}")
         self.controller.set_parameter("save", "save_path", save_path)
-
-        rs = self.ui.camera_raw_widget.roi.size()
-        rp = self.ui.camera_raw_widget.roi.pos()
-        root.info("Camera roi: {0} pos, {1} size".format(rp, rs))
-        self.controller.set_parameter("scan", "roi_center", [rp[0] + rs[0]/2, rp[1] + rs[1]/2])
-        self.controller.set_parameter("scan", "roi_dim", [rs[0], rs[1]])
 
         self.state_dispatcher.send_command("scan")
 

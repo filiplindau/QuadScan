@@ -389,6 +389,17 @@ class StateIdle(State):
                 self.next_state = "unknown"
                 self.stop_run()
 
+    def image_error(self, err):
+        """
+        Handle errors when updating image attribute.
+        Normally just ignore and keep trying...
+        :param err:
+        :return:
+        """
+        self.logger.error("Image error: {0}".format(err))
+        self.logger.debug("Error type: {0}".format(err.type))
+        self.controller.set_status("Error when updating image:\n{0}".format(err))
+
     def check_message(self, msg, *args):
         if msg == "load":
             self.logger.debug("Message load... set next state and stop.")
@@ -449,21 +460,21 @@ class StateIdle(State):
             self.logger.info("Starting camera")
             try:
                 cam_dev = self.controller.get_parameter("scan", "screen_device_names")["view"]
-
             except KeyError:
                 self.logger.error("No camera liveviewer device found.")
                 self.controller.set_status("No camera liveviewer device found.")
                 return
+
             self.controller.send_command("start", cam_dev, None, use_tango_name=True)
         elif msg == "stop_camera":
             self.logger.info("Stopping camera")
             try:
                 cam_dev = self.controller.get_parameter("scan", "screen_device_names")["view"]
-
             except KeyError:
                 self.logger.error("No camera liveviewer device found.")
                 self.controller.set_status("No camera liveviewer device found.")
                 return
+
             self.controller.send_command("stop", cam_dev, None, use_tango_name=True)
         else:
             self.logger.warning("Unknown command {0}".format(msg))
