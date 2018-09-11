@@ -22,6 +22,7 @@ import TangoTwisted
 import QuadScanController
 from TangoTwisted import TangoAttributeFactory, defer_later
 import PIL
+from numpngw import write_png
 from collections import OrderedDict
 try:
     import tango
@@ -550,7 +551,7 @@ class StateScan(State):
 
     def __init__(self, controller):
         State.__init__(self, controller)
-        self.logger.setLevel(logging.INFO)
+        self.logger.setLevel(logging.DEBUG)
         self.save_path = None
         self.old_path = None
 
@@ -571,7 +572,7 @@ class StateScan(State):
         start_pos = self.controller.get_parameter("scan", "k_min")
         end_pos = self.controller.get_parameter("scan", "k_max")
         save_path = self.controller.get_parameter("save", "save_path")
-        if self.save_path is None:
+        if save_path is None:
             self.logger.debug("No save path specified.")
             self.next_state = "idle"
             self.stop_run()
@@ -668,19 +669,29 @@ class StateScan(State):
         with open(os.path.join(self.save_path, "daq_info.txt"), "a") as f:
             if meas_ind == 1:
                 f.write("+------+-------+----------+----------+----------------------+\n")
-            s_pos = "{0:.4f}".format(pos).rjust(6, " ")
-            s = "|{0}  |{1}  |{2} |{3} |{4} |\n".format(str(pos_ind).rjust(6, " "),
-                                                        str(meas_ind).rjust(6, " "),
-                                                        s_pos, s_pos, filename)
+            s_pos = "{0:.4f}".format(pos).rjust(9, " ")
+            s = "|{0}  |{1}  |{2} |{3} |{4} |\n".format(str(pos_ind).rjust(4, " "),
+                                                        str(meas_ind).rjust(5, " "),
+                                                        s_pos, s_pos, str(filename).rjust(21, " "))
+            f.write(s)
         self.logger.debug("Saving file during scan: {0}".format(filename))
-        try:
-            image = PIL.Image.fromarray(result.value)
-            d = TangoTwisted.defer_to_thread(image.save, full_name)
-        except Exception as e:
-            self.logger.error("Image error: {0}".format(e))
-            self.logger.error("Image type: {0}".format(type(result.value)))
-            d = defer.Deferred()
+        image = result.value
+        d = TangoTwisted.defer_to_thread(self._image_saver, full_name, image)
         d.addErrback(self.state_error)
+
+    def _image_saver(self, filename, data):
+        """
+        Helper function to save image to png in thread
+        :param filename: String containing the file name to save
+        :param data: Image data
+        :return:
+        """
+        with open(filename, "wb") as f:
+            try:
+                write_png(f, data)
+            except Exception as e:
+                self.logger.error("Image error: {0}".format(e))
+                self.logger.error("Image type: {0}".format(type(data)))
 
     def store_scan(self, result):
         self.logger.info("Store scan")

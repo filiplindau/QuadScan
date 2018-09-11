@@ -423,6 +423,7 @@ class QuadScanController(QtCore.QObject):
                 else:
                     value = None
             except KeyError:
+                self.logget.info("Get parameter key error: {0}, dict {1}".format(param_name, state_name))
                 value = None
         # self.logger.debug("Value {0}".format(value))
         return value

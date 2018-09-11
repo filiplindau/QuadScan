@@ -400,9 +400,17 @@ class QuadScanGui(QtGui.QWidget):
         root.info("Update camera roi")
         rs = self.ui.camera_raw_widget.roi.size()
         rp = self.ui.camera_raw_widget.roi.pos()
+        x0 = int(rp[0])
+        x1 = int(rp[0] + rs[0])
+        y0 = int(rp[1])
+        y1 = int(rp[1] + rs[1])
         pic = self.ui.camera_raw_widget.getProcessedImage()
-        pic_roi = pic[rp[0]:rp[0] + rs[0], rp[1]:rp[1] + rs[1]]
-        self.ui.camera_roi_widget.setImage(pic_roi)
+        try:
+            pic_roi = pic[x0:x1, y0:y1]
+            self.ui.camera_roi_widget.setImage(pic_roi)
+        except TypeError as e:
+            root.debug("pic index error: {0}. rp: {1}, rs: {2}".format(e, rp, rs))
+            self.controller.set_status("Problem indexing pic to roi")
 
     def set_roi(self):
         """
@@ -518,12 +526,19 @@ class QuadScanGui(QtGui.QWidget):
         beta = self.controller.get_result("analysis", "beta")
         alpha = self.controller.get_result("analysis", "alpha")
         if eps is not None:
-            self.ui.eps_label.setText("{0:.4g} mm x mmrad".format(eps*1e6))
+            try:
+                self.ui.eps_label.setText("{0:.4g} mm x mmrad".format(eps*1e6))
+            except ValueError:
+                self.ui.eps_label.setText("{0}".format(eps))
         else:
             # Set label text for None value:
-            self.ui.eps_label.setText("{0:.4g}".format(eps))
-        self.ui.beta_label.setText("{0:.4g} m".format(beta))
-        self.ui.alpha_label.setText("{0:.4g}".format(alpha))
+            self.ui.eps_label.setText("{0}".format(eps))
+        try:
+            self.ui.beta_label.setText("{0:.4g} m".format(beta))
+            self.ui.alpha_label.setText("{0:.4g}".format(alpha))
+        except ValueError:
+            self.ui.beta_label.setText("--")
+            self.ui.alpha_label.setText("--")
 
     def update_algo(self):
         algo = str(self.ui.fit_algo_combobox.currentText())
@@ -766,7 +781,7 @@ class QuadScanGui(QtGui.QWidget):
         quad_name = self.controller.get_parameter("scan", "quad_name")
         screen_name = self.controller.get_parameter("scan", "screen_name")
         save_path = "{0}_{1}_{2}".format(t_str, quad_name, screen_name)
-        root.info("Save directory: {0}")
+        root.info("Save directory: {0}".format(save_path))
         self.controller.set_parameter("save", "save_path", save_path)
 
         self.state_dispatcher.send_command("scan")
