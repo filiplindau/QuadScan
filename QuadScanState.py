@@ -556,19 +556,28 @@ class StateScan(State):
 
     def state_enter(self, prev_state=None):
         State.state_enter(self, prev_state)
-        scan_dev_name = self.controller.get_parameter("scan", "quad_device_names")["crq"]
-        meas_dev_name = self.controller.get_parameter("scan", "screen_device_names")["view"]
+        try:
+            scan_dev_name = self.controller.get_parameter("scan", "quad_device_names")["crq"]
+            meas_dev_name = self.controller.get_parameter("scan", "screen_device_names")["view"]
+        except KeyError as e:
+            msg = "Device name KeyError: {0}".format(e)
+            self.controller.set_status(msg)
+            self.logger.debug(msg)
+            self.next_state = "idle"
+            self.stop_run()
+            return "idle"
         scan_attr_name = "mainfieldcomponent"
         meas_attr_name = "image"
         start_pos = self.controller.get_parameter("scan", "k_min")
         end_pos = self.controller.get_parameter("scan", "k_max")
         save_path = self.controller.get_parameter("save", "save_path")
-        self.save_path = os.path.join(self.controller.get_parameter("save", "base_path"), save_path)
         if self.save_path is None:
             self.logger.debug("No save path specified.")
             self.next_state = "idle"
             self.stop_run()
             return "idle"
+        self.save_path = os.path.join(self.controller.get_parameter("save", "base_path"), save_path)
+        self.logger.debug("Save path: {0}".format(self.save_path))
         if not os.path.exists(self.save_path):
             os.makedirs(self.save_path)
         step_size = (end_pos - start_pos) / self.controller.get_parameter("scan", "num_k_values")
@@ -693,21 +702,30 @@ class StateScan(State):
         if msg == "pause":
             self.logger.debug("Message pause... stop.")
             self.controller.idle_params["paused"] = True
-            d = self.deferred_list[0]   # type: defer.Deferred
-            d.cancel()
+            try:
+                d = self.deferred_list[0]   # type: defer.Deferred
+                d.cancel()
+            except IndexError:
+                pass
             self.next_state = "idle"
             self.stop_run()
         elif msg == "cancel":
             self.logger.debug("Message cancel... set next state and stop.")
             self.controller.idle_params["paused"] = True
-            d = self.deferred_list[0]   # type: defer.Deferred
-            d.cancel()
+            try:
+                d = self.deferred_list[0]   # type: defer.Deferred
+                d.cancel()
+            except IndexError:
+                pass
             self.next_state = "idle"
             self.stop_run()
         elif msg == "scan":
             self.logger.debug("Message resume... continue scan")
-            d = self.deferred_list[0]   # type: defer.Deferred
-            d.cancel()
+            try:
+                d = self.deferred_list[0]   # type: defer.Deferred
+                d.cancel()
+            except IndexError:
+                pass
         elif msg == "process_images":
             self.logger.debug("Message process_images")
             d = self.controller.process_all_images_pool()

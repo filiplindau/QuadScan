@@ -369,6 +369,7 @@ class QuadScanGui(QtGui.QWidget):
         if kern % 2 == 0:
             kern += 1
             root.info("Median kernel value must be odd")
+            self.controller.set_status("Note: Median kernel value must be odd")
         root.info("Setting image threshold to {0}, median kernel to {1}".format(th, kern))
         self.controller.set_parameter("analysis", "threshold", th)
         self.controller.set_parameter("analysis", "median_kernel", kern)
@@ -432,7 +433,15 @@ class QuadScanGui(QtGui.QWidget):
             root.debug("No data in store, exit update_image_selection")
             return
         self.ui.image_select_label.setText("{0}".format(image_ind))
-        self.ui.k_select_label.setText("{0:.2f}".format(k_data[k_ind][image_ind]))
+        try:
+            self.ui.k_select_label.setText("{0:.2f}".format(k_data[k_ind][image_ind]))
+            self.ui.image_raw_widget.ui.histogram.gradient.loadPreset('thermalclip')
+            self.ui.image_proc_widget.ui.histogram.gradient.loadPreset('thermalclip')
+        except IndexError:
+            self.controller.set_status("Image {0}_{1} not available".format(k_ind, image_ind))
+            self.ui.image_raw_widget.ui.histogram.gradient.loadPreset('grey')
+            self.ui.image_proc_widget.ui.histogram.gradient.loadPreset('grey')
+            return
         if raw_data is None:
             # Exit if there is no data
             return
@@ -775,6 +784,12 @@ class QuadScanGui(QtGui.QWidget):
         self.ui.data_base_dir_edit.setText(base_dir)
 
     def eventFilter(self, obj, event):
+        """
+        Used for intercepting wheel events to modify magnet k-value
+        :param obj:
+        :param event:
+        :return:
+        """
         if event.type() == QtCore.QEvent.Wheel:
             dk = 0.025 * event.delta() / 120.0
             self.ui.k_current_spinbox.setValue(self.ui.k_current_spinbox.value() + dk)

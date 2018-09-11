@@ -724,9 +724,10 @@ class QuadScanController(QtCore.QObject):
         poly = np.polyfit(k[ind], s2[ind], 2)
         self.set_result("scan", "fit_poly", poly)
         self.logger.debug("Fit coefficients: {0}".format(poly))
-        d = self.get_parameter("analysis", "quad_screen_distance")
+        d = self.get_parameter("analysis", "quad_screen_dist")
         L = self.get_parameter("analysis", "quad_length")
         gamma = self.get_parameter("analysis", "electron_energy") / 0.511
+        self.logger.debug("d: {0}, poly[0]: {1}, poly[1]: {2}, poly[2]: {3}".format(d, poly[0], poly[1], poly[2]))
         eps = 1 / (d ** 2 * L) * np.sqrt(poly[0] * poly[2] - poly[1] ** 2 / 4)
         eps_n = eps * gamma
         beta = poly[0] / (eps * d ** 2 * L ** 2)
@@ -1403,6 +1404,7 @@ def process_image_func(image, k_ind, image_ind, threshold, roi_cent, roi_dim, ca
     # result = [k_ind, image_ind, pic_roi, line_x, line_y, x_cent, y_cent, sigma_x, sigma_y, q, enabled]
 
     return result
+
 
 if __name__ == "__main__":
     root = logging.getLogger()
