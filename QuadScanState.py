@@ -688,7 +688,7 @@ class StateScan(State):
         """
         with open(filename, "wb") as f:
             try:
-                write_png(f, data)
+                write_png(f, data, filter_type=1)
             except Exception as e:
                 self.logger.error("Image error: {0}".format(e))
                 self.logger.error("Image type: {0}".format(type(data)))
