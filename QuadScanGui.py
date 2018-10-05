@@ -76,7 +76,8 @@ class QuadScanGui(QtGui.QWidget):
         self.current_state = "unknown"
         self.last_load_dir = "."
         self.data_base_dir = "."
-        self.section_init = False
+        self.section_init_flag = False
+        self.screen_init_flag = True
 
         self.line_x_plot = None
         self.line_y_plot = None
@@ -300,7 +301,7 @@ class QuadScanGui(QtGui.QWidget):
             self.controller.set_parameter("scan", "quad_name", quad_name)
             screen_name = self.settings.value("screen_name", None)
             self.controller.set_parameter("scan", "screen_name", screen_name)
-            self.section_init = True
+            self.section_init_flag = True
             self.update_section()
         if new_state != "idle":
             # Only enable changing section etc. when idle.
@@ -355,8 +356,14 @@ class QuadScanGui(QtGui.QWidget):
         if name == "mainfieldcomponent":
             self.ui.k_current_label.setText("{0:.3f}".format(attr.value))
         elif name == "image":
-            self.ui.camera_raw_widget.setImage(attr.value, autoRange=False, autoLevels=False)
+            # Check if a new camera is active, then we should update the histogram:
+            if self.screen_init_flag is True:
+                self.ui.camera_raw_widget.setImage(attr.value, autoRange=True, autoLevels=True, autoHistogramRange=True)
+                self.screen_init_flag = False
+            else:
+                self.ui.camera_raw_widget.setImage(attr.value, autoRange=False, autoLevels=False)
             self.ui.camera_raw_widget.roi.show()
+
             self.update_camera_roi()
 
     def update_image_processing(self):
@@ -563,7 +570,7 @@ class QuadScanGui(QtGui.QWidget):
         # Check if a new section was chosen, then re-populate the comboboxes for magnets and screens
         self.ui.quad_combobox.blockSignals(True)
         self.ui.screen_combobox.blockSignals(True)
-        if sect != self.controller.get_parameter("scan", "section_name") or self.section_init is True:
+        if sect != self.controller.get_parameter("scan", "section_name") or self.section_init_flag is True:
             root.debug("New section, populating comboboxes")
             root.debug("Number of quads: {0}".format(len(quads)))
             self.ui.quad_combobox.clear()
@@ -580,7 +587,7 @@ class QuadScanGui(QtGui.QWidget):
             except IndexError:
                 # Quad, screen lists not populated. Cannot select device yet
                 return
-            self.section_init = False
+            self.section_init_flag = False
         if len(quads) > 0:
             quad_name = str(self.ui.quad_combobox.currentText()).lower()
             # This will work since the combobox is populated in the same order as the stored section quadlist
@@ -598,7 +605,11 @@ class QuadScanGui(QtGui.QWidget):
             self.ui.screen_combobox.blockSignals(False)
         else:
             screen_name = None
+
+        # Set the quad and screen selected:
         if quad_name is not None and screen_name is not None:
+            if self.get_parameter("scan", "screen_name") != screen_name:
+                self.screen_init_flag = True
             self.state_dispatcher.send_command("set_section", sect, quad_name, screen_name)
             self.ui.quad_screen_distance_label.setText("{0:2f}".format(screen_pos - quad_pos))
 

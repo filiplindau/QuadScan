@@ -931,7 +931,7 @@ class QuadScanController(QtCore.QObject):
             self.set_parameter("scan", "quad_name", quad_name)
 
         s_pos = None
-        if update_all is True or self.get_parameter("scan", "screen_name") != quad_name:
+        if update_all is True or self.get_parameter("scan", "screen_name") != screen_name:
             try:
                 screen_list = self.get_parameter("scan", "section_screens")[sn]
             except KeyError:
@@ -961,7 +961,16 @@ class QuadScanController(QtCore.QObject):
             self.set_parameter("scan", "quad_screen_distance", d)
 
         def_list = defer.DeferredList(dl)
+        def_list.addCallback(self.read_camera_roi)
         return def_list
+
+    def read_camera_roi(self, result):
+        view_name = self.get_parameter("scan", "screen_device_names")["view"]
+        d = self.read_attribute("roi", view_name)
+        d.addCallback(self.update_roi)
+
+    def update_camera_roi(self, result):
+
 
     def exit(self):
         self.logger.info("Exiting controller. Process pools stopping.")
