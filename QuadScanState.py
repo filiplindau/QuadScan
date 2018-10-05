@@ -555,6 +555,9 @@ class StateScan(State):
         self.save_path = None
         self.old_path = None
 
+        self.save_lock = threading.Lock()
+        self.pending_save_count = 0
+
     def state_enter(self, prev_state=None):
         State.state_enter(self, prev_state)
         try:
@@ -676,6 +679,8 @@ class StateScan(State):
             f.write(s)
         self.logger.debug("Saving file during scan: {0}".format(filename))
         image = result.value
+        with self.save_lock:
+            self.pending_save_count += 1
         d = TangoTwisted.defer_to_thread(self._image_saver, full_name, image)
         d.addErrback(self.state_error)
 
@@ -692,6 +697,10 @@ class StateScan(State):
             except Exception as e:
                 self.logger.error("Image error: {0}".format(e))
                 self.logger.error("Image type: {0}".format(type(data)))
+        with self.save_lock:
+            self.pending_save_count -= 1
+            if self.pending_save_count < 0:
+                self.pending_save_count = 0
 
     def store_scan(self, result):
         self.logger.info("Store scan")
