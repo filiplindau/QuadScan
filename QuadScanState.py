@@ -326,7 +326,7 @@ class StateSetupAttributes(State):
     def check_requirements(self, result):
         self.logger.info("Check requirements")
         # self.logger.info("Check requirements result: {0}".format(result))
-        self.next_state = "running"
+        self.next_state = "idle"
         self.stop_run()
         return result
 

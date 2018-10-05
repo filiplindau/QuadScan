@@ -51,6 +51,7 @@ class QuadScanController(QtCore.QObject):
 
         :param quad_name: Tango device name of the quad used for scanning
         :param screen_name: Tango device name of the camera used for capturing images of the screen
+        :param start: If True, the tango device objects are created.
         """
         QtCore.QObject.__init__(self)
         self.device_names = dict()                  # A dict containing the names of connected devices
@@ -66,15 +67,19 @@ class QuadScanController(QtCore.QObject):
 
         self.looping_calls = list()
 
+        # Dict for storing result from attribute reads
         self.attr_result = dict()
         self.attr_result["image"] = None
         self.attr_result["magnet"] = None
 
+        # Dict for configuring attributes to read when idle
         self.idle_params = dict()
         self.idle_params["reprate"] = 2.0
         self.idle_params["camera_attr"] = "image"
         self.idle_params["paused"] = False
 
+        # Dict for configuring scan
+        # Also stores the available quads and screens in different sections
         self.scan_params = dict()
         self.scan_params["k_min"] = 8.6
         self.scan_params["k_max"] = 8.75
@@ -98,6 +103,8 @@ class QuadScanController(QtCore.QObject):
                                                         # name, position
         # self.scan_params["dev_name"] = "motor"
 
+        # Dict for storing result of a scan
+        # When loading from disk the data is stored here also
         self.scan_result = dict()
         self.scan_result["k_data"] = None
         self.scan_result["raw_data"] = None
@@ -117,6 +124,7 @@ class QuadScanController(QtCore.QObject):
         self.scan_proc_data = None
         self.scan_roi_data = None
 
+        # Dict for storing analysis results of emittance calculations
         self.analysis_result = dict()
         self.analysis_result["eps"] = None
         self.analysis_result["beta"] = None
@@ -124,6 +132,7 @@ class QuadScanController(QtCore.QObject):
         self.analysis_result["alpha"] = None
         self.analysis_result["fit_data"] = None
 
+        # Dict for configuring analysis parameters
         self.analysis_params = dict()
         self.analysis_params["fit_algo"] = "full_matrix"
         self.analysis_params["roi"] = "full"
@@ -145,12 +154,15 @@ class QuadScanController(QtCore.QObject):
         self.logger.setLevel(logging.DEBUG)
         self.logger.info("QuadScanController.__init__")
 
-        self.state_lock = threading.Lock()
+        self.state_lock = threading.Lock()      # Threading lock to avoid multithreading problems.
+        # Use when risking concurrent access to objects.
+
         self.status = ""
         self.state = "unknown"
         self.state_notifier_list = list()       # Methods in this list will be called when the state
         # or status message is changed
-        self.progress = 0
+
+        self.progress = 0                       # Progress indicator updated during time consuming tasks
         self.progress_notifier_list = list()
 
         self.load_pool = None
@@ -245,6 +257,13 @@ class QuadScanController(QtCore.QObject):
         return d
 
     def add_device(self, dev_name):
+        """
+        Add a device to the device factory dict if not already there. After this it can be used to read and
+        write attributes belonging to the device server.
+
+        :param dev_name: Tango device name
+        :return: Deferred that is fired when the factory is ready
+        """
         if dev_name not in self.device_names:
             fact = TangoAttributeFactory(dev_name)
             d = fact.startFactory()
@@ -257,6 +276,12 @@ class QuadScanController(QtCore.QObject):
         return d
 
     def add_device_error(self, err):
+        """
+        Callback for errors returned when creating device server factory.
+
+        :param err: Error object
+        :return:
+        """
         self.logger.error("Error creating device: {0}".format(err))
         return err
 
@@ -817,18 +842,34 @@ class QuadScanController(QtCore.QObject):
                                                                                          len(self.controller.scan_raw_data)))
 
     def populate_matching_sections(self):
+        """
+        Populate matching section data by quering tango database properties.
+        Called when entering Database state.
+
+        This does not establish a connection with the device servers. That is done in
+        set_section method.
+
+        Data retrieved:
+        Quads... name, length, position, polarity
+        Screens... name, position
+        :return:
+        """
         self.logger.info("Populating matching sections by checking tango database")
         db = tango.Database()
 
         sections = self.get_parameter("scan", "sections")
         sect_quads = self.get_parameter("scan", "section_quads")
         sect_screens = self.get_parameter("scan", "section_screens")
+
+        # Loop through sections to find matching devices based on their names:
         for s in sections:
+            # Quad names are e.g. i-ms1/mag/qb-01
             quad_dev_list = db.get_device_exported("*{0}*/mag/q*".format(s)).value_string
             quad_list = list()
             for q in quad_dev_list:
                 quad = dict()
                 try:
+                    # Extract data for each found quad:
                     quad["name"] = q.split("/")[-1].lower()
                     p = db.get_device_property(q, ["__si", "length", "polarity", "circuitproxies"])
                     quad["position"] = np.double(p["__si"][0])
@@ -841,11 +882,14 @@ class QuadScanController(QtCore.QObject):
                     self.logger.error("Index error when parsing quad {0}: {1}".format(q, e))
                 except KeyError as e:
                     self.logger.error("Key error when parsing quad {0}: {1}".format(q, e))
+
+            # Screen names are e.g. i-ms1/dia/scrn-01
             screen_dev_list = db.get_device_exported("*{0}*/dia/scrn*".format(s)).value_string
             screen_list = list()
             for sc in screen_dev_list:
                 scr = dict()
                 try:
+                    # Extract data for each found screen
                     scr["name"] = sc.split("/")[-1].lower()
                     scr["position"] = np.double(db.get_device_property(sc, "__si")["__si"][0])
                     screen_list.append(scr)
@@ -865,6 +909,9 @@ class QuadScanController(QtCore.QObject):
         Set the current section, quad, and screen. Update the name of current sect, quad , scrn in
         scan_params dict. If a new setting is selected: load aux devices into quad_device_names and
         screen_device_names. Update quad and screen parameters (pos, length, ...)
+
+        It assumes that populate_matching_sections is completed for information about the different
+        devices in the section.
 
         :param sect_name:
         :param quad_name:
@@ -907,26 +954,27 @@ class QuadScanController(QtCore.QObject):
             # k-value is set)
             quad_devices = dict()
             quad_num = quad_name.split("-")[-1]
-            quad_mag_name = "i-{0}/mag/{1}".format(sn, quad_name)
-            quad_crq_name = "i-{0}/mag/crq-{1}".format(sn, quad_num)
+            quad_mag_name = "i-{0}/mag/{1}".format(sn, quad_name)       # k-value
+            quad_crq_name = "i-{0}/mag/crq-{1}".format(sn, quad_num)    # electron energy, k-value
             quad_devices["mag"] = quad_mag_name
             quad_devices["crq"] = quad_crq_name
+            for dev_name in quad_devices.itervalues():
+                dl.append(self.add_device(dev_name))
+
             try:
                 quad_list = self.get_parameter("scan", "section_quads")[sn]
+                # The "section_quads" is populated in populate_matching_sections
             except KeyError:
                 self.logger.error("Section {0} not found in section_quads dict".format(sn))
                 return
             L = None
             d = None
-
             for qd in quad_list:
                 if qd["name"] == quad_name:
                     L = qd["length"]
                     q_pos = qd["position"]
             self.set_parameter("scan", "quad_length", L)
             self.logger.debug("Connecting to quad devices {0}".format(quad_devices))
-            for dev_name in quad_devices.itervalues():
-                dl.append(self.add_device(dev_name))
             self.set_parameter("scan", "quad_device_names", quad_devices)
             self.set_parameter("scan", "quad_name", quad_name)
 
@@ -945,10 +993,12 @@ class QuadScanController(QtCore.QObject):
             scrn_devices = dict()
             screen_dev_name = "i-{0}/dia/{1}".format(sn, screen_name)
             cam_name = "i-{0}-dia-{1}".format(sn, screen_name)
-            camera_ctrl_name = "lima/limaccd/{0}".format(cam_name)
-            camera_view_name = "lima/liveviewer/{0}".format(cam_name)
+            camera_ctrl_name = "lima/limaccd/{0}".format(cam_name)          # Controlling camera exposure, gain
+            camera_view_name = "lima/liveviewer/{0}".format(cam_name)       # Get image, start capturing
+            camera_beam_name = "lima/beamviewer/{0}".format(cam_name)       # ROI
             scrn_devices["ctrl"] = camera_ctrl_name
             scrn_devices["view"] = camera_view_name
+            scrn_devices["beam"] = camera_beam_name
             scrn_devices["screen"] = screen_dev_name
             self.logger.debug("Connecting to screen devices {0}".format(scrn_devices))
             for dev_name in scrn_devices.itervalues():
@@ -965,12 +1015,35 @@ class QuadScanController(QtCore.QObject):
         return def_list
 
     def read_camera_roi(self, result):
-        view_name = self.get_parameter("scan", "screen_device_names")["view"]
+        """
+        Callback to read camera ROI from beamviewer device.
+        Creates a deferred with update_camera_roi as callback
+
+        :param result: Deferred result (not used)
+        :return: New deferred that fires when the read is finished
+        """
+        view_name = self.get_parameter("scan", "screen_device_names")["beam"]
         d = self.read_attribute("roi", view_name)
-        d.addCallback(self.update_roi)
+        d.addCallback(self.update_camera_roi)
+        return d
 
     def update_camera_roi(self, result):
+        """
+        Callback to update the camera roi stored in the scan params dict.
+
+        :param result: Deferred result containing the device roi attribute
+        :return:
+        """
         self.logger.info("Updating camera ROI")
+        try:
+            roi_data = result.value
+        except AttributeError:
+            return False
+        roi_center = ((roi_data[1] + roi_data[0]) / 2.0, (roi_data[2] + roi_data[3]) / 2.0)
+        roi_dim = ((roi_data[1] - roi_data[0]), (roi_data[3] - roi_data[3]))
+        self.set_parameter("scan", "roi_center", roi_center)
+        self.set_parameter("scan", "roi_dim", roi_dim)
+        return result
 
     def exit(self):
         self.logger.info("Exiting controller. Process pools stopping.")
@@ -1336,7 +1409,8 @@ class QuadScanAnalyse(object):
 
     def retrieve_data(self, result):
         """
-        Retrieve data from frog analysis run. Run as a callback from a deferred.
+        Retrieve data from quad analysis analysis run. Run as a callback from a deferred.
+
         :param result: deferred result
         :return:
         """
