@@ -26,7 +26,7 @@ from multiprocessing import Pool
 # logger = logging.getLogger("QuadScanController")
 # while len(logger.handlers):
 #     logger.removeHandler(logger.handlers[0])
-
+#
 # f = logging.Formatter("%(asctime)s - %(module)s.   %(funcName)s - %(levelname)s - %(message)s")
 # f = logging.Formatter("%(asctime)s - %(name)s.   %(funcName)s - %(levelname)s - %(message)s")
 # fh = logging.StreamHandler()
@@ -970,7 +970,7 @@ class QuadScanController(QtCore.QObject):
         d.addCallback(self.update_roi)
 
     def update_camera_roi(self, result):
-
+        self.logger.info("Updating camera ROI")
 
     def exit(self):
         self.logger.info("Exiting controller. Process pools stopping.")

@@ -1057,7 +1057,7 @@ if __name__ == "__main__":
     # lc = LoopingCall(looping_test, count)
     # d = lc.start(0.001)
     dl = list()
-    a = [1.0 * x + 1 for x in range(10)]
+    a_test = [1.0 * x + 1 for x in range(10)]
     b = [1.0 * x for x in range(10)]
 
     # import multiprocessing
@@ -1072,11 +1072,11 @@ if __name__ == "__main__":
     cp = ClearablePool(4)
 
     dl = list()
-    for k in range(len(a)):
-        print("a: {0}, b: {1}".format(a[k], b[k]))
-        d = cp.add_task(pool_test, a[k], b[k])
-        d.addCallback(test_cb2)
-        d.addErrback(looping_test_eb)
+    for k in range(len(a_test)):
+        print("a: {0}, b: {1}".format(a_test[k], b[k]))
+        de = cp.add_task(pool_test, a_test[k], b[k])
+        de.addCallback(test_cb2)
+        de.addErrback(looping_test_eb)
     time.sleep(1.1)
     cp.clear_pending_tasks()
 
