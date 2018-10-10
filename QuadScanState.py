@@ -219,6 +219,9 @@ class StateDeviceConnect(State):
         sect_name = self.controller.get_parameter("scan", "section_name")
         quad_name = self.controller.get_parameter("scan", "quad_name")
         screen_name = self.controller.get_parameter("scan", "screen_name")
+        section_names = self.controller.get_parameter("scan", "sections")
+        if sect_name not in section_names:
+            sect_name = section_names[0]
         if quad_name is None:
             # If there is no current quad / screen selected, take the first one for the section.
             # If there are none in the section, exit
@@ -512,10 +515,25 @@ class StateIdle(State):
                 self.controller.set_status("Magnet device not found.")
                 self.state_error(failure.Failure(err))
 
+            # try:
+            #     dev_name = quad_devices["crq"]
+            #     attr_name = "state"
+            #     self.logger.debug("Starting looping call for {0}".format(attr_name))
+            #     lc = TangoTwisted.LoopingCall(self.controller.read_attribute, attr_name, dev_name, use_tango_name=True)
+            #     self.controller.looping_calls.append(lc)
+            #     d = lc.start(interval)
+            #     d.addCallbacks(self.controller.update_attribute, self.state_error)
+            #     lc.loop_deferred.addCallback(self.controller.update_attribute)
+            #     lc.loop_deferred.addErrback(self.state_error)
+            # except KeyError as err:
+            #     self.logger.error("Magnet device not found.")
+            #     self.controller.set_status("Magnet device not found.")
+            #     self.state_error(failure.Failure(err))
+
             try:
                 dev_name = screen_devices["view"]
                 attr_name = "image"
-                self.logger.debug("Starting looping call for {0}".format(attr_name))
+                self.logger.debug("Starting looping call for {0}/{1}".format(dev_name, attr_name))
                 lc = TangoTwisted.LoopingCall(self.controller.read_attribute, attr_name, dev_name, use_tango_name=True)
                 self.controller.looping_calls.append(lc)
                 d = lc.start(interval)
@@ -526,6 +544,36 @@ class StateIdle(State):
                 self.logger.error("Screen device not found.")
                 self.controller.set_status("Screen device not found.")
                 self.state_error(failure.Failure(err))
+
+            # try:
+            #     dev_name = screen_devices["view"]
+            #     attr_name = "state"
+            #     self.logger.debug("Starting looping call for {0}".format(attr_name))
+            #     lc = TangoTwisted.LoopingCall(self.controller.read_attribute, attr_name, dev_name, use_tango_name=True)
+            #     self.controller.looping_calls.append(lc)
+            #     d = lc.start(interval)
+            #     d.addCallbacks(self.controller.update_attribute, self.state_error)
+            #     lc.loop_deferred.addCallback(self.controller.update_attribute)
+            #     lc.loop_deferred.addErrback(self.state_error)
+            # except KeyError as err:
+            #     self.logger.error("Screen device not found.")
+            #     self.controller.set_status("Screen device not found.")
+            #     self.state_error(failure.Failure(err))
+            #
+            # try:
+            #     dev_name = screen_devices["screen"]
+            #     attr_name = "state"
+            #     self.logger.debug("Starting looping call for {0}".format(attr_name))
+            #     lc = TangoTwisted.LoopingCall(self.controller.read_attribute, attr_name, dev_name, use_tango_name=True)
+            #     self.controller.looping_calls.append(lc)
+            #     d = lc.start(interval)
+            #     d.addCallbacks(self.controller.update_attribute, self.state_error)
+            #     lc.loop_deferred.addCallback(self.controller.update_attribute)
+            #     lc.loop_deferred.addErrback(self.state_error)
+            # except KeyError as err:
+            #     self.logger.error("Screen device not found.")
+            #     self.controller.set_status("Screen device not found.")
+            #     self.state_error(failure.Failure(err))
 
     def update_attribute(self, result):
         self.logger.info("Updating result")
@@ -594,8 +642,10 @@ class StateScan(State):
         self.controller.set_analysis_parameters(L, d, E)
         self.generate_daq_info()
         scan = QuadScanController.Scan(self.controller, scan_attr_name, scan_dev_name, start_pos, end_pos, step_size,
-                                       meas_attr_name, meas_dev_name, averages, self.save_image)
+                                       meas_attr_name, meas_dev_name, averages,
+                                       meas_callable=self.save_image, meas_new_id="imagecounter")
         d = scan.start_scan()
+        # d = scan.simulate_scan()
         d.addCallbacks(self.store_scan, self.state_error)
         self.deferred_list.append(d)
 
@@ -742,8 +792,9 @@ class StateScan(State):
         elif msg == "scan":
             self.logger.debug("Message resume... continue scan")
             try:
-                d = self.deferred_list[0]   # type: defer.Deferred
-                d.cancel()
+                pass
+                # d = self.deferred_list[0]   # type: defer.Deferred
+                # d.cancel()
             except IndexError:
                 pass
         elif msg == "process_images":

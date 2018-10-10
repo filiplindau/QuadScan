@@ -103,7 +103,6 @@ def fail(result=None):
     return d
 
 
-
 def execute(callable, *args, **kw):
     """
     Create a L{Deferred} from a callable and arguments.
@@ -118,7 +117,6 @@ def execute(callable, *args, **kw):
         return fail()
     else:
         return succeed(result)
-
 
 
 def maybeDeferred(f, *args, **kw):

@@ -69,7 +69,10 @@ class TangoAttributeProtocol(Protocol):
     def makeConnection(self, transport=None):
         self.logger.debug("Protocol {0} make connection".format(self.name))
         if self.operation == "read":
-            self.d = deferred_from_future(self.factory.device.read_attribute(self.name, wait=False))
+            if isinstance(self.name, list):
+                self.d = deferred_from_future(self.factory.device.read_attributes(self.name, wait=False))
+            else:
+                self.d = deferred_from_future(self.factory.device.read_attribute(self.name, wait=False))
         elif self.operation == "write":
             self.d = deferred_from_future(self.factory.device.write_attribute(self.name, self.data, wait=False))
         elif self.operation == "command":
@@ -296,6 +299,7 @@ class TangoAttributeFactory(Factory):
 
     def data_received(self, result):
         self.logger.debug("Data received: {0}".format(result))
+        # result.device_name = self.device_name
         try:
             self.attribute_dict[result.name] = result
         except AttributeError:
@@ -347,7 +351,7 @@ class LoopingCall(object):
         if self.running is True:
             self.stop()
 
-        self.logger.debug("Starting looping call")
+        self.logger.debug("Starting looping call at interval {0} s".format(interval))
         if interval < 0:
             raise ValueError("interval must be >= 0")
         self.running = True

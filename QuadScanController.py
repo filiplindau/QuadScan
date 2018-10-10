@@ -43,10 +43,12 @@ class QuadScanController(QtCore.QObject):
     state_change_signal = QtCore.Signal(str, str)   # State, Status strings
     attribute_ready_signal = QtCore.Signal(object)  # Returns with a pytango.Attribute
     load_parameters_signal = QtCore.Signal()        # Scan parameters loaded
+    camera_roi_read_done_signal = QtCore.Signal()   # ROI read from camera
+    quad_selected_signal = QtCore.Signal()          # New quad selected. Time to update electron energy, position, value
 
     def __init__(self, quad_name=None, screen_name=None, start=False):
         """
-        Controller for running a scanning Frog device. Communicates with a spectrometer and a motor.
+        Controller for running a quad scan. Communicates with a quad magnet and a camera.
 
 
         :param quad_name: Tango device name of the quad used for scanning
@@ -88,9 +90,11 @@ class QuadScanController(QtCore.QObject):
         self.scan_params["quad_name"] = None
         self.scan_params["quad_device_names"] = dict()
         self.scan_params["quad_length"] = 1.0
+        self.scan_params["quad_pos"] = 1.0
         self.scan_params["quad_screen_dist"] = 1.0
         self.scan_params["screen_name"] = None
         self.scan_params["screen_device_names"] = dict()
+        self.scan_params["screen_pos"] = 1.0
         self.scan_params["section_name"] = "ms1"
         self.scan_params["pixel_size"] = 1.0
         self.scan_params["electron_energy"] = 1.0
@@ -264,13 +268,15 @@ class QuadScanController(QtCore.QObject):
         :param dev_name: Tango device name
         :return: Deferred that is fired when the factory is ready
         """
-        if dev_name not in self.device_names:
+        self.logger.debug("Adding device {0}".format(dev_name))
+        if dev_name not in self.device_factory_dict:
             fact = TangoAttributeFactory(dev_name)
             d = fact.startFactory()
             with self.state_lock:
                 self.device_factory_dict[dev_name] = fact
             d.addErrback(self.add_device_error)
         else:
+            self.logger.debug("Already in dict. Ignore.")
             d = defer.Deferred()
             d.callback(True)
         return d
@@ -430,25 +436,33 @@ class QuadScanController(QtCore.QObject):
                 self.scan_params[param_name] = value
             elif state_name == "idle":
                 self.idle_params[param_name] = value
+            elif state_name == "attr":
+                self.attr_result[param_name] = value
 
-    def get_parameter(self, state_name, param_name):
+    def get_parameter(self, state_name, param_name, dev_name=None):
         # self.logger.debug("Getting parameter {0}.{1}:".format(state_name, param_name))
+        if dev_name is not None:
+            key_name = dev_name + "/" + param_name
+        else:
+            key_name = param_name
         with self.state_lock:
             try:
                 if state_name == "load":
-                    value = self.load_params[param_name]
+                    value = self.load_params[key_name]
                 elif state_name == "save":
-                    value = self.save_params[param_name]
+                    value = self.save_params[key_name]
                 elif state_name == "analysis":
-                    value = self.analysis_params[param_name]
+                    value = self.analysis_params[key_name]
                 elif state_name == "scan":
-                    value = self.scan_params[param_name]
+                    value = self.scan_params[key_name]
                 elif state_name == "idle":
-                    value = self.idle_params[param_name]
+                    value = self.idle_params[key_name]
+                elif state_name == "attr":
+                    value = self.attr_result[key_name]
                 else:
                     value = None
             except KeyError:
-                self.logget.info("Get parameter key error: {0}, dict {1}".format(param_name, state_name))
+                self.logget.info("Get parameter key error: {0}, dict {1}".format(key_name, state_name))
                 value = None
         # self.logger.debug("Value {0}".format(value))
         return value
@@ -477,7 +491,8 @@ class QuadScanController(QtCore.QObject):
 
     def update_attribute(self, result):
         try:
-            result.name
+            attr_name = result.name
+            # dev_name = result.device_name
         except AttributeError:
             return
         # self.logger.info("Updating result")
@@ -485,9 +500,26 @@ class QuadScanController(QtCore.QObject):
         #     self.logger.debug("Result for {0}: {1}".format(result.name, result.value))
         # except AttributeError:
         #     return
+        key_name = attr_name.lower()
         with self.state_lock:
-            self.attr_result[result.name.lower()] = result
+            self.attr_result[key_name] = result
         self.attribute_ready_signal.emit(result)
+
+    def get_attribute(self, attr_name, dev_name):
+        """
+        Return the stored device attribute from the dict attr_result
+
+        :param attr_name: Tango name of attribute
+        :param dev_name: Tango device name
+        :return:
+        """
+        key_name = (dev_name + "/" + attr_name).lower()
+        with self.state_lock:
+            try:
+                result = self.attr_result[key_name]
+            except KeyError:
+                result = None
+        return result
 
     def process_image(self, k_ind, image_ind):
         """
@@ -948,8 +980,15 @@ class QuadScanController(QtCore.QObject):
         # TODO: self.get_parameter("scan", "section_screens")
 
         dl = list()
-        q_pos = None
+
+        # Check if we need to update quad selection
         if update_all is True or self.get_parameter("scan", "quad_name") != quad_name:
+            update_quad = True
+        else:
+            update_quad = False
+
+        q_pos = None
+        if update_quad is True:
             # We need to control the magnet and the corresponding crq device (which is where the actual
             # k-value is set)
             quad_devices = dict()
@@ -977,9 +1016,16 @@ class QuadScanController(QtCore.QObject):
             self.logger.debug("Connecting to quad devices {0}".format(quad_devices))
             self.set_parameter("scan", "quad_device_names", quad_devices)
             self.set_parameter("scan", "quad_name", quad_name)
+            self.set_parameter("scan", "quad_pos", q_pos)
+
+        # Check if we need to update screen selection
+        if update_all is True or self.get_parameter("scan", "screen_name") != screen_name:
+            update_screen = True
+        else:
+            update_screen = False
 
         s_pos = None
-        if update_all is True or self.get_parameter("scan", "screen_name") != screen_name:
+        if update_screen is True:
             try:
                 screen_list = self.get_parameter("scan", "section_screens")[sn]
             except KeyError:
@@ -1005,13 +1051,20 @@ class QuadScanController(QtCore.QObject):
                 dl.append(self.add_device(dev_name))
             self.set_parameter("scan", "screen_device_names", scrn_devices)
             self.set_parameter("scan", "screen_name", screen_name)
+            self.set_parameter("scan", "screen_pos", s_pos)
 
-        if s_pos is not None and q_pos is not None:
-            d = s_pos - q_pos
+        if s_pos is not None or q_pos is not None:
+            qp = self.get_parameter("scan", "quad_pos")
+            sp = self.get_parameter("scan", "screen_pos")
+            d = sp - qp
             self.set_parameter("scan", "quad_screen_distance", d)
 
         def_list = defer.DeferredList(dl)
-        def_list.addCallback(self.read_camera_roi)
+        if update_screen is True:
+            # Read the roi stored in the camera device if a new screen was selected
+            def_list.addCallback(self.read_camera_roi)
+        if update_quad is True:
+            def_list.addCallback(self.read_electron_energy)
         return def_list
 
     def read_camera_roi(self, result):
@@ -1022,8 +1075,10 @@ class QuadScanController(QtCore.QObject):
         :param result: Deferred result (not used)
         :return: New deferred that fires when the read is finished
         """
-        view_name = self.get_parameter("scan", "screen_device_names")["beam"]
-        d = self.read_attribute("roi", view_name)
+        self.logger.debug("Reading camera ROI")
+        beamviewer_name = self.get_parameter("scan", "screen_device_names")["beam"]
+        self.logger.debug("Beamviewer name: {0}".format(beamviewer_name))
+        d = self.read_attribute("roi", beamviewer_name, use_tango_name=True)
         d.addCallback(self.update_camera_roi)
         return d
 
@@ -1036,13 +1091,55 @@ class QuadScanController(QtCore.QObject):
         """
         self.logger.info("Updating camera ROI")
         try:
-            roi_data = result.value
+            # The returned ROI is a string with the roi data as elements in a list
+            # "[min_x, max_x, min_y, max_y]"
+            # E.g. "[0, 1280, 0, 1024]"
+            raw_data = result.value
+            roi_data = np.array(raw_data.strip("[]").split(",")).astype(np.int)
         except AttributeError:
             return False
         roi_center = ((roi_data[1] + roi_data[0]) / 2.0, (roi_data[2] + roi_data[3]) / 2.0)
-        roi_dim = ((roi_data[1] - roi_data[0]), (roi_data[3] - roi_data[3]))
+        roi_dim = ((roi_data[1] - roi_data[0]), (roi_data[3] - roi_data[2]))
         self.set_parameter("scan", "roi_center", roi_center)
         self.set_parameter("scan", "roi_dim", roi_dim)
+        self.camera_roi_read_done_signal.emit()
+        return result
+
+    def read_electron_energy(self, result):
+        """
+        Callback to read electron energy from crq device.
+        Creates a deferred with update_electron_energy as callback
+
+        :param result: Deferred result (not used)
+        :return: New deferred that fires when the read is finished
+        """
+        self.logger.debug("Reading electron energy")
+        crq_name = self.get_parameter("scan", "quad_device_names")["crq"]
+        self.logger.debug("Crq name: {0}".format(crq_name))
+        d = self.read_attribute(["energy", "mainfieldcomponent"], crq_name, use_tango_name=True)
+
+        d.addCallback(self.update_electron_energy)
+        return d
+
+    def update_electron_energy(self, result):
+        """
+        Callback to update the electron energy stored in the scan params dict.
+
+        :param result: Deferred result containing the device energy attribute
+        :return:
+        """
+        try:
+            energy = result[0].value * 1e-6        # Value from tango device in eV, we want MeV
+            k = result[1].value
+            self.logger.info("Updating electron energy to {0}".format(energy))
+            self.logger.info("Updating mainfieldcomponent to {0}".format(k))
+        except AttributeError:
+            self.logger.error("AttributeError Updating electron energy")
+            return False
+        self.set_parameter("scan", "electron_energy", energy)
+        # self.update_attribute(result[1])
+        self.set_parameter("attr", "mainfieldcomponent", result[1])
+        self.quad_selected_signal.emit()
         return result
 
     def exit(self):
@@ -1069,7 +1166,22 @@ class Scan(object):
     Run a scan of one attribute while measuring another
     """
     def __init__(self, controller, scan_attr_name, scan_dev_name, start_pos, stop_pos, step,
-                 meas_attr_name, meas_dev_name, averages=1, meas_callable=None):
+                 meas_attr_name, meas_dev_name, averages=1, meas_callable=None, meas_new_id=None):
+        """
+
+        :param controller: QuadScanController object
+        :param scan_attr_name: Name of attribute to scan (e.g. mainfieldcomponent)
+        :param scan_dev_name: Tango name of device that has the scan attribute (e.g. i-ms1/mag/crq-01)
+        :param start_pos: Start value of the scan attribute
+        :param stop_pos: End value of the scan attribute
+        :param step: Value change of the scan attribute for each step
+        :param meas_attr_name: Name of attribute to measure at each step of scan (e.g image)
+        :param meas_dev_name: Tango name of device that has the measurement attribute
+        :param averages: Number of readings of the measurement attribute at each scan point to average
+        :param meas_callable: Additional callable that is called at end of each scan point to save data etc...
+        :param meas_new_id: Additional attribute in measurement device to check if new data
+                            is available (e.g. imagecounter)
+        """
         self.controller = controller    # type: QuadScanController.QuadScanController
         self.scan_attr = scan_attr_name
         self.scan_dev = scan_dev_name
@@ -1091,11 +1203,15 @@ class Scan(object):
         self.scan_arrive_time = time.time()
         self.data_time = time.time()
         self.status_update_time = time.time()
-        self.status_update_interval = 1.0
+        self.status_update_interval = 1.0           # Status messages are sent with this interval to the controller
 
-        self.meas_callable = meas_callable
+        self.meas_callable = meas_callable          # Call this function when taking a new step in the scan
+        self.meas_new_id = meas_new_id              # Attribute name to read to check if there is new data
+        self.meas_max_time = 1.5                    # Max time to wait for new data
+        self.meas_start_time = None                 # Holds the starting time for checking new data
+        self.meas_last_hash = 0.0                   # Holds the last hash value to see if it changed
 
-        self.simulation = False
+        self.simulation = False                     # If simulation is True, don't actually change the scan attribute
 
         self.logger = logging.getLogger("QuadScanController.Scan_{0}_{1}".format(self.scan_attr, self.meas_attr))
         self.logger.setLevel(logging.DEBUG)
@@ -1154,10 +1270,11 @@ class Scan(object):
         :return:
         """
         self.logger.info("Scan step")
+        # Progress level:
         p = (self.current_pos - self.start_pos) / (self.stop_pos-self.start_pos)
         self.controller.progress_signal.emit(p)
-        tol = self.step * 0.1
-        scan_pos = self.current_pos + self.step
+        tol = self.step * 0.1   # Tolerance for scan attribute
+        scan_pos = self.current_pos + self.step     # New scan position
         if scan_pos > self.stop_pos or self.cancel_flag is True:
             self.scan_done()
             return self.d
@@ -1179,11 +1296,17 @@ class Scan(object):
         :param result: Deferred result. Used to get current position.
         :return:
         """
-        try:
-            self.current_pos = result.value
-        except AttributeError:
-            self.logger.error("Scan arrive not returning attribute: {0}".format(result))
-            return False
+        if self.simulation is True:
+            # If simulating, add the step anyway to be able to stop the scan
+            if self.current_pos is None:
+                self.current_pos = 0.0
+            self.current_pos += self.step
+        else:
+            try:
+                self.current_pos = result.value
+            except AttributeError:
+                self.logger.error("Scan arrive not returning attribute: {0}".format(result))
+                return False
 
         self.logger.info("Scan arrive at pos {0}".format(self.current_pos))
         t = time.time()
@@ -1201,6 +1324,7 @@ class Scan(object):
         try:
             wait_time = (self.scan_arrive_time - self.data_time) % self.controller.idle_params["reprate"]
         except KeyError:
+            # If the reprate is not specified, assume 10Hz
             wait_time = 0.1
         d0 = defer_later(wait_time, self.meas_issue_new_read)
         d0.addErrback(self.scan_error_cb)
@@ -1214,9 +1338,36 @@ class Scan(object):
         :return:
         """
         self.logger.info("Reading measurement")
-        d0 = self.controller.read_attribute(self.meas_attr, self.meas_dev, use_tango_name=self.use_tango_name)
-        d0.addCallbacks(self.meas_scan_store, self.scan_error_cb)
+        self.meas_start_time = time.time()
+        if self.meas_new_id is not None:
+            # The meas_new_id was supplied, so try checking for a change in hash value.
+            d0 = self.controller.read_attribute(self.meas_new_id, self.meas_dev, use_tango_name=self.use_tango_name)
+            d0.addCallbacks(self.meas_check_hash, self.scan_error_cb)
+        else:
+            # No meas_new_id, just read the attribute directly
+            d0 = self.controller.read_attribute(self.meas_attr, self.meas_dev, use_tango_name=self.use_tango_name)
+            d0.addCallbacks(self.meas_scan_store, self.scan_error_cb)
         return True
+
+    def meas_check_hash(self, result):
+        """
+        Callback from read_attribute for checking if new measurement is available by calculating a "hash value"
+        (i.e. summing the values in the attribute data)
+        :param result: Deferred callback result
+        :return:
+        """
+        hash_val = np.sum(result.value)
+        if (hash_val == self.meas_last_hash) and (time.time() - self.meas_start_time > self.meas_max_time):
+            # The hash value did not change and the total time elapsed is smaller than the acceptable (meas_max_time).
+            # So there is no new measurement data. Try again.
+            d0 = self.controller.read_attribute(self.meas_new_id, self.meas_dev, use_tango_name=self.use_tango_name)
+            d0.addCallbacks(self.meas_check_hash, self.scan_error_cb)
+        else:
+            # The hash value change or the time is too long waiting. Read the actual measurement data.
+            self.meas_last_hash = hash_val
+            d0 = self.controller.read_attribute(self.meas_attr, self.meas_dev, use_tango_name=self.use_tango_name)
+            d0.addCallbacks(self.meas_scan_store, self.scan_error_cb)
+        return result
 
     def meas_scan_store(self, result):
         """
@@ -1226,17 +1377,21 @@ class Scan(object):
         """
         measure_value = result.value
         self.logger.debug("Measure at scan pos {0} result: {1}".format(self.current_pos, measure_value))
+
+        # This is a good idea, but the timestamp only reflects the time of the read_attribtue, not
+        # the actual time the measurement was taken. Also the machines are not synchronized so
+        # timestamps from different computers can't be compared.
         # First check if this was taken before the scan arrived to the new position, then re-read
-        if result.time.totime() <= self.scan_arrive_time:
-            self.logger.debug("Old data. Wait for new.")
-            t = time.time() - result.time.totime()
-            if t > 2.0:
-                self.logger.error("Timeout waiting for new data. {0} s elapsed".format(t))
-                self.scan_error_cb(RuntimeError("Timeout waiting for new data"))
-                return False
-            d0 = self.controller.read_attribute(self.meas_attr, self.meas_dev, use_tango_name=self.use_tango_name)
-            d0.addCallbacks(self.meas_scan_store, self.scan_error_cb)
-            return False
+        # if result.time.totime() <= self.scan_arrive_time:
+        #     self.logger.debug("Old data. Wait for new.")
+        #     t = time.time() - result.time.totime()
+        #     if t > 2.0:
+        #         self.logger.error("Timeout waiting for new data. {0} s elapsed".format(t))
+        #         self.scan_error_cb(RuntimeError("Timeout waiting for new data"))
+        #         return False
+        #     d0 = self.controller.read_attribute(self.meas_attr, self.meas_dev, use_tango_name=self.use_tango_name)
+        #     d0.addCallbacks(self.meas_scan_store, self.scan_error_cb)
+        #     return False
         self.data_time = result.time.totime()
 
         self.meas_data.append(measure_value)
@@ -1249,6 +1404,7 @@ class Scan(object):
             try:
                 wait_time = (t - self.data_time) % self.controller.idle_params["reprate"]
             except KeyError:
+                # No reprate param, default to 0.1 s wait time
                 wait_time = 0.1
             d0 = defer_later(wait_time, self.meas_issue_new_read)
             d0.addErrback(self.scan_error_cb)

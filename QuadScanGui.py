@@ -243,6 +243,8 @@ class QuadScanGui(QtGui.QWidget):
         self.controller.fit_done_signal.connect(self.update_result)
         self.controller.state_change_signal.connect(self.change_state)
         self.controller.attribute_ready_signal.connect(self.update_attribute)
+        self.controller.camera_roi_read_done_signal.connect(self.update_camera_roi_from_device)
+        self.controller.quad_selected_signal.connect(self.update_electron_energy_from_device)
         self.sigma_x_plot.sigClicked.connect(self.points_clicked)
         self.sigma_x_plot.sigRightClicked.connect(self.points_clicked)
         self.ui.fit_algo_combobox.currentIndexChanged.connect(self.update_algo)
@@ -356,6 +358,7 @@ class QuadScanGui(QtGui.QWidget):
         if name == "mainfieldcomponent":
             self.ui.k_current_label.setText("{0:.3f}".format(attr.value))
         elif name == "image":
+            root.debug("Update image")
             # Check if a new camera is active, then we should update the histogram:
             if self.screen_init_flag is True:
                 self.ui.camera_raw_widget.setImage(attr.value, autoRange=True, autoLevels=True, autoHistogramRange=True)
@@ -365,6 +368,19 @@ class QuadScanGui(QtGui.QWidget):
             self.ui.camera_raw_widget.roi.show()
 
             self.update_camera_roi()
+        elif name == "state":
+            try:
+                devname = attr.device_name
+            except AttributeError:
+                root.debug("attr.device_name not implemented... cannot distinguish state attribute")
+                return
+            root.debug("Got state attribute for {0}: {1}".format(devname, attr.value))
+            if "crq" in devname:
+                self.ui.quad_state_label.setText(str(attr.value))
+            elif "liveviewer" in devname:
+                self.ui.camera_state_label.setText(str(attr.value))
+            elif "/scrn" in devname:
+                self.ui.screen_state_label.setText(str(attr.value))
 
     def update_image_processing(self):
         """
@@ -404,7 +420,7 @@ class QuadScanGui(QtGui.QWidget):
         Update the roi in the raw camera image
         :return:
         """
-        root.info("Update camera roi")
+        root.info("Update camera roi image")
         rs = self.ui.camera_raw_widget.roi.size()
         rp = self.ui.camera_raw_widget.roi.pos()
         x0 = int(rp[0])
@@ -414,10 +430,30 @@ class QuadScanGui(QtGui.QWidget):
         pic = self.ui.camera_raw_widget.getProcessedImage()
         try:
             pic_roi = pic[x0:x1, y0:y1]
-            self.ui.camera_roi_widget.setImage(pic_roi)
         except TypeError as e:
             root.debug("pic index error: {0}. rp: {1}, rs: {2}".format(e, rp, rs))
             self.controller.set_status("Problem indexing pic to roi")
+        try:
+            self.ui.camera_roi_widget.setImage(pic_roi)
+        except ValueError as e:
+            root.error("Error setting roi image: {0}".format(e))
+            self.controller.set_status("Problem setting ROI image")
+
+    def update_camera_roi_from_device(self):
+        """
+        Update the roi in the raw camera image by data from tango device
+        :return:
+        """
+        rp = self.controller.get_parameter("scan", "roi_center")
+        rs = self.controller.get_parameter("scan", "roi_dim")
+        root.info("Update camera roi image from tango device: Pos {0}, size {1}".format(rp, rs))
+        self.ui.camera_raw_widget.roi.setPos(rp)
+        self.ui.camera_raw_widget.roi.setSize(rs)
+
+        d = self.controller.get_parameter("scan", "quad_screen_distance")
+        self.ui.quad_screen_distance_label.setText("{0} m".format(d))
+
+        self.update_camera_roi()
 
     def set_roi(self):
         """
@@ -608,10 +644,10 @@ class QuadScanGui(QtGui.QWidget):
 
         # Set the quad and screen selected:
         if quad_name is not None and screen_name is not None:
-            if self.get_parameter("scan", "screen_name") != screen_name:
+            if self.controller.get_parameter("scan", "screen_name") != screen_name:
                 self.screen_init_flag = True
             self.state_dispatcher.send_command("set_section", sect, quad_name, screen_name)
-            self.ui.quad_screen_distance_label.setText("{0:2f}".format(screen_pos - quad_pos))
+            # self.ui.quad_screen_distance_label.setText("{0:2f}".format(screen_pos - quad_pos))
 
     def update_scan_devices(self):
         quad_dev = str(self.ui.quad_select_edit.text())
@@ -710,6 +746,32 @@ class QuadScanGui(QtGui.QWidget):
     def set_electron_energy(self):
         energy = self.ui.energy_spinbox.value()
         root.info("Setting current electron energy.")
+
+    def update_electron_energy_from_device(self):
+        """
+        Update electron energy by data from quad tango device
+        :return:
+        """
+        energy = self.controller.get_parameter("scan", "electron_energy")
+        crq_name = self.controller.get_parameter("scan", "quad_device_names")["crq"]
+        root.debug("Current crq device: {0}".format(crq_name))
+        try:
+            k_attr = self.controller.get_parameter("attr", "mainfieldcomponent").value
+        except AttributeError:
+            k_attr = -10.0
+        root.info("Update electron energy from tango device: {0}".format(energy))
+        self.ui.energy_spinbox.setValue(energy)
+        self.ui.k_current_spinbox.setValue(k_attr)
+
+        d = self.controller.get_parameter("scan", "quad_screen_distance")
+        root.info("Update quad-screen dist: {0}".format(d))
+        self.ui.quad_screen_distance_label.setText("{0} m".format(d))
+        qp = self.controller.get_parameter("scan", "quad_pos")
+        root.info("Update quad pos: {0}".format(qp))
+        self.ui.quad_pos_label.setText("{0} m".format(qp))
+        ql = self.controller.get_parameter("scan", "quad_length")
+        root.info("Update quad length: {0}".format(qp))
+        self.ui.quad_length_data_label.setText("{0} m".format(ql))
 
     def load_data(self):
         """
