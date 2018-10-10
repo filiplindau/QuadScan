@@ -521,6 +521,29 @@ class QuadScanController(QtCore.QObject):
                 result = None
         return result
 
+    def init_scan_result_datastructure(self):
+        """
+        Clear old scan data and init with empty lists of lists with
+        correct number of k_num elements.
+
+        :return:
+        """
+        self.logger.info("Init scan result datastructure.")
+        with self.state_lock:
+            n_k = self.scan_params["num_k_values"]
+            self.logger.info("Using {0} k values.".format(n_k))
+            self.scan_result["raw_data"] = [list() for i in range(n_k)]
+            self.scan_result["proc_data"] = [list() for i in range(n_k)]
+            self.scan_result["line_data_x"] = [list() for i in range(n_k)]
+            self.scan_result["line_data_y"] = [list() for i in range(n_k)]
+            self.scan_result["x_cent"] = [list() for i in range(n_k)]
+            self.scan_result["y_cent"] = [list() for i in range(n_k)]
+            self.scan_result["sigma_x"] = [list() for i in range(n_k)]
+            self.scan_result["sigma_y"] = [list() for i in range(n_k)]
+            self.scan_result["k_data"] = [list() for i in range(n_k)]
+            self.scan_result["enabled_data"] = [list() for i in range(n_k)]
+            self.scan_result["charge_data"] = [list() for i in range(n_k)]
+
     def process_image(self, k_ind, image_ind):
         """
         Process an image in the stored scan raw_data. Put the process image back in the scan proc_data.
@@ -620,6 +643,11 @@ class QuadScanController(QtCore.QObject):
         return pic_roi
 
     def process_all_images(self):
+        """
+        Process all images in the scan. The processing is moved to threads to speed things up.
+
+        :return: Deferred list that fires when all images are ready
+        """
         d_list = []
         k_num = self.get_parameter("scan", "num_k_values")
         im_num = self.get_parameter("scan", "num_shots")
@@ -634,6 +662,13 @@ class QuadScanController(QtCore.QObject):
         return dl
 
     def process_all_images_pool(self):
+        """
+        Process all images in the scan. The processing is moved to a process pool to speed things up.
+        This should be faster than using threads, unless the overhead of creating new process and
+        moving data is larger than the actual computation...
+
+        :return: Deferred list that fires when all images are ready
+        """
         d_list = []
         k_num = self.get_parameter("scan", "num_k_values")
         im_num = self.get_parameter("scan", "num_shots")
@@ -678,6 +713,16 @@ class QuadScanController(QtCore.QObject):
         return dl
 
     def process_image_pool(self, k_ind, image_ind):
+        """
+        Add a single image to the process_pool for roi extraction, thresholding, and filtering.
+        After completing the image is sent to process_image_pool_store for storing the processed
+        image. This is because the process has to be done with on a non-class method, and so
+        does not know the controller object.
+
+        :param k_ind: Index into the list of k-values taken during the scan
+        :param image_ind: Indoex into the list of images taken for this k-value
+        :return: Deferred that fires when the image processing is completed
+        """
         self.logger.info("Processing image {0}, {1} in pool".format(k_ind, image_ind))
         t0 = time.time()
         if self.process_pool is None:
@@ -691,6 +736,7 @@ class QuadScanController(QtCore.QObject):
 
         image_list = self.get_result("scan", "raw_data")
 
+        # Init pool if there is none
         if self.process_pool is None:
             self.process_pool = TangoTwisted.ClearablePool(processes=self.process_count)
 
@@ -702,11 +748,21 @@ class QuadScanController(QtCore.QObject):
         return d
 
     def process_image_pool_store(self, result):
+        """
+        Stores a processed image. All parameters to identify the image is in the result data structure.
+        The image_done_signal is emitted at the end of this method.
+
+        :param result: Proessed image deferred result
+        :return: Same result for further deferred callback processing
+        """
         self.logger.info("Storing processed image")
         k_ind = result["k_ind"]
         image_ind = result["image_ind"]
-        self.logger.info("Storing processed image {0}, {1}".format(k_ind, image_ind))
         pic_roi = result["pic_roi"]
+        try:
+            self.logger.info("Storing processed image {0}, {1}. Size {2}".format(k_ind, image_ind, pic_roi.shape))
+        except AttributeError as e:
+            self.logger.info("Pic_roi attribute error: {0}".format(e))
         line_x = result["line_x"]
         line_y = result["line_y"]
         x_cent = result["x_cent"]
@@ -732,15 +788,20 @@ class QuadScanController(QtCore.QObject):
             self.scan_result["sigma_y"][k_ind][image_ind] = sigma_y
             self.scan_result["charge_data"][k_ind][image_ind] = q
         except IndexError:
+            self.logger.debug("Appending value")
             proc_list[k_ind].append(pic_roi)
             line_data_x[k_ind].append(pic_roi.sum(0))
             line_data_y[k_ind].append(pic_roi.sum(1))
+            self.logger.debug("Value appended")
             self.scan_result["x_cent"][k_ind].append(x_cent)
             self.scan_result["y_cent"][k_ind].append(y_cent)
+            self.logger.debug("Centroids")
             self.scan_result["sigma_x"][k_ind].append(sigma_x)
             self.scan_result["sigma_y"][k_ind].append(sigma_y)
+            self.logger.debug("Sigma")
             self.scan_result["charge_data"][k_ind].append(q)
         self.image_done_signal.emit(k_ind, image_ind)
+        self.logger.debug("Signal emitted")
         return result
 
     def process_images_done(self, result):

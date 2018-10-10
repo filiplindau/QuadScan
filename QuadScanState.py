@@ -641,6 +641,7 @@ class StateScan(State):
         E = self.controller.get_parameter("scan", "electron_energy")
         self.controller.set_analysis_parameters(L, d, E)
         self.generate_daq_info()
+        self.controller.init_scan_result_datastructure()
         scan = QuadScanController.Scan(self.controller, scan_attr_name, scan_dev_name, start_pos, end_pos, step_size,
                                        meas_attr_name, meas_dev_name, averages,
                                        meas_callable=self.save_image, meas_new_id="imagecounter")
@@ -732,6 +733,9 @@ class StateScan(State):
         with self.save_lock:
             self.pending_save_count += 1
         d = TangoTwisted.defer_to_thread(self._image_saver, full_name, image)
+        d.addErrback(self.state_error)
+        self.controller.add_raw_image(pos_ind, pos, result.value)
+        d = self.controller.process_image_pool(pos_ind, meas_ind)
         d.addErrback(self.state_error)
 
     def _image_saver(self, filename, data):
@@ -935,28 +939,29 @@ class StateLoad(State):
         self.old_raw_data = self.controller.get_result("scan", "raw_data")
         self.old_proc_data = self.controller.get_result("scan", "proc_data")
         # Init new data structure:
-        self.controller.set_result("scan", "raw_data",
-                                   [list() for i in range(self.controller.get_parameter("scan", "num_k_values"))])
-        self.controller.set_result("scan", "proc_data",
-                                   [list() for i in range(self.controller.get_parameter("scan", "num_k_values"))])
-        self.controller.set_result("scan", "line_data_x",
-                                   [list() for i in range(self.controller.get_parameter("scan", "num_k_values"))])
-        self.controller.set_result("scan", "line_data_y",
-                                   [list() for i in range(self.controller.get_parameter("scan", "num_k_values"))])
-        self.controller.set_result("scan", "x_cent",
-                                   [list() for i in range(self.controller.get_parameter("scan", "num_k_values"))])
-        self.controller.set_result("scan", "y_cent",
-                                   [list() for i in range(self.controller.get_parameter("scan", "num_k_values"))])
-        self.controller.set_result("scan", "sigma_x",
-                                   [list() for i in range(self.controller.get_parameter("scan", "num_k_values"))])
-        self.controller.set_result("scan", "sigma_y",
-                                   [list() for i in range(self.controller.get_parameter("scan", "num_k_values"))])
-        self.controller.set_result("scan", "k_data",
-                                   [list() for i in range(self.controller.get_parameter("scan", "num_k_values"))])
-        self.controller.set_result("scan", "enabled_data",
-                                   [list() for i in range(self.controller.get_parameter("scan", "num_k_values"))])
-        self.controller.set_result("scan", "charge_data",
-                                   [list() for i in range(self.controller.get_parameter("scan", "num_k_values"))])
+        self.controller.init_scan_result_datastructure()
+        # self.controller.set_result("scan", "raw_data",
+        #                            [list() for i in range(self.controller.get_parameter("scan", "num_k_values"))])
+        # self.controller.set_result("scan", "proc_data",
+        #                            [list() for i in range(self.controller.get_parameter("scan", "num_k_values"))])
+        # self.controller.set_result("scan", "line_data_x",
+        #                            [list() for i in range(self.controller.get_parameter("scan", "num_k_values"))])
+        # self.controller.set_result("scan", "line_data_y",
+        #                            [list() for i in range(self.controller.get_parameter("scan", "num_k_values"))])
+        # self.controller.set_result("scan", "x_cent",
+        #                            [list() for i in range(self.controller.get_parameter("scan", "num_k_values"))])
+        # self.controller.set_result("scan", "y_cent",
+        #                            [list() for i in range(self.controller.get_parameter("scan", "num_k_values"))])
+        # self.controller.set_result("scan", "sigma_x",
+        #                            [list() for i in range(self.controller.get_parameter("scan", "num_k_values"))])
+        # self.controller.set_result("scan", "sigma_y",
+        #                            [list() for i in range(self.controller.get_parameter("scan", "num_k_values"))])
+        # self.controller.set_result("scan", "k_data",
+        #                            [list() for i in range(self.controller.get_parameter("scan", "num_k_values"))])
+        # self.controller.set_result("scan", "enabled_data",
+        #                            [list() for i in range(self.controller.get_parameter("scan", "num_k_values"))])
+        # self.controller.set_result("scan", "charge_data",
+        #                            [list() for i in range(self.controller.get_parameter("scan", "num_k_values"))])
         self.load_next_image(None)
 
     def load_next_image(self, result):
