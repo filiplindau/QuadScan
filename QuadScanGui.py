@@ -88,7 +88,9 @@ class QuadScanGui(QtGui.QWidget):
         self.fit_plot_vb = None
 
         self.camera_raw_proxy = None    # Signal proxy to track mouse position over image
+        self.camera_roi_proxy = None    # Signal proxy to track mouse position over image
         self.scan_raw_proxy = None  # Signal proxy to track mouse position over image
+        self.scan_proc_proxy = None  # Signal proxy to track mouse position over image
 
         self.gui_lock = threading.Lock()
 
@@ -293,8 +295,12 @@ class QuadScanGui(QtGui.QWidget):
         # Setup signal proxies for mouse tracking
         self.camera_raw_proxy = pq.SignalProxy(self.ui.camera_raw_widget.scene.sigMouseMoved,
                                                rateLimit=30, slot=self.camera_raw_mouse_moved)
+        self.camera_roi_proxy = pq.SignalProxy(self.ui.camera_roi_widget.scene.sigMouseMoved,
+                                               rateLimit=30, slot=self.camera_roi_mouse_moved)
         self.scan_raw_proxy = pq.SignalProxy(self.ui.image_raw_widget.scene.sigMouseMoved,
                                              rateLimit=30, slot=self.scan_raw_mouse_moved)
+        self.scan_proc_proxy = pq.SignalProxy(self.ui.image_proc_widget.scene.sigMouseMoved,
+                                              rateLimit=30, slot=self.scan_proc_mouse_moved)
 
     def change_state(self, new_state, new_status=None):
         root.info("Change state: {0}, status {1}".format(new_state, new_status))
@@ -735,7 +741,27 @@ class QuadScanGui(QtGui.QWidget):
 
     def scan_raw_mouse_moved(self, event):
         pos = self.ui.image_raw_widget.view.mapSceneToView(event[0])
-        root.debug("Scan image pos: {0}".format(pos))
+        pic = self.ui.image_raw_widget.getProcessedImage()
+        x = int(pos.x())
+        y = int(pos.y())
+        if x >= 0 and y >= 0:
+            try:
+                intensity = pic[x, y]
+            except IndexError:
+                return
+            self.ui.mouse_label.setText("Scan raw image at ({0}, {1}) px: intensity={2:.2f}".format(x, y, intensity))
+
+    def scan_proc_mouse_moved(self, event):
+        pos = self.ui.image_proc_widget.view.mapSceneToView(event[0])
+        pic = self.ui.image_proc_widget.getProcessedImage()
+        x = int(pos.x())
+        y = int(pos.y())
+        if x >= 0 and y >= 0:
+            try:
+                intensity = pic[x, y]
+            except IndexError:
+                return
+            self.ui.mouse_label.setText("Scan processed image at ({0}, {1}) px: intensity={2:.2f}".format(x, y, intensity))
 
     def camera_raw_mouse_moved(self, event):
         pos = self.ui.camera_raw_widget.view.mapSceneToView(event[0])
@@ -747,7 +773,19 @@ class QuadScanGui(QtGui.QWidget):
                 intensity = pic[x, y]
             except IndexError:
                 return
-            root.debug("Camera image pos {0}, {1}: {2}".format(x, y, intensity))
+            self.ui.mouse_label.setText("Camera raw image at ({0}, {1}) px: intensity={2:.2f}".format(x, y, intensity))
+
+    def camera_roi_mouse_moved(self, event):
+        pos = self.ui.camera_roi_widget.view.mapSceneToView(event[0])
+        pic = self.ui.camera_roi_widget.getProcessedImage()
+        x = int(pos.x())
+        y = int(pos.y())
+        if x >= 0 and y >= 0:
+            try:
+                intensity = pic[x, y]
+            except IndexError:
+                return
+            self.ui.mouse_label.setText("Camera ROI image at ({0}, {1}) px: intensity={2:.2f}".format(x, y, intensity))
 
     def set_max_k(self):
         k_current = self.ui.k_current_spinbox.value()
