@@ -96,7 +96,8 @@ class QuadScanController(QtCore.QObject):
         self.scan_params["screen_device_names"] = dict()
         self.scan_params["screen_pos"] = 1.0
         self.scan_params["section_name"] = "ms1"
-        self.scan_params["pixel_size"] = 1.0
+        self.scan_params["pixel_size"] = [1.0, 1.0]
+        self.scan_params["bpp"] = 16
         self.scan_params["electron_energy"] = 1.0
         self.scan_params["roi_center"] = [1.0, 1.0]
         self.scan_params["roi_dim"] = [1.0, 1.0]
@@ -462,7 +463,7 @@ class QuadScanController(QtCore.QObject):
                 else:
                     value = None
             except KeyError:
-                self.logget.info("Get parameter key error: {0}, dict {1}".format(key_name, state_name))
+                self.logger.error("Get parameter key error: {0}, dict {1}".format(key_name, state_name))
                 value = None
         # self.logger.debug("Value {0}".format(value))
         return value
@@ -732,7 +733,8 @@ class QuadScanController(QtCore.QObject):
         roi_cent = self.get_parameter("scan", "roi_center")
         roi_dim = self.get_parameter("scan", "roi_dim")
         kernel = self.analysis_params["median_kernel"]
-        cal = self.scan_params["pixel_size"]
+        cal = self.get_parameter("scan", "pixel_size")
+        bpp = self.get_parameter("scan", "bpp")
 
         image_list = self.get_result("scan", "raw_data")
 
@@ -742,7 +744,7 @@ class QuadScanController(QtCore.QObject):
 
         pic = image_list[k_ind][image_ind]
         d = self.process_pool.add_task(process_image_func,
-                                       pic, k_ind, image_ind, th, roi_cent, roi_dim, cal, kernel)
+                                       pic, k_ind, image_ind, th, roi_cent, roi_dim, cal, kernel, bpp)
         d.addCallback(self.process_image_pool_store)
 
         return d
@@ -817,6 +819,7 @@ class QuadScanController(QtCore.QObject):
 
     def fit_quad_data(self):
         algo = self.get_parameter("analysis", "fit_algo")
+        self.logger.debug("Fitting data with {0} algorithm".format(algo))
         if algo == "full_matrix":
             self.fit_full_transfer_matrix()
         elif algo == "thin_lens":
@@ -872,7 +875,9 @@ class QuadScanController(QtCore.QObject):
         d = self.get_parameter("analysis", "quad_screen_dist")
         L = self.get_parameter("analysis", "quad_length")
         gamma_energy = self.get_parameter("analysis", "electron_energy") / 0.511
-        self.logger.debug("sigma_data: {0}, en_data: {1}".format(sigma_data.shape, en_data.shape))
+        self.logger.debug("sigma_data: {0}".format(sigma_data.shape))
+        self.logger.debug("en_data: {0}".format(en_data.shape))
+        self.logger.debug("k_data: {0}".format(k_data))
         try:
             s2 = (sigma_data[en_data]) ** 2
         except IndexError as e:
@@ -888,7 +893,11 @@ class QuadScanController(QtCore.QObject):
         A = np.real(np.cos(k_sqrt * L) - d * k_sqrt * np.sin(k_sqrt * L))
         B = np.real(1 / k_sqrt * np.sin(k_sqrt * L) + d * np.cos(k_sqrt * L))
         M = np.vstack((A*A, -2*A*B, B*B)).transpose()
-        x = np.linalg.lstsq(M, s2[ind])
+        try:
+            x = np.linalg.lstsq(M, s2[ind])
+        except Exception as e:
+            self.logger.error("Error when fitting lstsqr: {0}".format(e))
+            return
         self.logger.debug("Fit coefficients: {0}".format(x[0]))
         eps = np.sqrt(x[0][2] * x[0][0] - x[0][1]**2)
         eps_n = eps * gamma_energy
@@ -932,7 +941,7 @@ class QuadScanController(QtCore.QObject):
                 en_list[int(k_num)].append(False)
             except IndexError:
                 self.logger.warning("Image index out of range: {0}/{1}, skipping".format(k_num,
-                                                                                         len(self.controller.scan_raw_data)))
+                                                                                         len(self.scan_raw_data)))
 
     def populate_matching_sections(self):
         """
@@ -1123,12 +1132,12 @@ class QuadScanController(QtCore.QObject):
         def_list = defer.DeferredList(dl)
         if update_screen is True:
             # Read the roi stored in the camera device if a new screen was selected
-            def_list.addCallback(self.read_camera_roi)
+            def_list.addCallback(self.read_camera_parameters)
         if update_quad is True:
             def_list.addCallback(self.read_electron_energy)
         return def_list
 
-    def read_camera_roi(self, result):
+    def read_camera_parameters(self, result):
         """
         Callback to read camera ROI from beamviewer device.
         Creates a deferred with update_camera_roi as callback
@@ -1141,6 +1150,12 @@ class QuadScanController(QtCore.QObject):
         self.logger.debug("Beamviewer name: {0}".format(beamviewer_name))
         d = self.read_attribute("roi", beamviewer_name, use_tango_name=True)
         d.addCallback(self.update_camera_roi)
+
+        ctrl_name = self.get_parameter("scan", "screen_device_names")["ctrl"]
+        d_bpp = self.read_attribute("image_type", ctrl_name, use_tango_name=True)
+        d_bpp.addCallback(self.update_camera_param)
+        d_pix = self.read_attribute("camera_pixelsize", ctrl_name, use_tango_name=True)
+        d_pix.addCallback(self.update_camera_param)
         return d
 
     def update_camera_roi(self, result):
@@ -1165,6 +1180,20 @@ class QuadScanController(QtCore.QObject):
         self.set_parameter("scan", "roi_dim", roi_dim)
         self.camera_roi_read_done_signal.emit()
         return result
+
+    def update_camera_param(self, result):
+        try:
+            param_name = result.name.lower()
+        except AttributeError as e:
+            self.logger.error("Error updating camera parameter: {0}".format(e))
+        self.logger.info("Updating parameter {0} for selected camera to {1}".format(param_name, result.value))
+        if param_name == "image_type":
+            s = result.value.lower()
+            bpp = int(s.split("bpp")[1])
+            self.set_parameter("scan", "bpp", bpp)
+        elif param_name == "camera_pixelsize":
+            cal = result.value
+            self.set_parameter("scan", "pixel_size", cal)
 
     def read_electron_energy(self, result):
         """
@@ -1330,7 +1359,8 @@ class Scan(object):
         Callback scan_arrive is called when the move is done.
         :return:
         """
-        self.logger.info("Scan step")
+        self.current_pos_ind += 1
+        self.logger.info("Scan step {0}".format(self.current_pos_ind))
         # Progress level:
         p = (self.current_pos - self.start_pos) / (self.stop_pos-self.start_pos)
         self.controller.progress_signal.emit(p)
@@ -1383,7 +1413,7 @@ class Scan(object):
         # data frame should be there.
         self.scan_arrive_time = t
         try:
-            wait_time = (self.scan_arrive_time - self.data_time) % self.controller.idle_params["reprate"]
+            wait_time = (self.scan_arrive_time - self.data_time) % (1.0 / self.controller.idle_params["reprate"])
         except KeyError:
             # If the reprate is not specified, assume 10Hz
             wait_time = 0.1
@@ -1437,7 +1467,9 @@ class Scan(object):
         :return:
         """
         measure_value = result.value
-        self.logger.debug("Measure at scan pos {0} result: {1}".format(self.current_pos, measure_value))
+        self.logger.debug("Measure at scan pos {0}, pos ind {1}, "
+                          "meas ind {2}, result: {3}".format(self.current_pos, self.current_pos_ind,
+                                                             self.current_meas_ind, measure_value))
 
         # This is a good idea, but the timestamp only reflects the time of the read_attribtue, not
         # the actual time the measurement was taken. Also the machines are not synchronized so
@@ -1463,7 +1495,7 @@ class Scan(object):
         if self.current_meas_ind < self.averages or self.cancel_flag is True:
             t = time.time()
             try:
-                wait_time = (t - self.data_time) % self.controller.idle_params["reprate"]
+                wait_time = (t - self.data_time) % (1.0 / self.controller.idle_params["reprate"])
             except KeyError:
                 # No reprate param, default to 0.1 s wait time
                 wait_time = 0.1
@@ -1649,7 +1681,7 @@ def test_image_pool(a, b):
     return a
 
 
-def process_image_func(image, k_ind, image_ind, threshold, roi_cent, roi_dim, cal=1, kernel=3):
+def process_image_func(image, k_ind, image_ind, threshold, roi_cent, roi_dim, cal=1, kernel=3, bpp=16):
     print("Processing image {0}, {1} in pool".format(k_ind, image_ind))
     t0 = time.time()
     x = np.array([int(roi_cent[0] - roi_dim[0] / 2.0), int(roi_cent[0] + roi_dim[0] / 2.0)])
@@ -1659,12 +1691,13 @@ def process_image_func(image, k_ind, image_ind, threshold, roi_cent, roi_dim, ca
     pic_roi = np.double(image[x[0]:x[1], y[0]:y[1]])
 
     # Normalize pic to 0-1 range, where 1 is saturation:
-    if image.dtype == np.int32:
-        n = 2 ** 16
-    elif image.dtype == np.uint8:
-        n = 2 ** 8
-    else:
-        n = 1
+    n = 2 ** bpp
+    # if image.dtype == np.int32:
+    #     n = 2 ** 16
+    # elif image.dtype == np.uint8:
+    #     n = 2 ** 8
+    # else:
+    #     n = 1
 
     # Median filtering:
     pic_roi = medfilt2d(pic_roi / n, kernel)

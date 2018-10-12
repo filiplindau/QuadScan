@@ -320,17 +320,31 @@ class QuadScanGui(QtGui.QWidget):
             self.controller.set_parameter("scan", "screen_name", screen_name)
             self.section_init_flag = True
             self.update_section()
-        if new_state != "idle":
-            # Only enable changing section etc. when idle.
-            # Otherwise we are connecting, scanning, or loading
-            self.ui.section_combobox.setEnabled(False)
-            self.ui.quad_combobox.setEnabled(False)
-            self.ui.screen_combobox.setEnabled(False)
-        else:
-            self.ui.section_combobox.setEnabled(True)
-            self.ui.quad_combobox.setEnabled(True)
-            self.ui.screen_combobox.setEnabled(True)
-        self.current_state = new_state
+        if new_state != self.current_state:
+            if new_state == "idle":
+                # Only enable changing section etc. when idle.
+                # Otherwise we are connecting, scanning, or loading
+                self.ui.section_combobox.setEnabled(True)
+                self.ui.quad_combobox.setEnabled(True)
+                self.ui.screen_combobox.setEnabled(True)
+                self.controller.image_done_signal.disconnect()
+                self.update_section()
+            elif new_state == "load":
+                self.ui.section_combobox.setEnabled(False)
+                self.ui.quad_combobox.setEnabled(False)
+                self.ui.screen_combobox.setEnabled(False)
+                self.controller.image_done_signal.connect(self.scan_image_ready)
+            elif new_state == "scan":
+                self.ui.section_combobox.setEnabled(False)
+                self.ui.quad_combobox.setEnabled(False)
+                self.ui.screen_combobox.setEnabled(False)
+                self.controller.image_done_signal.connect(self.scan_image_ready)
+            else:
+                self.ui.section_combobox.setEnabled(False)
+                self.ui.quad_combobox.setEnabled(False)
+                self.ui.screen_combobox.setEnabled(False)
+                self.controller.image_done_signal.disconnect()
+            self.current_state = new_state
 
     def change_progress(self, new_progress):
         root.info("Changing progress to {0}".format(new_progress))
@@ -346,7 +360,7 @@ class QuadScanGui(QtGui.QWidget):
         root.debug("quad_length: {0}".format(quad_length))
         with self.gui_lock:
             self.ui.quad_length_label.setText(str(quad_length))
-            self.ui.quad_screen_distance_label.setText(str(self.controller.get_parameter("scan", "quad_screen_distance")))
+            self.ui.quad_screen_distance_label.setText(str(self.controller.get_parameter("scan", "quad_screen_dist")))
             self.ui.energy_spinbox.setValue(self.controller.get_parameter("scan", "electron_energy"))
             self.ui.k_start_spinbox.setValue(self.controller.get_parameter("scan", "k_min"))
             self.ui.k_end_spinbox.setValue(self.controller.get_parameter("scan", "k_max"))
@@ -485,6 +499,45 @@ class QuadScanGui(QtGui.QWidget):
         self.ui.image_raw_widget.roi.setSize((rs[0], rs[1]))
         self.state_dispatcher.send_command("process_images")
 
+    def scan_image_ready(self, k_ind, image_ind):
+        """
+        Slot that is called when a new image is ready, e.g. during loading or scanning
+        :param k_ind: k value index
+        :param image_ind: image index
+        :return:
+        """
+        raw_data = self.controller.get_result("scan", "raw_data")
+        if raw_data is not None:
+            raw_pic = raw_data[k_ind][image_ind]
+            self.ui.image_raw_widget.setImage(raw_pic)
+        else:
+            root.error("No raw data")
+
+        proc_data = self.controller.get_result("scan", "proc_data")
+
+        if proc_data is not None:
+            try:
+                proc_pic = proc_data[k_ind][image_ind]
+                line_x = self.controller.get_result("scan", "line_data_x")[k_ind][image_ind]
+                line_y = self.controller.get_result("scan", "line_data_y")[k_ind][image_ind]
+            except IndexError:
+                root.error("IndexError")
+                proc_pic = np.random.random((64, 64))
+                line_x = np.random.random(64)
+                line_y = np.random.random(64)
+            scale = self.controller.get_parameter("scan", "pixel_size")
+            self.ui.image_proc_widget.setImage(proc_pic)
+            self.ui.image_proc_widget.imageItem.setScale(scale[0])
+            x_cent = [self.controller.get_result("scan", "x_cent")[k_ind][image_ind]]
+            y_cent = [self.controller.get_result("scan", "y_cent")[k_ind][image_ind]]
+            self.cent_plot.setData(y_cent, x_cent, symbol="x", symbolBrush="w")
+            self.line_x_plot.setData(y=line_x)
+            self.line_y_plot.setData(y=line_y)
+            self.ui.image_raw_widget.roi.show()
+            self.ui.image_proc_widget.updateImage()
+        else:
+            root.error("No processed data")
+
     def update_image_selection(self, result=None):
         """
         Update the image selected by the sliders.
@@ -525,7 +578,11 @@ class QuadScanGui(QtGui.QWidget):
             line_x = np.random.random(64)
             line_y = np.random.random(64)
         self.ui.image_raw_widget.setImage(raw_pic)
-        self.ui.image_proc_widget.setImage(proc_pic, scale=self.controller.get_parameter("scan", "pixel_size"))
+        # self.ui.image_proc_widget.setImage(proc_pic, scale=self.controller.get_parameter("scan", "pixel_size"))
+        scale = self.controller.get_parameter("scan", "pixel_size")
+        self.ui.image_proc_widget.setImage(proc_pic)
+        self.ui.image_proc_widget.imageItem.setScale(scale[0])
+
         x_cent = [self.controller.get_result("scan", "x_cent")[k_ind][image_ind]]
         y_cent = [self.controller.get_result("scan", "y_cent")[k_ind][image_ind]]
         self.cent_plot.setData(y_cent, x_cent, symbol="x", symbolBrush="w")
@@ -749,19 +806,22 @@ class QuadScanGui(QtGui.QWidget):
                 intensity = pic[x, y]
             except IndexError:
                 return
-            self.ui.mouse_label.setText("Scan raw image at ({0}, {1}) px: intensity={2:.2f}".format(x, y, intensity))
+            self.ui.mouse_label.setText("Scan raw image at ({0}, {1}) px: intensity={2:.0f}".format(x, y, intensity))
 
     def scan_proc_mouse_moved(self, event):
         pos = self.ui.image_proc_widget.view.mapSceneToView(event[0])
+
+        scale = self.ui.image_proc_widget.imageItem.scale()
         pic = self.ui.image_proc_widget.getProcessedImage()
-        x = int(pos.x())
-        y = int(pos.y())
+        x = int(pos.x() / scale)
+        y = int(pos.y() / scale)
         if x >= 0 and y >= 0:
             try:
                 intensity = pic[x, y]
             except IndexError:
                 return
-            self.ui.mouse_label.setText("Scan processed image at ({0}, {1}) px: intensity={2:.2f}".format(x, y, intensity))
+            self.ui.mouse_label.setText("Scan processed image at ({0:.0f}, {1:.0f}) um: "
+                                        "intensity={2:.3f}".format(pos.x()*1e6, pos.y()*1e6, intensity))
 
     def camera_raw_mouse_moved(self, event):
         pos = self.ui.camera_raw_widget.view.mapSceneToView(event[0])
@@ -773,7 +833,7 @@ class QuadScanGui(QtGui.QWidget):
                 intensity = pic[x, y]
             except IndexError:
                 return
-            self.ui.mouse_label.setText("Camera raw image at ({0}, {1}) px: intensity={2:.2f}".format(x, y, intensity))
+            self.ui.mouse_label.setText("Camera raw image at ({0}, {1}) px: intensity={2:.0f}".format(x, y, intensity))
 
     def camera_roi_mouse_moved(self, event):
         pos = self.ui.camera_roi_widget.view.mapSceneToView(event[0])
@@ -785,7 +845,7 @@ class QuadScanGui(QtGui.QWidget):
                 intensity = pic[x, y]
             except IndexError:
                 return
-            self.ui.mouse_label.setText("Camera ROI image at ({0}, {1}) px: intensity={2:.2f}".format(x, y, intensity))
+            self.ui.mouse_label.setText("Camera ROI image at ({0}, {1}) px: intensity={2:.0f}".format(x, y, intensity))
 
     def set_max_k(self):
         k_current = self.ui.k_current_spinbox.value()
@@ -809,6 +869,7 @@ class QuadScanGui(QtGui.QWidget):
     def set_electron_energy(self):
         energy = self.ui.energy_spinbox.value()
         root.info("Setting current electron energy.")
+        self.controller.set_parameter("scan", "electron-energy", energy)
 
     def update_electron_energy_from_device(self):
         """
@@ -917,8 +978,12 @@ class QuadScanGui(QtGui.QWidget):
         quad_name = self.controller.get_parameter("scan", "quad_name")
         screen_name = self.controller.get_parameter("scan", "screen_name")
         save_path = "{0}_{1}_{2}".format(t_str, quad_name, screen_name)
-        root.info("Save directory: {0}".format(save_path))
+        base_path = str(self.ui.data_base_dir_edit.text())
+        root.info("Save directory: {0}/{1}".format(base_path, save_path))
         self.controller.set_parameter("save", "save_path", save_path)
+        self.controller.set_parameter("save", "base_path", base_path)
+
+        self.update_load_parameters()
 
         self.state_dispatcher.send_command("scan")
 

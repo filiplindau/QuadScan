@@ -632,7 +632,8 @@ class StateScan(State):
         self.logger.debug("Save path: {0}".format(self.save_path))
         if not os.path.exists(self.save_path):
             os.makedirs(self.save_path)
-        step_size = (end_pos - start_pos) / self.controller.get_parameter("scan", "num_k_values")
+        k_div = np.maximum(0.5, self.controller.get_parameter("scan", "num_k_values") - 1.0)
+        step_size = (end_pos - start_pos) / k_div
         averages = self.controller.get_parameter("scan", "num_shots")
         self.logger.info("Starting scan of {0} on {1}".format(scan_attr_name, scan_dev_name))
         self.controller.set_status("Scanning from {0} to {1} with step size {2}".format(start_pos, end_pos, step_size))
@@ -693,6 +694,7 @@ class StateScan(State):
             val = self.controller.get_parameter("scan", "roi_dim")
             save_dict["roi_dim"] = "{0} {1}".format(val[0], val[1])
             save_dict["beam_energy"] = "{0}".format(self.controller.get_parameter("scan", "electron_energy"))
+            save_dict["camera_bpp"] = self.controller.get_parameter("scan", "bpp")
         except KeyError as e:
             msg = "Could not generate daq_info: {0}".format(e)
             self.logger.error(msg)
@@ -772,7 +774,7 @@ class StateScan(State):
         self.controller.fit_quad_data()
         self.check_requirements(result)
 
-    def check_message(self, msg):
+    def check_message(self, msg, *args):
         if msg == "pause":
             self.logger.debug("Message pause... stop.")
             self.controller.idle_params["paused"] = True
@@ -927,6 +929,10 @@ class StateLoad(State):
         self.controller.set_parameter("scan", "roi_center", [np.double(rc[1]), np.double(rc[0])])
         rd = data_dict["roi_dim"].split(" ")
         self.controller.set_parameter("scan", "roi_dim", [np.double(rd[1]), np.double(rd[0])])
+        try:
+            self.controller.set_parameter("scan", "bpp", np.int(data_dict["bpp"]))
+        except KeyError:
+            self.controller.set_parameter("scan", "bpp", 16)
         self.controller.load_parameters_signal.emit()
 
         file_list = os.listdir(".")
@@ -1000,7 +1006,8 @@ class StateLoad(State):
             return True
         except StopIteration:
             self.logger.debug("No more files, stopping image read.")
-            dl = defer.DeferredList(self.deferred_list)
+            # dl = defer.DeferredList(self.deferred_list)
+            dl = defer.DeferredList(self.proc_deferred_list)
             dl.addCallback(self.loading_finished)
 
             return False
@@ -1078,7 +1085,7 @@ class StateSave(State):
         self.next_state = "unknown"
         self.stop_run()
 
-    def check_message(self, msg):
+    def check_message(self, msg, *args):
         if msg == "cancel":
             self.logger.debug("Message cancel... set next state and stop.")
             self.controller.idle_params["paused"] = True
@@ -1129,7 +1136,7 @@ class StateUnknown(State):
         self.next_state = "database"
         self.stop_run()
 
-    def check_message(self, msg):
+    def check_message(self, msg, *args):
         if msg == "load":
             self.logger.debug("Message load... set next state and stop.")
             self.controller.idle_params["paused"] = True
@@ -1189,7 +1196,7 @@ class StateDatabase(State):
         self.next_state = "device_connect"
         self.stop_run()
 
-    def check_message(self, msg):
+    def check_message(self, msg, *args):
         if msg == "load":
             self.logger.debug("Message load... set next state and stop.")
             self.controller.idle_params["paused"] = True
