@@ -126,7 +126,7 @@ class State(object):
         self.controller = controller    # type: QuadScanController.QuadScanController
         self.logger = logging.getLogger("QuadScanController.{0}".format(self.name.upper()))
         # self.logger.name =
-        self.logger.setLevel(logging.WARNING)
+        self.logger.setLevel(logging.DEBUG)
         self.deferred_list = list()
         self.next_state = None
         self.cond_obj = threading.Condition()
@@ -148,7 +148,7 @@ class State(object):
         return self.next_state
 
     def run(self):
-        self.logger.info("Entering run, run condition {0}".format(self.running))
+        self.logger.info("Entering {0} run, run condition {0}".format(self.name, self.running))
         with self.cond_obj:
             if self.running is True:
                 self.cond_obj.wait()
@@ -1186,10 +1186,17 @@ class StateDatabase(State):
         self.logger.info("Starting state {0}".format(self.name.upper()))
         self.controller.set_status("Checking database for devices")
         d = TangoTwisted.defer_to_thread(self.controller.populate_matching_sections)
+        self.logger.debug("Pop matching sections launched")
         self.start_time = time.time()
         self.deferred_list.append(d)
+        with self.cond_obj:
+            self.running = True
+            self.controller.set_progress(0)
         d.addCallbacks(self.check_requirements, self.state_error)
-        self.running = True
+
+    def run(self):
+        self.logger.info("Entering run loop")
+        State.run(self)
 
     def check_requirements(self, result):
         self.logger.info("Check requirements result {0} for state {1}".format(result, self.name.upper()))

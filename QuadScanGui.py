@@ -105,6 +105,8 @@ class QuadScanGui(QtGui.QWidget):
         self.state_dispatcher = StateDispatcher(self.controller)
         self.state_dispatcher.start()
 
+        root.info("Exit gui init")
+
     def setup_layout(self):
         """
         Setup GUI layout and set stored settings
@@ -327,7 +329,10 @@ class QuadScanGui(QtGui.QWidget):
                 self.ui.section_combobox.setEnabled(True)
                 self.ui.quad_combobox.setEnabled(True)
                 self.ui.screen_combobox.setEnabled(True)
-                self.controller.image_done_signal.disconnect()
+                try:
+                    self.controller.image_done_signal.disconnect()
+                except TypeError:
+                    pass
                 self.update_section()
             elif new_state == "load":
                 self.ui.section_combobox.setEnabled(False)
@@ -343,7 +348,10 @@ class QuadScanGui(QtGui.QWidget):
                 self.ui.section_combobox.setEnabled(False)
                 self.ui.quad_combobox.setEnabled(False)
                 self.ui.screen_combobox.setEnabled(False)
-                self.controller.image_done_signal.disconnect()
+                try:
+                    self.controller.image_done_signal.disconnect()
+                except TypeError:
+                    pass
             self.current_state = new_state
 
     def change_progress(self, new_progress):
@@ -1044,5 +1052,8 @@ class QuadScanGui(QtGui.QWidget):
 if __name__ == "__main__":
     app = QtGui.QApplication(sys.argv)
     myapp = QuadScanGui()
+    root.info("QuadScanGui object created")
     myapp.show()
+    root.info("App show")
     sys.exit(app.exec_())
+    root.info("App exit")

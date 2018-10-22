@@ -958,6 +958,7 @@ class QuadScanController(QtCore.QObject):
         """
         self.logger.info("Populating matching sections by checking tango database")
         db = tango.Database()
+        self.logger.debug("Database retrieved")
 
         sections = self.get_parameter("scan", "sections")
         sect_quads = self.get_parameter("scan", "section_quads")
