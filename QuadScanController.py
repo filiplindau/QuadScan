@@ -1362,14 +1362,15 @@ class Scan(object):
         """
         self.current_pos_ind += 1
         self.logger.info("Scan step {0}".format(self.current_pos_ind))
-        # Progress level:
-        p = (self.current_pos - self.start_pos) / (self.stop_pos-self.start_pos)
-        self.controller.progress_signal.emit(p)
         tol = self.step * 0.1   # Tolerance for scan attribute
         scan_pos = self.current_pos + self.step     # New scan position
         if scan_pos > self.stop_pos or self.cancel_flag is True:
             self.scan_done()
             return self.d
+        else:
+            # Progress level:
+            p = (self.current_pos - self.start_pos) / (self.stop_pos - self.start_pos)
+            self.controller.progress_signal.emit(p)
 
         if self.simulation is True:
             d0 = self.controller.read_attribute(self.scan_attr, self.scan_dev, use_tango_name=self.use_tango_name)
@@ -1388,6 +1389,11 @@ class Scan(object):
         :param result: Deferred result. Used to get current position.
         :return:
         """
+        # If the scan was cancelled since last move, exit:
+        if self.cancel_flag is True:
+            self.scan_done()
+            return self.d
+
         if self.simulation is True:
             # If simulating, add the step anyway to be able to stop the scan
             if self.current_pos is None:
@@ -1430,6 +1436,12 @@ class Scan(object):
         :return:
         """
         self.logger.info("Reading measurement")
+
+        # If the scan was cancelled since last move, exit:
+        if self.cancel_flag is True:
+            self.scan_done()
+            return self.d
+
         self.meas_start_time = time.time()
         if self.meas_new_id is not None:
             # The meas_new_id was supplied, so try checking for a change in hash value.

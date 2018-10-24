@@ -385,6 +385,15 @@ class StateIdle(State):
             pass
         elif err.type == KeyError:
             self.logger.error("KeyError: {0}".format(err))
+        elif err.type == tango.DevFailed:
+            e = err.value[1]
+            if e.origin == "DeviceProxy::read_attribute()":
+                self.logger.warning("Read attribute Error: {0}".format(e))
+            if e.reason == "API_AttributeFailed":
+                self.logger.warning("Error reason API_AttributeFailed: {0}".format(e))
+                if "attribute image" in e.desc:
+                    self.logger.warning("Error read image")
+
         else:
             if self.running is True:
                 self.controller.set_status("Error: {0}".format(err))
@@ -646,8 +655,8 @@ class StateScan(State):
         scan = QuadScanController.Scan(self.controller, scan_attr_name, scan_dev_name, start_pos, end_pos, step_size,
                                        meas_attr_name, meas_dev_name, averages,
                                        meas_callable=self.save_image, meas_new_id="imagecounter")
-        d = scan.start_scan()
-        # d = scan.simulate_scan()
+        # d = scan.start_scan()
+        d = scan.simulate_scan()
         d.addCallbacks(self.store_scan, self.state_error)
         self.deferred_list.append(d)
 
@@ -1126,8 +1135,8 @@ class StateUnknown(State):
         # self.controller.set_status("Waiting {0} s before trying to reconnect".format(self.wait_time))
         self.controller.set_status("Not connected to devices")
         self.start_time = time.time()
-        # df = defer_later(self.wait_time, self.check_requirements, [None])
-        # self.deferred_list.append(df)
+        df = defer_later(self.wait_time, self.check_requirements, [None])
+        self.deferred_list.append(df)
         # df.addCallback(test_cb)
         self.running = True
 

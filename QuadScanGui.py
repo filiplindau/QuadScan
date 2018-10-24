@@ -949,7 +949,7 @@ class QuadScanGui(QtGui.QWidget):
 
     def stop_camera(self):
         root.info("Stopping camera")
-        self.state_dispatcher.send_command("stop")
+        self.state_dispatcher.send_command("stop_camera")
 
     def start_scan(self):
         """
