@@ -10,6 +10,10 @@ import threading
 import uuid
 import logging
 import time
+try:
+    import PyTango as pt
+except ImportError:
+    import tango as pt
 
 logger = logging.getLogger("Task")
 while len(logger.handlers):
@@ -178,35 +182,44 @@ class DelayTask(Task):
 
 
 class TangoDeviceConnectTask(Task):
-    def __init__(self, device, name=None, timeout=None, trigger_dict=dict()):
+    def __init__(self, device_name, name=None, timeout=None, trigger_dict=dict()):
         Task.__init__(self, name, timeout=timeout, etrigger_dict=trigger_dict)
-        self.device = device
+        self.device_name = device_name
 
     def action(self):
         logger.info("{0} {1} entering action. ".format(type(self), self.name))
-        self.result = True
+        # Exceptions are caught in the parent run thread.
+        dev = pt.DeviceProxy(self.device_name)
+        self.result = dev
 
 
 class TangoReadAttributeTask(Task):
-    def __init__(self, device, attribute, name=None, timeout=None, trigger_dict=dict()):
+    def __init__(self, attribute_name, device_name, device_handler, name=None, timeout=None, trigger_dict=dict()):
         Task.__init__(self, name, timeout=timeout, etrigger_dict=trigger_dict)
-        self.device = device
-        self.attribute = attribute
+        self.device_name = device_name
+        self.attribute_name = attribute_name
+        self.device_handler = device_handler
 
     def action(self):
         logger.info("{0} {1} entering action. ".format(type(self), self.name))
-        self.result = True
+        dev = self.device_handler.get_device(self.device_name)
+        attr = dev.read_attribute(self.attribute_name)
+        self.result = attr
 
 
 class TangoWriteAttributeTask(Task):
-    def __init__(self, device, attribute, name=None, timeout=None, trigger_dict=dict()):
+    def __init__(self, attribute_name, value, device_name, device_handler, name=None, timeout=None, trigger_dict=dict()):
         Task.__init__(self, name, timeout=timeout, etrigger_dict=trigger_dict)
-        self.device = device
-        self.attribute = attribute
+        self.device_name = device_name
+        self.attribute_name = attribute_name
+        self.device_handler = device_handler
+        self.value = value
 
     def action(self):
         logger.info("{0} {1} entering action. ".format(type(self), self.name))
-        self.result = True
+        dev = self.device_handler.get_device(self.device_name)
+        res = dev.write_attribute(self.attribute_name, self.value)
+        self.result = res
 
 
 class TangoMonitorAttributeTask(Task):
@@ -248,6 +261,19 @@ class ScanTask(Task):
     def action(self):
         logger.info("{0} {1} entering action. ".format(type(self), self.name))
         self.result = True
+
+
+class DeviceHandler(object):
+    def __init__(self):
+        self.devices = dict()
+
+    def get_device(self, device_name):
+        try:
+            dev = self.devices[device_name]
+        except KeyError:
+            task = TangoDeviceConnectTask(device_name)
+        return dev
+    
 
 
 if __name__ == "__main__":
