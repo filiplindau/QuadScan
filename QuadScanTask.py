@@ -12,6 +12,7 @@ import logging
 import time
 import ctypes
 import inspect
+
 try:
     import PyTango as pt
 except ImportError:
@@ -172,10 +173,10 @@ class Task(object):
         if self.is_cancelled() is True:
             return
 
-        logger.debug("triggers ready")
+        logger.debug("{0} triggers ready".format(self))
         try:
             self.action()
-            logger.debug("action ready")
+            logger.debug("{0} action ready".format(self))
         except self.CancelException:
             logger.info("{0} Cancelled".format(self))
             return
@@ -184,9 +185,7 @@ class Task(object):
             self.result = e
             self.cancel()
             return
-        logger.debug("emit now")
         self.emit()
-        logger.debug("emitted")
 
     def start(self):
         logger.debug("{0} starting.".format(self))
@@ -310,6 +309,9 @@ class RepeatTask(Task):
             self.task.start()
             self.task.get_event().wait()
             # Check if cancelled or error..
+            if self.task.is_cancelled() is True:
+                self.cancel()
+                break
         self.result = self.task.get_result()
 
 
@@ -327,10 +329,14 @@ class SequenceTask(Task):
     def action(self):
         logger.info("{0} running task sequence of length {1}.".format(self, len(self.task_list)))
         res = list()
+
         for t in self.task_list:
             t.start()
-            res.append(t.get_result(True))
+            res.append(t.get_result(wait=True))
             # Check if cancelled or error..
+            if t.is_cancelled() is True:
+                self.cancel()
+                break
 
         self.result = res
 
@@ -381,14 +387,39 @@ class TangoWriteAttributeTask(Task):
 
 
 class TangoMonitorAttributeTask(Task):
-    def __init__(self, device, attribute, name=None, timeout=None, trigger_dict=dict()):
+    def __init__(self, attribute_name, device_name, device_handler, target_value, interval=0.5, tolerance=0.01,
+                 tolerance_type="rel", name=None, timeout=None, trigger_dict=dict()):
         Task.__init__(self, name, timeout=timeout, trigger_dict=trigger_dict)
-        self.device = device
-        self.attribute = attribute
+        self.device_name = device_name
+        self.attribute_name = attribute_name
+        self.device_handler = device_handler
+        self.target_value = target_value
+        self.interval = interval
+        self.tolerance = tolerance
+        if tolerance_type == "rel":
+            self.tol_div = self.target_value
+        else:
+            self.tol_div = 1.0
 
     def action(self):
         logger.info("{0} entering action. ".format(self))
-        self.result = True
+        current_value = float("inf")
+        read_task = TangoReadAttributeTask(self.attribute_name, self.device_name,
+                                           self.device_handler, timeout=self.timeout)
+        wait_time = -1
+        while abs((current_value - self.target_value) / self.tol_div) > self.tolerance:
+            if wait_time > 0:
+                time.sleep(wait_time)
+            t0 = time.time()
+            read_task.start()
+            current_value = read_task.result()
+            if read_task.is_cancelled() is True:
+                self.cancel()
+                break
+            t1 = time.time()
+            wait_time = self.interval - (t1 - t0)
+
+        self.result = current_value
 
 
 class LoadImageTask(Task):
@@ -489,8 +520,8 @@ class DeviceHandler(object):
 
 
 if __name__ == "__main__":
-    tests = ["delay", "dev_handler", "exc"]
-    test = "dev_handler"
+    tests = ["delay", "dev_handler", "exc", "monitor"]
+    test = "monitor"
     if test == "delay":
         t1 = DelayTask(2.0, name="task1")
         t2 = DelayTask(1.0, name="task2", trigger_dict={"delay": t1})
@@ -518,10 +549,10 @@ if __name__ == "__main__":
         logger.info("Double scalar: {0}".format(t4.get_result()))
         logger.info("Double scalar: {0}".format(t4.get_result(True).value))
 
-        t6 = SequenceTask([t2, DelayTask(2.0, "delay_seq")])
-        t5 = RepeatTask(t6, 10)
+        t6 = SequenceTask([t2, DelayTask(1.0, "delay_seq")], name="seq")
+        t5 = RepeatTask(t6, 5, name="rep")
         t5.start()
-        time.sleep(5)
+        time.sleep(2)
         t6.cancel()
 
     elif test == "exc":
@@ -529,3 +560,12 @@ if __name__ == "__main__":
         t1.start()
         time.sleep(1.0)
         t1.cancel()
+
+    elif test == "monitor":
+        handler = DeviceHandler("b-v0-gunlaser-csdb-0:10000", name="Handler")
+        dev_name = "sys/tg_test/1"
+        th = handler.add_device(dev_name)
+        th.get_result()
+        t1 = TangoMonitorAttributeTask("double_scalar_w", "sys/tg_test/1", handler, target_value=100, tolerance=0.01,
+                                       tolerance_type="rel", interval=0.5, name="monitor")
+        t1.start()
