@@ -7,6 +7,7 @@ Tasks for async sequencing.
 """
 
 import threading
+import multiprocessing
 import uuid
 import logging
 import time
@@ -341,6 +342,39 @@ class SequenceTask(Task):
         self.result = res
 
 
+class MapToProcessTask(Task):
+    """
+    Map a number of tasks to pool of processes.
+
+    The results of the tasks are stored in a list.
+    """
+
+    def __init__(self, f, data_list, number_processes=5, name=None, trigger_dict=dict()):
+        Task.__init__(self, name, trigger_dict=trigger_dict)
+        self.f = f
+        self.data_list = data_list
+        self.lock = multiprocessing.Lock()
+        self.num_proc = number_processes
+
+    def action(self):
+        logger.info("{0} executing function on data of length {1} across {2} processes.".format(self,
+                                                                                                len(self.task_list),
+                                                                                                self.num_proc))
+        res = list()
+        pool = multiprocessing.Pool(processes=self.num_proc)
+        res = pool.map(self.f, self.data_list)
+
+        self.result = res
+
+    def add_data(self, data_list):
+        with self.lock:
+            self.data_list.append(data_list)
+
+    def set_data_list(self, data_list):
+        with self.lock:
+            self.data_list = data_list
+
+
 class TangoDeviceConnectTask(Task):
     def __init__(self, device_name, name=None, timeout=None, trigger_dict=dict()):
         Task.__init__(self, name, timeout=timeout, trigger_dict=trigger_dict)
@@ -412,7 +446,7 @@ class TangoMonitorAttributeTask(Task):
                 time.sleep(wait_time)
             t0 = time.time()
             read_task.start()
-            current_value = read_task.result()
+            current_value = read_task.get_result(wait=True, timeout=self.timeout).value
             if read_task.is_cancelled() is True:
                 self.cancel()
                 break
