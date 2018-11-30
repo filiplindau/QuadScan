@@ -13,6 +13,13 @@ import logging
 import time
 import ctypes
 import inspect
+import PIL
+import numpy as np
+import os
+from collections import namedtuple
+import pprint
+import traceback
+from scipy.signal import medfilt2d
 
 try:
     import PyTango as pt
@@ -28,6 +35,11 @@ fh = logging.StreamHandler()
 fh.setFormatter(f)
 logger.addHandler(fh)
 logger.setLevel(logging.DEBUG)
+
+
+QuadImage = namedtuple("QuadImage", "k_num k_value image_num image")
+ProcessedImage = namedtuple("ProcessedImage",
+                            "k_ind image_ind pic_roi line_x line_y x_cent y_cent sigma_x sigma_y q enabled")
 
 
 # From: https://stackoverflow.com/questions/323972/is-there-any-way-to-kill-a-thread
@@ -100,16 +112,70 @@ class ThreadWithExc(threading.Thread):
         _async_raise(self._get_my_tid(), exctype)
 
 
+def process_image_func(image, k_ind, image_ind, threshold, roi_cent, roi_dim, cal=1, kernel=3, bpp=16):
+    logger.info("Processing image {0}, {1} in pool".format(k_ind, image_ind))
+    x = np.array([int(roi_cent[0] - roi_dim[0] / 2.0), int(roi_cent[0] + roi_dim[0] / 2.0)])
+    y = np.array([int(roi_cent[1] - roi_dim[1] / 2.0), int(roi_cent[1] + roi_dim[1] / 2.0)])
+
+    # Extract ROI and convert to double:
+    pic_roi = np.double(image[x[0]:x[1], y[0]:y[1]])
+
+    # Normalize pic to 0-1 range, where 1 is saturation:
+    n = 2 ** bpp
+    # if image.dtype == np.int32:
+    #     n = 2 ** 16
+    # elif image.dtype == np.uint8:
+    #     n = 2 ** 8
+    # else:
+    #     n = 1
+
+    # Median filtering:
+    pic_roi = medfilt2d(pic_roi / n, kernel)
+
+    # Threshold image
+    pic_roi[pic_roi < threshold] = 0.0
+
+    line_x = pic_roi.sum(0)
+    line_y = pic_roi.sum(1)
+    q = line_x.sum()  # Total signal (charge) in the image
+
+    enabled = False
+    l_x_n = np.sum(line_x)
+    l_y_n = np.sum(line_y)
+    # Enable point only if there is data:
+    if l_x_n > 0.0:
+        enabled = True
+    x_v = cal[0] * np.arange(line_x.shape[0])
+    y_v = cal[1] * np.arange(line_y.shape[0])
+    x_cent = np.sum(x_v * line_x) / l_x_n
+    sigma_x = np.sqrt(np.sum((x_v - x_cent) ** 2 * line_x) / l_x_n)
+    y_cent = np.sum(y_v * line_y) / l_y_n
+    sigma_y = np.sqrt(np.sum((y_v - y_cent) ** 2 * line_y) / l_y_n)
+
+    # Store processed data
+    result = ProcessedImage(k_ind=k_ind, image_ind=image_ind, pic_roi=pic_roi, line_x=line_x, line_y=line_y,
+                            x_cent=x_cent, y_cent=y_cent, sigma_x=sigma_x, sigma_y=sigma_y, q=q, enabled=enabled)
+
+    return result
+
+
 class Task(object):
     class CancelException(Exception):
         pass
 
-    def __init__(self, name=None, task_type="thread", timeout=None, trigger_dict=dict()):
+    def __init__(self, name=None, action_exec_type="thread", timeout=None, trigger_dict=dict()):
+        """
+
+        :param name: Optional name to identify the task
+        :param action_exec_type: "thread" or "process" Determines if action method is executed in thread or process
+        :param timeout: timeout in seconds that is spent waiting for triggers
+        :param trigger_dict: Dict of tasks that need to trigger before executing the action method of this task
+        """
         self.id = uuid.uuid1()
         if name is None:
             name = self.id
         self.name = name
-        self.task_type = task_type
+        self.action_exec_type = action_exec_type
         self.trigger_dict = dict()
         self.trigger_done_list = list()
         self.trigger_result_dict = dict()
@@ -125,8 +191,11 @@ class Task(object):
         for e in trigger_dict.values():
             self.add_trigger(e)
 
+        self.logger = logging.getLogger("Task.{0}".format(self.name.upper()))
+        self.logger.setLevel(logging.DEBUG)
+
     def add_trigger(self, trigger_task):
-        logger.info("{0} adding trigger {1}".format(self, trigger_task.name))
+        self.logger.info("{0} adding trigger {1}".format(self, trigger_task.name))
         with self.lock:
             self.trigger_dict[trigger_task.id] = trigger_task
 
@@ -143,17 +212,17 @@ class Task(object):
         return self.result
 
     def action(self):
-        logger.info("{0} entering action.".format(self))
+        self.logger.info("{0} entering action.".format(self))
         self.result = None
 
     def emit(self):
-        logger.info("{0} done. Emitting signal".format(self))
+        self.logger.info("{0} done. Emitting signal".format(self))
         with self.lock:
             self.completed = True
             self.event_done.set()
 
     def run(self):
-        logger.info("{0} entering run.".format(self))
+        self.logger.info("{0} entering run.".format(self))
 
         # Setup threads for triggers:
         already_done_flag = True
@@ -162,10 +231,11 @@ class Task(object):
             th = threading.Thread(target=self._wait_trigger, args=(self.trigger_dict[tr_id],))
             th.start()
         if already_done_flag is False:
+            # Wait for trigger_event:
             if self.timeout is not None:
                 completed_flag = self.trigger_event.wait(self.timeout)
                 if completed_flag is False:
-                    logger.info("{0} {1} timed out.".format(type(self), self.name))
+                    self.logger.info("{0} {1} timed out.".format(type(self), self.name))
                     self.cancel()
                     return
             else:
@@ -174,22 +244,28 @@ class Task(object):
         if self.is_cancelled() is True:
             return
 
-        logger.debug("{0} triggers ready".format(self))
+            self.logger.debug("{0} triggers ready".format(self))
         try:
-            self.action()
-            logger.debug("{0} action ready".format(self))
+            if self.action_exec_type == "thread":
+                self.action()
+                self.logger.debug("{0} action done".format(self))
+            else:
+                process = multiprocessing.Process(target=self.action)
+                process.start()
+                self.logger.debug("{0} action process done".format(self))
         except self.CancelException:
-            logger.info("{0} Cancelled".format(self))
+            self.logger.info("{0} Cancelled".format(self))
             return
         except Exception as e:
-            logger.error("{0} exception: {1}".format(self, e))
+            self.logger.error("{0} exception: {1}".format(self, traceback.format_exc()))
             self.result = e
+            self.result = traceback.format_exc()
             self.cancel()
             return
         self.emit()
 
     def start(self):
-        logger.debug("{0} starting.".format(self))
+        self.logger.debug("{0} starting.".format(self))
         with self.lock:
             self.trigger_done_list = list()
             self.trigger_result_dict = dict()
@@ -204,7 +280,7 @@ class Task(object):
         self.run_thread.start()
 
     def cancel(self):
-        logger.debug("{0} cancelling.".format(self))
+        self.logger.debug("{0} cancelling.".format(self))
         with self.lock:
             self.started = False
             self.completed = False
@@ -222,7 +298,7 @@ class Task(object):
         return self.completed
 
     def _wait_trigger(self, trigger_task):
-        logger.debug("{0} starting wait for task {1}.".format(self, trigger_task.name))
+        self.logger.debug("{0} starting wait for task {1}.".format(self, trigger_task.name))
         e = trigger_task.get_event()
         e.wait()
         # Cancel task if trigger was cancelled:
@@ -265,7 +341,7 @@ class DelayTask(Task):
         self.delay = delay
 
     def action(self):
-        logger.info("{0} Starting delay of {1} s".format(self, self.delay))
+        self.logger.info("{0} Starting delay of {1} s".format(self, self.delay))
         time.sleep(self.delay)
         self.result = True
 
@@ -279,13 +355,13 @@ class CallableTask(Task):
         self.call_kwargs = call_kwargs
 
     def action(self):
-        logger.info("{0} calling {1}. ".format(self, self.callable))
+        self.logger.info("{0} calling {1}. ".format(self, self.callable))
         # Exceptions are caught in the parent run thread.
         # Still, I want to log an error message and re-raise
         try:
             res = self.callable(*self.call_args, **self.call_kwargs)
         except Exception as e:
-            logger.error("Error when executing {0} with args {1}, {2}:\n {3}".format(self.callable,
+            self.logger.error("Error when executing {0} with args {1}, {2}:\n {3}".format(self.callable,
                                                                                      self.call_args,
                                                                                      self.call_kwargs,
                                                                                      e))
@@ -305,7 +381,7 @@ class RepeatTask(Task):
         self.repetitions = repetitions
 
     def action(self):
-        logger.info("{0} repeating task {1} {2} times.".format(self, self.task, self.repetitions))
+        self.logger.info("{0} repeating task {1} {2} times.".format(self, self.task, self.repetitions))
         for i in range(self.repetitions):
             self.task.start()
             self.task.get_event().wait()
@@ -328,7 +404,7 @@ class SequenceTask(Task):
         self.task_list = task_list
 
     def action(self):
-        logger.info("{0} running task sequence of length {1}.".format(self, len(self.task_list)))
+        self.logger.info("{0} running task sequence of length {1}.".format(self, len(self.task_list)))
         res = list()
 
         for t in self.task_list:
@@ -355,14 +431,162 @@ class MapToProcessTask(Task):
         self.data_list = data_list
         self.lock = multiprocessing.Lock()
         self.num_proc = number_processes
+        self.pool
 
     def action(self):
-        logger.info("{0} executing function on data of length {1} across {2} processes.".format(self,
-                                                                                                len(self.task_list),
-                                                                                                self.num_proc))
+        self.logger.info("{0} executing function on data of length {1} across {2} processes.".format(self,
+                                                                                                     len(self.task_list),
+                                                                                                     self.num_proc))
         res = list()
         pool = multiprocessing.Pool(processes=self.num_proc)
-        res = pool.map(self.f, self.data_list)
+        with self.lock:
+            res = pool.map(self.f, self.data_list)
+
+        self.result = res
+
+    def add_data(self, data_list):
+        with self.lock:
+            self.data_list.append(data_list)
+
+    def set_data_list(self, data_list):
+        with self.lock:
+            self.data_list = data_list
+
+
+def clearable_pool_worker(in_queue, out_queue):
+    while True:
+        task = in_queue.get()
+        f = task[0]
+        args = task[1]
+        kwargs = task[2]
+        proc_id = task[3]
+        try:
+            retval = f(*args, **kwargs)
+        except Exception as e:
+            retval = e
+        out_queue.put((retval, proc_id))
+
+
+class ClearablePool(object):
+    def __init__(self, processes=multiprocessing.cpu_count()):
+        self.logger = logging.getLogger("Task.ClearablePool")
+        self.logger.setLevel(logging.WARNING)
+        self.logger.info("ClearablePool.__init__")
+
+        self.in_queue = multiprocessing.Queue()
+        self.out_queue = multiprocessing.Queue()
+        self.num_processes = processes
+        self.processes = None
+        self.next_process_id = 0
+        self.id_lock = threading.Lock()
+
+        self.result_thread = None
+        self.stop_thread_flag = False
+        self.result_dict = dict()
+
+        self.start_processes()
+
+    def start_processes(self):
+        if self.processes is not None:
+            self.stop_processes()
+
+        self.stop_thread_flag = False
+        self.result_thread = threading.Thread(target=self.result_thread_func)
+        self.result_thread.start()
+
+        self.logger.info("Starting {0} processes".format(self.num_processes))
+        p_list = list()
+        for p in range(self.num_processes):
+            p = multiprocessing.Process(target=clearable_pool_worker, args=(self.in_queue, self.out_queue))
+            p.start()
+            p_list.append(p)
+        self.processes = p_list
+
+    def stop_processes(self):
+        self.logger.info("Stopping processes")
+        if self.processes is not None:
+            for p in self.processes:
+                p.terminate()
+        # self.processes = None
+        self.stop_thread_flag = True
+        try:
+            self.result_thread.join(1.0)
+        except AttributeError:
+            pass
+        self.result_thread = None
+
+    def stop(self):
+        self.stop_processes()
+
+    def close(self):
+        self.stop_processes()
+
+    def add_work_item(self, f, *args, **kwargs):
+        self.logger.debug("Putting work item in queue. Args: {0}".format(args))
+        with self.id_lock:
+            proc_id = self.next_process_id
+            self.next_process_id += 1
+        self.in_queue.put((f, args, kwargs, proc_id))
+        self.result_dict[proc_id] = None
+
+    def clear_pending_tasks(self):
+        self.logger.info("Clearing pending tasks")
+        while self.in_queue.empty() is False:
+            try:
+                self.logger.debug("get no wait")
+                work_item = self.in_queue.get_nowait()
+                proc_id = work_item[3]
+                self.logger.debug("Removing task {0}".format(id))
+                try:
+                    self.result_dict.pop(proc_id)
+                except KeyError:
+                    pass
+            except multiprocessing.queues.Empty:
+                self.logger.debug("In-queue empty")
+                break
+
+    def result_thread_func(self):
+        while self.stop_thread_flag is False:
+            try:
+                result = self.out_queue.get(True, 0.1)
+            except multiprocessing.queues.Empty:
+                continue
+            self.logger.debug("Result: {0}".format(result))
+            retval = result[0]
+            proc_id = result[1]
+            try:
+                self.result_dict[proc_id] = retval
+            except KeyError as e:
+                self.logger.error("Work item id {0} not found.".format(proc_id))
+                raise e
+            if isinstance(retval, Exception):
+                raise retval
+
+
+class ProcessPoolTask(Task):
+    """
+    Start up a process pool that can consume data. Emit trigger when queue is empty.
+
+    The results of the tasks are stored in a list.
+    """
+
+    def __init__(self, f, data_list, number_processes=multiprocessing.cpu_count(), name=None, trigger_dict=dict()):
+        Task.__init__(self, name, trigger_dict=trigger_dict)
+        self.f = f
+        self.data_list = data_list
+        self.lock = multiprocessing.Lock()
+        self.num_proc = number_processes
+
+
+    def action(self):
+        self.logger.info("{0} executing function on data of length {1} across {2} processes.".format(self,
+                                                                                                     len(self.task_list),
+                                                                                                     self.num_proc))
+        res = list()
+        pool = ClearablePool(processes=self.num_proc)
+        pool.add_work_item()
+        with self.lock:
+            res = pool.map(self.f, self.data_list)
 
         self.result = res
 
@@ -381,9 +605,9 @@ class TangoDeviceConnectTask(Task):
         self.device_name = device_name
 
     def action(self):
-        logger.info("{0} entering action. ".format(self))
+        self.logger.info("{0} entering action. ".format(self))
         # Exceptions are caught in the parent run thread.
-        logger.debug("Connecting to {0}".format(self.device_name))
+        self.logger.debug("Connecting to {0}".format(self.device_name))
         dev = pt.DeviceProxy(self.device_name)
         self.result = dev
 
@@ -396,7 +620,7 @@ class TangoReadAttributeTask(Task):
         self.device_handler = device_handler
 
     def action(self):
-        logger.info("{0} reading {1} on {2}. ".format(self, self.attribute_name, self.device_name))
+        self.logger.info("{0} reading {1} on {2}. ".format(self, self.attribute_name, self.device_name))
         dev = self.device_handler.get_device(self.device_name)
         attr = dev.read_attribute(self.attribute_name)
         self.result = attr
@@ -411,10 +635,10 @@ class TangoWriteAttributeTask(Task):
         self.value = value
 
     def action(self):
-        logger.info("{0} writing {1} to {2} on {2}. ".format(self,
-                                                             self.value,
-                                                             self.attribute_name,
-                                                             self.device_name))
+        self.logger.info("{0} writing {1} to {2} on {2}. ".format(self,
+                                                                  self.value,
+                                                                  self.attribute_name,
+                                                                  self.device_name))
         dev = self.device_handler.get_device(self.device_name)
         res = dev.write_attribute(self.attribute_name, self.value)
         self.result = res
@@ -436,7 +660,7 @@ class TangoMonitorAttributeTask(Task):
             self.tol_div = 1.0
 
     def action(self):
-        logger.info("{0} entering action. ".format(self))
+        self.logger.info("{0} entering action. ".format(self))
         current_value = float("inf")
         read_task = TangoReadAttributeTask(self.attribute_name, self.device_name,
                                            self.device_handler, timeout=self.timeout)
@@ -457,13 +681,100 @@ class TangoMonitorAttributeTask(Task):
 
 
 class LoadImageTask(Task):
-    def __init__(self, image_name, name=None, timeout=None, trigger_dict=dict()):
+    def __init__(self, image_name, path=".", name=None, timeout=None, trigger_dict=dict()):
         Task.__init__(self, name, timeout=timeout, trigger_dict=trigger_dict)
         self.image_name = image_name
+        self.path = path
 
     def action(self):
-        logger.info("{0} entering action. ".format(self))
-        self.result = True
+        self.logger.info("{0} entering action. ".format(self))
+        name = self.image_name.split("_")
+        try:
+            k_num = np.maximum(0, int(name[0]) - 1).astype(np.int)
+            image_num = np.maximum(0, int(name[1]) - 1).astype(np.int)
+            k_value = np.double(name[2])
+        except ValueError as e:
+            self.logger.error("Image filename wrong format: {0}".format(name))
+            self.result = e
+            self.cancel()
+            return False
+        except IndexError as e:
+            self.logger.error("Image filename wrong format: {0}".format(name))
+            self.result = e
+            self.cancel()
+            return False
+        filename = os.path.join(self.path, self.image_name)
+        image = PIL.Image.open(filename)
+        self.result = QuadImage(k_num, k_value, image_num, image)
+
+
+class LoadQuadScanDirTask(Task):
+    def __init__(self, quadscandir, process_now=True, threshold=0.0, kernel_size=3,
+                 name=None, timeout=None, trigger_dict=dict()):
+        Task.__init__(self, name, timeout=timeout, trigger_dict=trigger_dict)
+        self.pathname = quadscandir
+        self.process_now = process_now
+        self.threshold = threshold
+        self.kernel_size = kernel_size
+
+    def action(self):
+        load_dir = self.pathname
+        self.logger.debug("{1}: Loading from {0}".format(load_dir, self))
+        try:
+            os.listdir(load_dir)
+        except OSError as e:
+            e = "List dir failed: {0}".format(e)
+            self.result = e
+            self.cancel()
+
+        # See if there is a file called daq_info.txt
+        filename = "daq_info.txt"
+        if os.path.isfile(os.path.join(load_dir, filename)) is False:
+            e = "daq_info.txt not found in {0}".format(load_dir)
+            self.result = e
+            self.cancel()
+
+        logger.info("{0}: Loading Jason format data".format(self))
+        data_dict = dict()
+        with open(os.path.join(load_dir, filename), "r") as daq_file:
+            while True:
+                line = daq_file.readline()
+                if line == "" or line[0:5] == "*****":
+                    break
+                try:
+                    key, value = line.split(":")
+                    data_dict[key.strip()] = value.strip()
+                except ValueError:
+                    pass
+        px = data_dict["pixel_dim"].split(" ")
+
+        data_dict["pixel_size"] = [np.double(px[0]), np.double(px[1])]
+        rc = data_dict["roi_center"].split(" ")
+        data_dict["roi_center"] = [np.double(rc[1]), np.double(rc[0])]
+        rd = data_dict["roi_dim"].split(" ")
+        data_dict["roi_dim"] = [np.double(rd[1]), np.double(rd[0])]
+        try:
+            data_dict["bpp"] = np.int(data_dict["bpp"])
+        except KeyError:
+            data_dict["bpp"] = 16
+            self.logger.debug("{1} Loaded data_dict: \n{0}".format(pprint.pformat(data_dict), self))
+
+        file_list = os.listdir(load_dir)
+        image_file_list = list()
+        load_task_list = list()
+        for file_name in file_list:
+            if file_name.endswith(".png"):
+                image_file_list.append(file_name)
+                t = LoadImageTask(file_name, load_dir, name=file_name)
+                t.logger.setLevel(logging.WARN)
+                load_task_list.append(t)
+
+        self.logger.debug("{1} Found {0} images in directory".format(len(image_file_list), self))
+        task_seq = SequenceTask(load_task_list, name="load_seq")
+        task_seq.start()
+        image_list = task_seq.get_result(wait=True)
+        ImageList = namedtuple("ImageList", "daq_data images")
+        self.result = ImageList(data_dict, image_list)
 
 
 class ProcessImageTask(Task):
@@ -472,7 +783,7 @@ class ProcessImageTask(Task):
         self.image = image
 
     def action(self):
-        logger.info("{0} entering action. ".format(self))
+        self.logger.info("{0} entering action. ".format(self))
         self.result = True
 
 
@@ -482,7 +793,7 @@ class ScanTask(Task):
         self.scan_params = scan_params
 
     def action(self):
-        logger.info("{0} entering action. ".format(self))
+        self.logger.info("{0} entering action. ".format(self))
         self.result = True
 
 
@@ -501,7 +812,7 @@ class DeviceHandler(object):
             self.name = name
 
     def get_device(self, device_name):
-        logger.debug("{0} Returning device {1}".format(self, device_name))
+        self.logger.debug("{0} Returning device {1}".format(self, device_name))
         try:
             dev = self.devices[device_name]
         except KeyError:
@@ -517,9 +828,9 @@ class DeviceHandler(object):
         :param device_name: Tango name of device
         :return: opened device proxy
         """
-        logger.info("{0} Adding device {1} to device handler".format(self, device_name))
+        self.logger.info("{0} Adding device {1} to device handler".format(self, device_name))
         if device_name in self.devices:
-            logger.debug("Device already in dict. No need")
+            self.logger.debug("Device already in dict. No need")
             return True
         if self.tango_host is not None:
             full_dev_name = "{0}/{1}".format(self.tango_host, device_name)
@@ -545,7 +856,7 @@ class DeviceHandler(object):
 
     def _dev_connect_done(self, device_name, task):
         dev = task.get_result()
-        logger.info("{0} {1} Device connection completed. Returned {1}".format(self, device_name, dev))
+        self.logger.info("{0} {1} Device connection completed. Returned {1}".format(self, device_name, dev))
         self.devices[device_name] = dev
 
     def __str__(self):
@@ -554,8 +865,8 @@ class DeviceHandler(object):
 
 
 if __name__ == "__main__":
-    tests = ["delay", "dev_handler", "exc", "monitor"]
-    test = "monitor"
+    tests = ["delay", "dev_handler", "exc", "monitor", "load_im"]
+    test = "load_im"
     if test == "delay":
         t1 = DelayTask(2.0, name="task1")
         t2 = DelayTask(1.0, name="task2", trigger_dict={"delay": t1})
@@ -602,4 +913,13 @@ if __name__ == "__main__":
         th.get_result()
         t1 = TangoMonitorAttributeTask("double_scalar_w", "sys/tg_test/1", handler, target_value=100, tolerance=0.01,
                                        tolerance_type="rel", interval=0.5, name="monitor")
+        t1.start()
+
+    elif test == "load_im":
+        image_name = "03_03_1.035_.png"
+        # D:\Programming\emittancesinglequad\saved-images\2018-04-16_13-40-48_I-MS1-MAG-QB-01_I-MS1-DIA-SCRN-01
+        path_name = "..\\..\\emittancesinglequad\\saved-images\\2018-04-16_13-40-48_I-MS1-MAG-QB-01_I-MS1-DIA-SCRN-01"
+        # t1 = LoadImageTask(image_name, path_name, name="load_im")
+        # t1.start()
+        t1 = LoadQuadScanDirTask(path_name, "quad_dir")
         t1.start()
