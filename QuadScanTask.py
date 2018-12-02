@@ -24,7 +24,10 @@ from scipy.signal import medfilt2d
 try:
     import PyTango as pt
 except ImportError:
-    import tango as pt
+    try:
+        import tango as pt
+    except ModuleNotFoundError:
+        pass
 
 logger = logging.getLogger("Task")
 while len(logger.handlers):
@@ -37,7 +40,7 @@ logger.addHandler(fh)
 logger.setLevel(logging.DEBUG)
 
 
-QuadImage = namedtuple("QuadImage", "k_num k_value image_num image")
+QuadImage = namedtuple("QuadImage", "k_ind k_value image_ind image")
 ProcessedImage = namedtuple("ProcessedImage",
                             "k_ind image_ind pic_roi line_x line_y x_cent y_cent sigma_x sigma_y q enabled")
 
@@ -173,7 +176,7 @@ class Task(object):
         """
         self.id = uuid.uuid1()
         if name is None:
-            name = self.id
+            name = str(self.id)
         self.name = name
         self.action_exec_type = action_exec_type
         self.trigger_dict = dict()
@@ -202,7 +205,7 @@ class Task(object):
     def get_event(self):
         return self.event_done
 
-    def get_result(self, wait=False, timeout=-1):
+    def get_result(self, wait, timeout=-1):
         if self.completed is not True:
             if wait is True:
                 if timeout > 0:
@@ -460,77 +463,106 @@ def clearable_pool_worker(in_queue, out_queue):
         args = task[1]
         kwargs = task[2]
         proc_id = task[3]
+        logger.debug("Pool worker executing {0} with args {1}, {2}".format(f, args, kwargs))
         try:
             retval = f(*args, **kwargs)
         except Exception as e:
             retval = e
+        logger.debug("Putting {0} on out_queue".format(retval))
         out_queue.put((retval, proc_id))
 
 
-class ClearablePool(object):
-    def __init__(self, processes=multiprocessing.cpu_count()):
-        self.logger = logging.getLogger("Task.ClearablePool")
-        self.logger.setLevel(logging.WARNING)
-        self.logger.info("ClearablePool.__init__")
+class ProcessPoolTask(Task):
+    """
+    Start up a process pool that can consume data. Emit trigger when queue is empty.
+
+    The results of the tasks are stored in a list.
+    """
+
+    def __init__(self, work_func, number_processes=multiprocessing.cpu_count(), name=None, trigger_dict=dict()):
+        Task.__init__(self, name, trigger_dict=trigger_dict)
+        self.work_func = work_func
+        self.lock = multiprocessing.Lock()
+        self.finish_process_event = threading.Event()
+        self.pending_work_items = list()
 
         self.in_queue = multiprocessing.Queue()
         self.out_queue = multiprocessing.Queue()
-        self.num_processes = processes
+        self.num_processes = number_processes
         self.processes = None
         self.next_process_id = 0
+        self.completed_work_items = 0
         self.id_lock = threading.Lock()
 
         self.result_thread = None
-        self.stop_thread_flag = False
+        self.stop_result_thread_flag = False
         self.result_dict = dict()
 
-        self.start_processes()
+    def run(self):
+        self.create_processes()
+        Task.run(self)
 
-    def start_processes(self):
-        if self.processes is not None:
-            self.stop_processes()
+    def start(self):
+        self.next_process_id = 0
+        Task.start(self)
 
-        self.stop_thread_flag = False
+    def action(self):
+        self.logger.info("{0}: starting processing pool for "
+                         "executing function {1} across {2} processes.".format(self, self.work_func, self.num_processes))
+        self.logger.info("{1}: Starting {0} processes".format(self.num_processes, self))
+        self.completed_work_items = 0
+        for p in self.processes:
+            p.start()
+        self.stop_result_thread_flag = False
         self.result_thread = threading.Thread(target=self.result_thread_func)
         self.result_thread.start()
 
-        self.logger.info("Starting {0} processes".format(self.num_processes))
+        self.finish_process_event.wait(self.timeout)
+        if self.finish_process_event.is_set() is False:
+            self.cancel()
+        while self.completed_work_items < self.next_process_id:
+            time.sleep(0.01)
+        self.stop_processes()
+        self.result = self.result_dict
+
+    def add_work_item(self, *args, **kwargs):
+        self.logger.info("{0}: Adding work item".format(self))
+        self.logger.debug("{0}: Args: {1}, kwArgs: {2}".format(self, args, kwargs))
+        proc_id = self.next_process_id
+        self.next_process_id += 1
+        self.in_queue.put((self.work_func, args, kwargs, proc_id))
+        self.result_dict[proc_id] = None
+        self.logger.debug("{0}: Queue added. Process id: {1}".format(self, proc_id))
+
+    def create_processes(self):
+        if self.processes is not None:
+            self.stop_processes()
+
+        self.logger.info("{1}: Creating {0} processes".format(self.num_processes, self))
         p_list = list()
         for p in range(self.num_processes):
             p = multiprocessing.Process(target=clearable_pool_worker, args=(self.in_queue, self.out_queue))
-            p.start()
             p_list.append(p)
         self.processes = p_list
 
     def stop_processes(self):
-        self.logger.info("Stopping processes")
+        self.logger.info("{0}: Stopping processes".format(self))
         if self.processes is not None:
             for p in self.processes:
                 p.terminate()
         # self.processes = None
-        self.stop_thread_flag = True
+        self.stop_result_thread_flag = True
         try:
             self.result_thread.join(1.0)
         except AttributeError:
             pass
         self.result_thread = None
 
-    def stop(self):
-        self.stop_processes()
-
-    def close(self):
-        self.stop_processes()
-
-    def add_work_item(self, f, *args, **kwargs):
-        self.logger.debug("Putting work item in queue. Args: {0}".format(args))
-        with self.id_lock:
-            proc_id = self.next_process_id
-            self.next_process_id += 1
-        self.in_queue.put((f, args, kwargs, proc_id))
-        self.result_dict[proc_id] = None
+    def finish_processing(self):
+        self.finish_process_event.set()
 
     def clear_pending_tasks(self):
-        self.logger.info("Clearing pending tasks")
+        self.logger.info("{0}: Clearing pending tasks".format(self))
         while self.in_queue.empty() is False:
             try:
                 self.logger.debug("get no wait")
@@ -546,7 +578,8 @@ class ClearablePool(object):
                 break
 
     def result_thread_func(self):
-        while self.stop_thread_flag is False:
+        self.logger.debug("{0}: Starting result collection thread".format(self))
+        while self.stop_result_thread_flag is False:
             try:
                 result = self.out_queue.get(True, 0.1)
             except multiprocessing.queues.Empty:
@@ -554,6 +587,7 @@ class ClearablePool(object):
             self.logger.debug("Result: {0}".format(result))
             retval = result[0]
             proc_id = result[1]
+            self.completed_work_items += 1
             try:
                 self.result_dict[proc_id] = retval
             except KeyError as e:
@@ -561,42 +595,7 @@ class ClearablePool(object):
                 raise e
             if isinstance(retval, Exception):
                 raise retval
-
-
-class ProcessPoolTask(Task):
-    """
-    Start up a process pool that can consume data. Emit trigger when queue is empty.
-
-    The results of the tasks are stored in a list.
-    """
-
-    def __init__(self, f, data_list, number_processes=multiprocessing.cpu_count(), name=None, trigger_dict=dict()):
-        Task.__init__(self, name, trigger_dict=trigger_dict)
-        self.f = f
-        self.data_list = data_list
-        self.lock = multiprocessing.Lock()
-        self.num_proc = number_processes
-
-
-    def action(self):
-        self.logger.info("{0} executing function on data of length {1} across {2} processes.".format(self,
-                                                                                                     len(self.task_list),
-                                                                                                     self.num_proc))
-        res = list()
-        pool = ClearablePool(processes=self.num_proc)
-        pool.add_work_item()
-        with self.lock:
-            res = pool.map(self.f, self.data_list)
-
-        self.result = res
-
-    def add_data(self, data_list):
-        with self.lock:
-            self.data_list.append(data_list)
-
-    def set_data_list(self, data_list):
-        with self.lock:
-            self.data_list = data_list
+            self.logger.debug("{0}: result_dict {1}".format(self, pprint.pformat(self.result_dict)))
 
 
 class TangoDeviceConnectTask(Task):
@@ -690,8 +689,8 @@ class LoadImageTask(Task):
         self.logger.info("{0} entering action. ".format(self))
         name = self.image_name.split("_")
         try:
-            k_num = np.maximum(0, int(name[0]) - 1).astype(np.int)
-            image_num = np.maximum(0, int(name[1]) - 1).astype(np.int)
+            k_ind = np.maximum(0, int(name[0]) - 1).astype(np.int)
+            image_ind = np.maximum(0, int(name[1]) - 1).astype(np.int)
             k_value = np.double(name[2])
         except ValueError as e:
             self.logger.error("Image filename wrong format: {0}".format(name))
@@ -705,7 +704,7 @@ class LoadImageTask(Task):
             return False
         filename = os.path.join(self.path, self.image_name)
         image = PIL.Image.open(filename)
-        self.result = QuadImage(k_num, k_value, image_num, image)
+        self.result = QuadImage(k_ind, k_value, image_ind, image)
 
 
 class LoadQuadScanDirTask(Task):
@@ -777,14 +776,50 @@ class LoadQuadScanDirTask(Task):
         self.result = ImageList(data_dict, image_list)
 
 
-class ProcessImageTask(Task):
-    def __init__(self, image, name=None, timeout=None, trigger_dict=dict()):
-        Task.__init__(self, name, timeout=timeout, trigger_dict=trigger_dict)
-        self.image = image
+class ImageProcessorTask(Task):
+    def __init__(self, roi_cent=None, roi_dim=None, threshold=0.1, cal=1.0, kernel=3, name=None, timeout=None, trigger_dict=dict()):
+        Task.__init__(self,  name, timeout=timeout, trigger_dict=trigger_dict)
+        self.kernel = kernel
+        self.cal = cal
+        self.threshold = threshold
+        self.roi_cent = roi_cent
+        self.roi_dim = roi_dim
+        # self.processor = ProcessPoolTask(process_image_func, name="process_pool")
+        self.processor = ProcessPoolTask(test_f, name="process_pool")
+        self.stop_processing_event = threading.Event()
 
     def action(self):
         self.logger.info("{0} entering action. ".format(self))
+        self.stop_processing_event.wait(self.timeout)
+        self.logger.info("{0} exit processing")
+        self.processor.finish_processing()
         self.result = True
+
+    def process_image(self, quad_image, bpp=16):
+        self.logger.info("{0}: Adding image {1} {2} to processing queue".format(self, quad_image.k_ind,
+                                                                                quad_image.image_ind))
+        if self.roi_cent is None:
+            roi_cent = [0, 0]
+        else:
+            roi_cent = self.roi_cent
+        if self.roi_dim is None:
+            roi_dim = quad_image.image.size
+        else:
+            roi_dim = self.roi_dim
+        self.processor.add_work_item(quad_image.image, quad_image.k_ind, quad_image.image_ind, self.threshold,
+                                     roi_cent, roi_dim, self.cal, self.kernel, bpp)
+
+    def stop_processing(self):
+        self.stop_processing_event.set()
+
+    def set_roi(self, roi_cent, roi_dim):
+        self.roi_cent = roi_cent
+        self.roi_dim = roi_dim
+
+    def set_processing_parameters(self, threshold, cal, kernel):
+        self.threshold = threshold
+        self.kernel = kernel
+        self.cal = cal
 
 
 class ScanTask(Task):
@@ -864,8 +899,16 @@ class DeviceHandler(object):
         return s
 
 
+def test_f(in_data):
+    t = time.time()
+    time.sleep(0.5)
+    s = "{0}: {1}".format(t, in_data)
+    logger.info(s)
+    return s
+
+
 if __name__ == "__main__":
-    tests = ["delay", "dev_handler", "exc", "monitor", "load_im"]
+    tests = ["delay", "dev_handler", "exc", "monitor", "load_im", "load_im_dir", "proc_im"]
     test = "load_im"
     if test == "delay":
         t1 = DelayTask(2.0, name="task1")
@@ -917,9 +960,17 @@ if __name__ == "__main__":
 
     elif test == "load_im":
         image_name = "03_03_1.035_.png"
-        # D:\Programming\emittancesinglequad\saved-images\2018-04-16_13-40-48_I-MS1-MAG-QB-01_I-MS1-DIA-SCRN-01
+        path_name = "D:\\Programmering\emittancescansinglequad\\saved-images\\2018-04-16_13-40-48_I-MS1-MAG-QB-01_I-MS1-DIA-SCRN-01"
+        t1 = LoadImageTask(image_name, path_name, name="load_im")
+        t1.start()
+
+    elif test == "load_im_dir":
+        image_name = "03_03_1.035_.png"
         path_name = "..\\..\\emittancesinglequad\\saved-images\\2018-04-16_13-40-48_I-MS1-MAG-QB-01_I-MS1-DIA-SCRN-01"
-        # t1 = LoadImageTask(image_name, path_name, name="load_im")
-        # t1.start()
         t1 = LoadQuadScanDirTask(path_name, "quad_dir")
+        t1.start()
+
+    elif test == "proc_im":
+
+        t1 = ProcessPoolTask(time.sleep)
         t1.start()
