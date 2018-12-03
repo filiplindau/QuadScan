@@ -115,14 +115,14 @@ class ThreadWithExc(threading.Thread):
         _async_raise(self._get_my_tid(), exctype)
 
 
-def process_image_func(image, k_ind, image_ind, threshold, roi_cent, roi_dim, cal=1, kernel=3, bpp=16):
+def process_image_func(image, k_ind, image_ind, threshold, roi_cent, roi_dim, cal=[1.0, 1.0], kernel=3, bpp=16):
     logger.info("Processing image {0}, {1} in pool".format(k_ind, image_ind))
     x = np.array([int(roi_cent[0] - roi_dim[0] / 2.0), int(roi_cent[0] + roi_dim[0] / 2.0)])
     y = np.array([int(roi_cent[1] - roi_dim[1] / 2.0), int(roi_cent[1] + roi_dim[1] / 2.0)])
 
     # Extract ROI and convert to double:
     pic_roi = np.double(image[x[0]:x[1], y[0]:y[1]])
-
+    # logger.debug("pic_roi size: {0}".format(pic_roi.shape))
     # Normalize pic to 0-1 range, where 1 is saturation:
     n = 2 ** bpp
     # if image.dtype == np.int32:
@@ -166,13 +166,14 @@ class Task(object):
     class CancelException(Exception):
         pass
 
-    def __init__(self, name=None, action_exec_type="thread", timeout=None, trigger_dict=dict()):
+    def __init__(self, name=None, action_exec_type="thread", timeout=None, trigger_dict=dict(), callback_list=list()):
         """
 
         :param name: Optional name to identify the task
         :param action_exec_type: "thread" or "process" Determines if action method is executed in thread or process
         :param timeout: timeout in seconds that is spent waiting for triggers
         :param trigger_dict: Dict of tasks that need to trigger before executing the action method of this task
+        :param callback_list:
         """
         self.id = uuid.uuid1()
         if name is None:
@@ -191,19 +192,29 @@ class Task(object):
         self.result = None
         self.timeout = timeout
         self.run_thread = None
-        for e in trigger_dict.values():
-            self.add_trigger(e)
+        self.callback_list = callback_list
 
         self.logger = logging.getLogger("Task.{0}".format(self.name.upper()))
         self.logger.setLevel(logging.DEBUG)
+
+        for e in trigger_dict.values():
+            self.add_trigger(e)
 
     def add_trigger(self, trigger_task):
         self.logger.info("{0} adding trigger {1}".format(self, trigger_task.name))
         with self.lock:
             self.trigger_dict[trigger_task.id] = trigger_task
 
-    def get_event(self):
+    def add_callback(self, callback):
+        self.logger.info("{0} adding callback {1}".format(self, callback))
+        with self.lock:
+            self.callback_list.append(callback)
+
+    def get_done_event(self):
         return self.event_done
+
+    def get_signal_event(self):
+        return self.signal_event
 
     def get_result(self, wait, timeout=-1):
         if self.completed is not True:
@@ -219,10 +230,12 @@ class Task(object):
         self.result = None
 
     def emit(self):
-        self.logger.info("{0} done. Emitting signal".format(self))
-        with self.lock:
-            self.completed = True
-            self.event_done.set()
+        self.logger.debug("{0} done. Emitting signal".format(self))
+
+        self.event_done.set()
+        self.logger.debug("{0}: Calling {1} callbacks".format(self, len(self.callback_list)))
+        for callback in self.callback_list:
+            callback(self)
 
     def run(self):
         self.logger.info("{0} entering run.".format(self))
@@ -265,6 +278,8 @@ class Task(object):
             self.result = traceback.format_exc()
             self.cancel()
             return
+        with self.lock:
+            self.completed = True
         self.emit()
 
     def start(self):
@@ -300,9 +315,12 @@ class Task(object):
     def is_done(self):
         return self.completed
 
+    def is_started(self):
+        return self.started
+
     def _wait_trigger(self, trigger_task):
         self.logger.debug("{0} starting wait for task {1}.".format(self, trigger_task.name))
-        e = trigger_task.get_event()
+        e = trigger_task.get_done_event()
         e.wait()
         # Cancel task if trigger was cancelled:
         if trigger_task.is_cancelled() is True:
@@ -339,8 +357,8 @@ class Task(object):
 
 
 class DelayTask(Task):
-    def __init__(self, delay, name=None, trigger_dict=dict()):
-        Task.__init__(self, name, trigger_dict=trigger_dict)
+    def __init__(self, delay, name=None, trigger_dict=dict(), callback_list=list()):
+        Task.__init__(self, name, trigger_dict=trigger_dict, callback_list=callback_list)
         self.delay = delay
 
     def action(self):
@@ -351,8 +369,8 @@ class DelayTask(Task):
 
 class CallableTask(Task):
     def __init__(self, call_func, call_args=list(), call_kwargs=dict(),
-                 name=None, trigger_dict=dict()):
-        Task.__init__(self, name, trigger_dict=trigger_dict)
+                 name=None, trigger_dict=dict(), callback_list=list()):
+        Task.__init__(self, name, trigger_dict=trigger_dict, callback_list=callback_list)
         self.callable = call_func
         self.call_args = call_args
         self.call_kwargs = call_kwargs
@@ -365,9 +383,9 @@ class CallableTask(Task):
             res = self.callable(*self.call_args, **self.call_kwargs)
         except Exception as e:
             self.logger.error("Error when executing {0} with args {1}, {2}:\n {3}".format(self.callable,
-                                                                                     self.call_args,
-                                                                                     self.call_kwargs,
-                                                                                     e))
+                                                                                          self.call_args,
+                                                                                          self.call_kwargs,
+                                                                                          e))
             raise e
         self.result = res
 
@@ -378,8 +396,8 @@ class RepeatTask(Task):
     If intermediate results are needed: wait for event_done emission
     from the repeating task.
     """
-    def __init__(self, task, repetitions, name=None, trigger_dict=dict()):
-        Task.__init__(self, name, trigger_dict=trigger_dict)
+    def __init__(self, task, repetitions, name=None, trigger_dict=dict(), callback_list=list()):
+        Task.__init__(self, name, trigger_dict=trigger_dict, callback_list=callback_list)
         self.task = task
         self.repetitions = repetitions
 
@@ -387,7 +405,7 @@ class RepeatTask(Task):
         self.logger.info("{0} repeating task {1} {2} times.".format(self, self.task, self.repetitions))
         for i in range(self.repetitions):
             self.task.start()
-            self.task.get_event().wait()
+            self.task.get_done_event().wait()
             # Check if cancelled or error..
             if self.task.is_cancelled() is True:
                 self.cancel()
@@ -402,8 +420,8 @@ class SequenceTask(Task):
 
     The results of the tasks are stored in a list.
     """
-    def __init__(self, task_list, name=None, trigger_dict=dict()):
-        Task.__init__(self, name, trigger_dict=trigger_dict)
+    def __init__(self, task_list, name=None, trigger_dict=dict(), callback_list=list()):
+        Task.__init__(self, name, trigger_dict=trigger_dict, callback_list=callback_list)
         self.task_list = task_list
 
     def action(self):
@@ -428,8 +446,8 @@ class MapToProcessTask(Task):
     The results of the tasks are stored in a list.
     """
 
-    def __init__(self, f, data_list, number_processes=5, name=None, trigger_dict=dict()):
-        Task.__init__(self, name, trigger_dict=trigger_dict)
+    def __init__(self, f, data_list, number_processes=5, name=None, trigger_dict=dict(), callback_list=list()):
+        Task.__init__(self, name, trigger_dict=trigger_dict, callback_list=callback_list)
         self.f = f
         self.data_list = data_list
         self.lock = multiprocessing.Lock()
@@ -463,12 +481,15 @@ def clearable_pool_worker(in_queue, out_queue):
         args = task[1]
         kwargs = task[2]
         proc_id = task[3]
-        logger.debug("Pool worker executing {0} with args {1}, {2}".format(f, args, kwargs))
+        # logger.debug("Pool worker executing {0} with args {1}, {2}".format(f, args, kwargs))
+        # logger.debug("Pool worker executing {0} ".format(f))
         try:
             retval = f(*args, **kwargs)
+            # logger.debug("Putting {0} on out_queue".format(retval))
+            # logger.debug("Putting {0} result on out_queue".format(f))
         except Exception as e:
             retval = e
-        logger.debug("Putting {0} on out_queue".format(retval))
+            logger.error("{0} Error {1} ".format(f, retval))
         out_queue.put((retval, proc_id))
 
 
@@ -479,8 +500,9 @@ class ProcessPoolTask(Task):
     The results of the tasks are stored in a list.
     """
 
-    def __init__(self, work_func, number_processes=multiprocessing.cpu_count(), name=None, trigger_dict=dict()):
-        Task.__init__(self, name, trigger_dict=trigger_dict)
+    def __init__(self, work_func, number_processes=multiprocessing.cpu_count(), name=None,
+                 trigger_dict=dict(), callback_list=list()):
+        Task.__init__(self, name, trigger_dict=trigger_dict, callback_list=callback_list)
         self.work_func = work_func
         self.lock = multiprocessing.Lock()
         self.finish_process_event = threading.Event()
@@ -497,6 +519,8 @@ class ProcessPoolTask(Task):
         self.result_thread = None
         self.stop_result_thread_flag = False
         self.result_dict = dict()
+
+        self.logger.setLevel(logging.INFO)
 
     def run(self):
         self.create_processes()
@@ -527,7 +551,7 @@ class ProcessPoolTask(Task):
 
     def add_work_item(self, *args, **kwargs):
         self.logger.info("{0}: Adding work item".format(self))
-        self.logger.debug("{0}: Args: {1}, kwArgs: {2}".format(self, args, kwargs))
+        # self.logger.debug("{0}: Args: {1}, kwArgs: {2}".format(self, args, kwargs))
         proc_id = self.next_process_id
         self.next_process_id += 1
         self.in_queue.put((self.work_func, args, kwargs, proc_id))
@@ -584,7 +608,6 @@ class ProcessPoolTask(Task):
                 result = self.out_queue.get(True, 0.1)
             except multiprocessing.queues.Empty:
                 continue
-            self.logger.debug("Result: {0}".format(result))
             retval = result[0]
             proc_id = result[1]
             self.completed_work_items += 1
@@ -596,11 +619,14 @@ class ProcessPoolTask(Task):
             if isinstance(retval, Exception):
                 raise retval
             self.logger.debug("{0}: result_dict {1}".format(self, pprint.pformat(self.result_dict)))
+            self.result = retval
+            for callback in self.callback_list:
+                callback(self)
 
 
 class TangoDeviceConnectTask(Task):
-    def __init__(self, device_name, name=None, timeout=None, trigger_dict=dict()):
-        Task.__init__(self, name, timeout=timeout, trigger_dict=trigger_dict)
+    def __init__(self, device_name, name=None, timeout=None, trigger_dict=dict(), callback_list=list()):
+        Task.__init__(self, name, timeout=timeout, trigger_dict=trigger_dict, callback_list=callback_list)
         self.device_name = device_name
 
     def action(self):
@@ -612,8 +638,9 @@ class TangoDeviceConnectTask(Task):
 
 
 class TangoReadAttributeTask(Task):
-    def __init__(self, attribute_name, device_name, device_handler, name=None, timeout=None, trigger_dict=dict()):
-        Task.__init__(self, name, timeout=timeout, trigger_dict=trigger_dict)
+    def __init__(self, attribute_name, device_name, device_handler, name=None, timeout=None,
+                 trigger_dict=dict(), callback_list=list()):
+        Task.__init__(self, name, timeout=timeout, trigger_dict=trigger_dict, callback_list=callback_list)
         self.device_name = device_name
         self.attribute_name = attribute_name
         self.device_handler = device_handler
@@ -626,8 +653,9 @@ class TangoReadAttributeTask(Task):
 
 
 class TangoWriteAttributeTask(Task):
-    def __init__(self, attribute_name, value, device_name, device_handler, name=None, timeout=None, trigger_dict=dict()):
-        Task.__init__(self, name, timeout=timeout, trigger_dict=trigger_dict)
+    def __init__(self, attribute_name, value, device_name, device_handler, name=None, timeout=None,
+                 trigger_dict=dict(), callback_list=list()):
+        Task.__init__(self, name, timeout=timeout, trigger_dict=trigger_dict, callback_list=callback_list)
         self.device_name = device_name
         self.attribute_name = attribute_name
         self.device_handler = device_handler
@@ -645,8 +673,8 @@ class TangoWriteAttributeTask(Task):
 
 class TangoMonitorAttributeTask(Task):
     def __init__(self, attribute_name, device_name, device_handler, target_value, interval=0.5, tolerance=0.01,
-                 tolerance_type="rel", name=None, timeout=None, trigger_dict=dict()):
-        Task.__init__(self, name, timeout=timeout, trigger_dict=trigger_dict)
+                 tolerance_type="rel", name=None, timeout=None, trigger_dict=dict(), callback_list=list()):
+        Task.__init__(self, name, timeout=timeout, trigger_dict=trigger_dict, callback_list=callback_list)
         self.device_name = device_name
         self.attribute_name = attribute_name
         self.device_handler = device_handler
@@ -680,8 +708,8 @@ class TangoMonitorAttributeTask(Task):
 
 
 class LoadImageTask(Task):
-    def __init__(self, image_name, path=".", name=None, timeout=None, trigger_dict=dict()):
-        Task.__init__(self, name, timeout=timeout, trigger_dict=trigger_dict)
+    def __init__(self, image_name, path=".", name=None, timeout=None, trigger_dict=dict(), callback_list=list()):
+        Task.__init__(self, name, timeout=timeout, trigger_dict=trigger_dict, callback_list=callback_list)
         self.image_name = image_name
         self.path = path
 
@@ -703,18 +731,29 @@ class LoadImageTask(Task):
             self.cancel()
             return False
         filename = os.path.join(self.path, self.image_name)
-        image = PIL.Image.open(filename)
+        image = np.array(PIL.Image.open(filename))
         self.result = QuadImage(k_ind, k_value, image_ind, image)
 
 
 class LoadQuadScanDirTask(Task):
-    def __init__(self, quadscandir, process_now=True, threshold=0.0, kernel_size=3,
-                 name=None, timeout=None, trigger_dict=dict()):
-        Task.__init__(self, name, timeout=timeout, trigger_dict=trigger_dict)
+    def __init__(self, quadscandir, process_now=True, threshold=0.0, kernel_size=3, image_processor_task=None,
+                 name=None, timeout=None, trigger_dict=dict(), callback_list=list()):
+        Task.__init__(self, name, timeout=timeout, trigger_dict=trigger_dict, callback_list=callback_list)
         self.pathname = quadscandir
         self.process_now = process_now
         self.threshold = threshold
         self.kernel_size = kernel_size
+        self.processed_image_list = list()
+        if image_processor_task is None:
+            self.image_processor = ImageProcessorTask(threshold=threshold, kernel=kernel_size,
+                                                      trigger_dict=trigger_dict, name="loaddir_image_proc")
+        else:
+            # If the image_processor was supplied, don't add self as trigger.
+            self.image_processor = image_processor_task
+        if self.image_processor.is_started() is False:
+            self.logger.info("Starting image_processor")
+            self.image_processor.start()
+        self.image_processor.add_callback(self.processed_image_done)
 
     def action(self):
         load_dir = self.pathname
@@ -764,50 +803,82 @@ class LoadQuadScanDirTask(Task):
         for file_name in file_list:
             if file_name.endswith(".png"):
                 image_file_list.append(file_name)
-                t = LoadImageTask(file_name, load_dir, name=file_name)
+                t = LoadImageTask(file_name, load_dir, name=file_name,
+                                  callback_list=[self.image_processor.process_image])
                 t.logger.setLevel(logging.WARN)
                 load_task_list.append(t)
 
         self.logger.debug("{1} Found {0} images in directory".format(len(image_file_list), self))
         task_seq = SequenceTask(load_task_list, name="load_seq")
         task_seq.start()
+        # Wait for image sequence to be done reading:
         image_list = task_seq.get_result(wait=True)
-        ImageList = namedtuple("ImageList", "daq_data images")
-        self.result = ImageList(data_dict, image_list)
+        # Now wait for images to be done processing:
+        self.image_processor.stop_processing()
+        self.image_processor.get_result(wait=True)
+        ImageList = namedtuple("ImageList", "daq_data images proc_images")
+        self.result = ImageList(data_dict, image_list, self.processed_image_list)
+
+    def processed_image_done(self, image_processor_task):
+        # type: (ImageProcessorTask) -> None
+        proc_image = image_processor_task.get_result(wait=False)    # type: ProcessedImage
+        if image_processor_task.is_done() is False:
+            self.logger.debug("Adding processed image {0} {1} to list".format(proc_image.k_ind, proc_image.image_ind))
+            self.processed_image_list.append(proc_image)
 
 
 class ImageProcessorTask(Task):
-    def __init__(self, roi_cent=None, roi_dim=None, threshold=0.1, cal=1.0, kernel=3, name=None, timeout=None, trigger_dict=dict()):
-        Task.__init__(self,  name, timeout=timeout, trigger_dict=trigger_dict)
+    def __init__(self, roi_cent=None, roi_dim=None, threshold=0.1, cal=[1.0, 1.0],
+                 kernel=3, name=None, timeout=None, trigger_dict=dict(), callback_list=list()):
+        Task.__init__(self,  name, timeout=timeout, trigger_dict=trigger_dict, callback_list=callback_list)
         self.kernel = kernel
         self.cal = cal
         self.threshold = threshold
         self.roi_cent = roi_cent
         self.roi_dim = roi_dim
-        # self.processor = ProcessPoolTask(process_image_func, name="process_pool")
-        self.processor = ProcessPoolTask(test_f, name="process_pool")
+        self.processor = ProcessPoolTask(process_image_func, name="process_pool", callback_list=[self._image_done])
+        # self.processor = ProcessPoolTask(test_f, name="process_pool")
         self.stop_processing_event = threading.Event()
 
     def action(self):
         self.logger.info("{0} entering action. ".format(self))
+        self.processor.start()
         self.stop_processing_event.wait(self.timeout)
+        if self.stop_processing_event.is_set() is False:
+            self.cancel()
+            return
         self.logger.info("{0} exit processing")
         self.processor.finish_processing()
+        self.processor.get_result(wait=True, timeout=self.timeout)
         self.result = True
 
-    def process_image(self, quad_image, bpp=16):
+    def process_image(self, task, bpp=16):
+        quad_image = task.get_result(wait=False)    # type: QuadImage
         self.logger.info("{0}: Adding image {1} {2} to processing queue".format(self, quad_image.k_ind,
                                                                                 quad_image.image_ind))
-        if self.roi_cent is None:
-            roi_cent = [0, 0]
-        else:
-            roi_cent = self.roi_cent
         if self.roi_dim is None:
-            roi_dim = quad_image.image.size
+            roi_dim = quad_image.image.shape
         else:
             roi_dim = self.roi_dim
+        if self.roi_cent is None:
+            roi_cent = [roi_dim[0]/2, roi_dim[1]/2]
+        else:
+            roi_cent = self.roi_cent
+        # self.processor.add_work_item("apa")
         self.processor.add_work_item(quad_image.image, quad_image.k_ind, quad_image.image_ind, self.threshold,
                                      roi_cent, roi_dim, self.cal, self.kernel, bpp)
+
+    def _image_done(self, processor_task):
+        # type: (ProcessPoolTask) -> None
+        if self.is_done() is False:
+            self.logger.debug("{0}: Image processing done.".format(self))
+            self.result = processor_task.get_result(wait=False)
+            if processor_task.is_done() is False:
+                self.logger.debug("Calling {0} callbacks".format(len(self.callback_list)))
+                for callback in self.callback_list:
+                    callback(self)
+            else:
+                self.stop_processing()
 
     def stop_processing(self):
         self.stop_processing_event.set()
@@ -823,8 +894,8 @@ class ImageProcessorTask(Task):
 
 
 class ScanTask(Task):
-    def __init__(self, scan_params, name=None, timeout=None, trigger_dict=dict()):
-        Task.__init__(self, name, timeout=timeout, trigger_dict=trigger_dict)
+    def __init__(self, scan_params, name=None, timeout=None, trigger_dict=dict(), callback_list=list()):
+        Task.__init__(self, name, timeout=timeout, trigger_dict=trigger_dict, callback_list=callback_list)
         self.scan_params = scan_params
 
     def action(self):

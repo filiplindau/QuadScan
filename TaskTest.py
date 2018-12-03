@@ -130,7 +130,7 @@ class Task(object):
 
     def _wait_trigger(self, trigger_task):
         logger.debug("{0} {1} starting wait for task {2}.".format(type(self), self.name, trigger_task.name))
-        e = trigger_task.get_event()
+        e = trigger_task.get_done_event()
         e.wait()
         # if self.timeout is not None:
         #     completed_flag = e.wait(self.timeout)
