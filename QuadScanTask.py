@@ -394,22 +394,29 @@ class RepeatTask(Task):
     """
     Repeat a task a number of times and store the last result.
     If intermediate results are needed: wait for event_done emission
-    from the repeating task.
+    from the repeating task. Use repetitions <= 0 for infinite number of
+    repeats.
     """
-    def __init__(self, task, repetitions, name=None, trigger_dict=dict(), callback_list=list()):
+    def __init__(self, task, repetitions, delay=0, name=None, trigger_dict=dict(), callback_list=list()):
         Task.__init__(self, name, trigger_dict=trigger_dict, callback_list=callback_list)
         self.task = task
         self.repetitions = repetitions
+        self.delay = delay
 
     def action(self):
         self.logger.info("{0} repeating task {1} {2} times.".format(self, self.task, self.repetitions))
-        for i in range(self.repetitions):
+        current_rep = 0
+        while current_rep < self.repetitions:
             self.task.start()
             self.task.get_done_event().wait()
             # Check if cancelled or error..
             if self.task.is_cancelled() is True:
                 self.cancel()
                 break
+            if self.is_cancelled() is True:
+                break
+            time.sleep(self.delay)
+            current_rep += 1
         self.result = self.task.get_result()
 
 
@@ -434,6 +441,37 @@ class SequenceTask(Task):
             # Check if cancelled or error..
             if t.is_cancelled() is True:
                 self.cancel()
+                break
+            if self.is_cancelled() is True:
+                break
+
+        self.result = res
+
+
+class BagOfTasksTask(Task):
+    """
+    Run a list of tasks and emit done event after all
+    are completed.
+
+    The results of the tasks are stored in a list.
+    """
+    def __init__(self, task_list, name=None, trigger_dict=dict(), callback_list=list()):
+        Task.__init__(self, name, trigger_dict=trigger_dict, callback_list=callback_list)
+        self.task_list = task_list
+
+    def action(self):
+        self.logger.info("{0} running {1} tasks.".format(self, len(self.task_list)))
+        res = list()
+
+        for t in self.task_list:
+            t.start()
+        for t in self.task_list:
+            res.append(t.get_result(wait=True))
+            # Check if cancelled or error..
+            if t.is_cancelled() is True:
+                self.cancel()
+                break
+            if self.is_cancelled() is True:
                 break
 
         self.result = res
@@ -584,6 +622,10 @@ class ProcessPoolTask(Task):
 
     def finish_processing(self):
         self.finish_process_event.set()
+
+    def cancel(self):
+        self.finish_processing()
+        Task.cancel(self)
 
     def clear_pending_tasks(self):
         self.logger.info("{0}: Clearing pending tasks".format(self))
@@ -744,6 +786,7 @@ class LoadQuadScanDirTask(Task):
         self.threshold = threshold
         self.kernel_size = kernel_size
         self.processed_image_list = list()
+        self.task_seq = None
         if image_processor_task is None:
             self.image_processor = ImageProcessorTask(threshold=threshold, kernel=kernel_size,
                                                       trigger_dict=trigger_dict, name="loaddir_image_proc")
@@ -809,10 +852,10 @@ class LoadQuadScanDirTask(Task):
                 load_task_list.append(t)
 
         self.logger.debug("{1} Found {0} images in directory".format(len(image_file_list), self))
-        task_seq = SequenceTask(load_task_list, name="load_seq")
-        task_seq.start()
+        self.task_seq = SequenceTask(load_task_list, name="load_seq")
+        self.task_seq.start()
         # Wait for image sequence to be done reading:
-        image_list = task_seq.get_result(wait=True)
+        image_list = self.task_seq.get_result(wait=True)
         # Now wait for images to be done processing:
         self.image_processor.stop_processing()
         self.image_processor.get_result(wait=True)
@@ -825,6 +868,11 @@ class LoadQuadScanDirTask(Task):
         if image_processor_task.is_done() is False:
             self.logger.debug("Adding processed image {0} {1} to list".format(proc_image.k_ind, proc_image.image_ind))
             self.processed_image_list.append(proc_image)
+
+    def cancel(self):
+        if self.task_seq is not None:
+            self.task_seq.cancel()
+        Task.cancel(self)
 
 
 class ImageProcessorTask(Task):
@@ -893,14 +941,63 @@ class ImageProcessorTask(Task):
         self.cal = cal
 
 
+ScanParam = namedtuple("ScanParam", "scan_attr_name scan_device_name scan_start_pos scan_end_pos scan_step "
+                                    "scan_pos_tol scan_pos_check_interval "
+                                    "measure_attr_name_list measure_device_list measure_number measure_interval")
+ScanResult = namedtuple("ScanResult", "pos_list measure_list timestamp_list")
+
+
 class ScanTask(Task):
-    def __init__(self, scan_params, name=None, timeout=None, trigger_dict=dict(), callback_list=list()):
+    def __init__(self, scan_param, device_handler, name=None, timeout=None, trigger_dict=dict(), callback_list=list()):
+        # type: (ScanParam) -> None
         Task.__init__(self, name, timeout=timeout, trigger_dict=trigger_dict, callback_list=callback_list)
-        self.scan_params = scan_params
+        self.scan_param = scan_param
+        self.device_handler = device_handler
+        self.scan_result = None
 
     def action(self):
-        self.logger.info("{0} entering action. ".format(self))
-        self.result = True
+        self.logger.info("{0} starting scan of {1} from {2} to {3}. ".format(self, self.scan_param.scan_attr_name,
+                                                                             self.scan_param.scan_start_pos,
+                                                                             self.scan_param.scan_end_pos))
+        self.logger.info("{0} measuring {1}. ".format(self, self.scan_param.measure_attr_name_list))
+        self.scan_result = ScanResult()
+        next_pos = self.scan_param.scan_start_pos
+        while self.get_done_event().is_set() is False:
+            write_pos_task = TangoWriteAttributeTask(self.scan_param.scan_attr_name,
+                                                     next_pos,
+                                                     self.scan_param.scan_device_name,
+                                                     self.device_handler,
+                                                     name="write_pos",
+                                                     timeout=self.timeout)
+            monitor_pos_task = TangoMonitorAttributeTask(self.scan_param.scan_attr_name,
+                                                         next_pos,
+                                                         self.scan_param.scan_device_name,
+                                                         self.device_handler,
+                                                         tolerance=self.scan_param.scan_pos_tol,
+                                                         interval=self.scan_param.scan_pos_check_interval,
+                                                         name="monitor_pos",
+                                                         timeout=self.timeout)
+            measure_task_list = list()
+            for meas_ind, meas_attr in enumerate(self.scan_param.measure_attr_name_list):
+                read_task = TangoReadAttributeTask(meas_ind, self.scan_param.measure_device_list[meas_ind],
+                                                   self.device_handler, name="read_{0}".format(meas_attr),
+                                                   timeout=self.timeout)
+                rep_task = RepeatTask(read_task, self.scan_param.measure_number, self.scan_param.measure_interval,
+                                      name="rep_{0}".format(meas_attr), timeout=self.timeout)
+                measure_task_list.append(rep_task)
+            measure_bag_task = BagOfTasksTask(measure_task_list, name="MeasureBag", timeout=self.timeout)
+            step_sequence_task = SequenceTask([write_pos_task, monitor_pos_task] + measure_bag_task)
+            step_sequence_task.start()
+            step_result = step_sequence_task.get_result(wait=True, timeout=self.timeout)
+            if step_sequence_task.is_cancelled() is True:
+                self.cancel()
+                break
+            if self.is_cancelled() is True:
+                break
+            pos = step_result[1].value
+            meas_dict = dict()
+
+        self.result = self.scan_result
 
 
 class DeviceHandler(object):
