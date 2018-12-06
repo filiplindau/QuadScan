@@ -351,6 +351,20 @@ class Task(object):
         return s
 
 
+class SubclassTask(Task):
+    """
+    Copy for subclassing convenience
+    """
+
+    def __init__(self, name=None, timeout=None, trigger_dict=dict(),
+                 callback_list=list()):
+        Task.__init__(self, name, timeout=timeout, trigger_dict=trigger_dict, callback_list=callback_list)
+
+    def action(self):
+        self.logger.info("{0} entering action.".format(self))
+        self.result = None
+
+
 class DelayTask(Task):
     def __init__(self, delay, name=None, trigger_dict=dict(), callback_list=list()):
         Task.__init__(self, name, trigger_dict=trigger_dict, callback_list=callback_list)

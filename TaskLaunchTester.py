@@ -1,4 +1,4 @@
-from QuadScanTask import *
+from QuadScanTasks import *
 import time
 
 if __name__ == "__main__":
