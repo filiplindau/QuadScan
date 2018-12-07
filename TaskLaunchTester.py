@@ -36,5 +36,6 @@ if __name__ == "__main__":
         # quad_image = t2.get_result(True)
         #
         # t1.process_image(quad_image)
-        print("Got image. {0}".format(t1.get_result(True)))
-        t1.stop_processing()
+        print("Got image. {0}".format(t2.get_result(True)))
+
+

@@ -8,6 +8,7 @@ Tasks for async sequencing.
 
 import threading
 import multiprocessing
+import Queue
 import uuid
 import logging
 import time
@@ -108,53 +109,6 @@ class ThreadWithExc(threading.Thread):
         thread represented by this instance.
         """
         _async_raise(self._get_my_tid(), exctype)
-
-
-def process_image_func(image, k_ind, image_ind, threshold, roi_cent, roi_dim, cal=[1.0, 1.0], kernel=3, bpp=16):
-    logger.info("Processing image {0}, {1} in pool".format(k_ind, image_ind))
-    x = np.array([int(roi_cent[0] - roi_dim[0] / 2.0), int(roi_cent[0] + roi_dim[0] / 2.0)])
-    y = np.array([int(roi_cent[1] - roi_dim[1] / 2.0), int(roi_cent[1] + roi_dim[1] / 2.0)])
-
-    # Extract ROI and convert to double:
-    pic_roi = np.double(image[x[0]:x[1], y[0]:y[1]])
-    # logger.debug("pic_roi size: {0}".format(pic_roi.shape))
-    # Normalize pic to 0-1 range, where 1 is saturation:
-    n = 2 ** bpp
-    # if image.dtype == np.int32:
-    #     n = 2 ** 16
-    # elif image.dtype == np.uint8:
-    #     n = 2 ** 8
-    # else:
-    #     n = 1
-
-    # Median filtering:
-    pic_roi = medfilt2d(pic_roi / n, kernel)
-
-    # Threshold image
-    pic_roi[pic_roi < threshold] = 0.0
-
-    line_x = pic_roi.sum(0)
-    line_y = pic_roi.sum(1)
-    q = line_x.sum()  # Total signal (charge) in the image
-
-    enabled = False
-    l_x_n = np.sum(line_x)
-    l_y_n = np.sum(line_y)
-    # Enable point only if there is data:
-    if l_x_n > 0.0:
-        enabled = True
-    x_v = cal[0] * np.arange(line_x.shape[0])
-    y_v = cal[1] * np.arange(line_y.shape[0])
-    x_cent = np.sum(x_v * line_x) / l_x_n
-    sigma_x = np.sqrt(np.sum((x_v - x_cent) ** 2 * line_x) / l_x_n)
-    y_cent = np.sum(y_v * line_y) / l_y_n
-    sigma_y = np.sqrt(np.sum((y_v - y_cent) ** 2 * line_y) / l_y_n)
-
-    # Store processed data
-    result = ProcessedImage(k_ind=k_ind, image_ind=image_ind, pic_roi=pic_roi, line_x=line_x, line_y=line_y,
-                            x_cent=x_cent, y_cent=y_cent, sigma_x=sigma_x, sigma_y=sigma_y, q=q, enabled=enabled)
-
-    return result
 
 
 class Task(object):
@@ -680,3 +634,156 @@ class ProcessPoolTask(Task):
             self.result = retval
             for callback in self.callback_list:
                 callback(self)
+
+
+class ThreadPoolTask(Task):
+    """
+    Start up a thread pool that can consume data. Emit trigger when queue is empty.
+
+    The results of the tasks are stored in a list.
+    """
+
+    def __init__(self, work_func, number_threads=8, name=None, timeout=None,
+                 trigger_dict=dict(), callback_list=list()):
+        Task.__init__(self, name, timeout=timeout, trigger_dict=trigger_dict, callback_list=callback_list)
+        self.work_func = work_func
+        self.lock = threading.Lock()
+        self.finish_threads_event = threading.Event()
+        self.pending_work_items = list()
+
+        self.in_queue = Queue.Queue()
+        self.out_queue = Queue.Queue()
+        self.num_threads = number_threads
+        self.threads = None
+        self.next_thread_id = 0
+        self.completed_work_items = 0
+        self.id_lock = threading.Lock()
+
+        self.result_thread = None
+        self.stop_result_thread_flag = False
+        self.result_dict = dict()
+
+        self.logger.setLevel(logging.INFO)
+
+    def run(self):
+        self.create_threads()
+        Task.run(self)
+
+    def start(self):
+        self.next_thread_id = 0
+        Task.start(self)
+
+    def action(self):
+        self.logger.info("{0}: starting thread pool for "
+                         "executing function {1} across {2} threads.".format(self, self.work_func, self.num_threads))
+        self.logger.info("{1}: Starting {0} threads".format(self.num_threads, self))
+        self.completed_work_items = 0
+        for p in self.threads:
+            p.start()
+        self.stop_result_thread_flag = False
+        self.result_thread = threading.Thread(target=self.result_thread_func)
+        self.result_thread.start()
+
+        self.finish_threads_event.wait(self.timeout)
+        if self.finish_threads_event.is_set() is False:
+            self.cancel()
+        while self.completed_work_items < self.next_thread_id:
+            time.sleep(0.01)
+        self.stop_threads()
+        self.result = self.result_dict
+
+    def add_work_item(self, *args, **kwargs):
+        self.logger.info("{0}: Adding work item".format(self))
+        # self.logger.debug("{0}: Args: {1}, kwArgs: {2}".format(self, args, kwargs))
+        thread_id = self.next_thread_id
+        self.next_thread_id += 1
+        self.in_queue.put((self.work_func, args, kwargs, thread_id))
+        self.result_dict[thread_id] = None
+        self.logger.debug("{0}: Queue added. Thread id: {1}".format(self, thread_id))
+
+    def create_threads(self):
+        if self.threads is not None:
+            self.stop_threads()
+
+        self.logger.info("{1}: Creating {0} threads".format(self.num_threads, self))
+        p_list = list()
+        for p in range(self.num_threads):
+            p = threading.Thread(target=self.clearable_pool_worker, args=(self.in_queue, self.out_queue))
+            p_list.append(p)
+        self.threads = p_list
+
+    def stop_threads(self):
+        self.logger.info("{0}: Stopping threads".format(self))
+        if self.threads is not None:
+            for p in self.threads:
+                p.join(1.0)
+        # self.processes = None
+        self.stop_result_thread_flag = True
+        try:
+            self.result_thread.join(1.0)
+        except AttributeError:
+            pass
+        self.result_thread = None
+
+    def finish_processing(self):
+        self.finish_threads_event.set()
+
+    def cancel(self):
+        self.finish_processing()
+        Task.cancel(self)
+
+    def clear_pending_tasks(self):
+        self.logger.info("{0}: Clearing pending tasks".format(self))
+        while self.in_queue.empty() is False:
+            try:
+                self.logger.debug("get no wait")
+                work_item = self.in_queue.get_nowait()
+                proc_id = work_item[3]
+                self.logger.debug("Removing task {0}".format(id))
+                try:
+                    self.result_dict.pop(proc_id)
+                except KeyError:
+                    pass
+            except Queue.Empty:
+                self.logger.debug("In-queue empty")
+                break
+
+    def result_thread_func(self):
+        self.logger.debug("{0}: Starting result collection thread".format(self))
+        while self.stop_result_thread_flag is False:
+            try:
+                result = self.out_queue.get(True, 0.1)
+            except Queue.Empty:
+                continue
+            retval = result[0]
+            proc_id = result[1]
+            self.completed_work_items += 1
+            try:
+                self.result_dict[proc_id] = retval
+            except KeyError as e:
+                self.logger.error("Work item id {0} not found.".format(proc_id))
+                raise e
+            if isinstance(retval, Exception):
+                raise retval
+            self.logger.debug("{0}: result_dict {1}".format(self, pprint.pformat(self.result_dict)))
+            self.result = retval
+            for callback in self.callback_list:
+                callback(self)
+
+    def clearable_pool_worker(self, in_queue, out_queue):
+        while self.finish_threads_event.is_set() is False:
+            task = in_queue.get()
+            f = task[0]
+            args = task[1]
+            kwargs = task[2]
+            proc_id = task[3]
+            # logger.debug("Pool worker executing {0} with args {1}, {2}".format(f, args, kwargs))
+            # logger.debug("Pool worker executing {0} ".format(f))
+            try:
+                retval = f(*args, **kwargs)
+                # logger.debug("Putting {0} on out_queue".format(retval))
+                # logger.debug("Putting {0} result on out_queue".format(f))
+            except Exception as e:
+                retval = e
+                logger.error("{0} Error {1} ".format(f, retval))
+            out_queue.put((retval, proc_id))
