@@ -15,13 +15,16 @@ import ctypes
 import inspect
 import PIL
 import numpy as np
+from numpngw import write_png
 import os
 from collections import namedtuple
 import pprint
 import traceback
 from scipy.signal import medfilt2d
+
 from tasks.GenericTasks import *
 from QuadScanDataStructs import *
+
 
 try:
     import PyTango as pt
@@ -133,7 +136,7 @@ class TangoMonitorAttributeTask(Task):
         self.result = read_task.get_result(wait=False)
 
 
-class LoadImageTask(Task):
+class LoadQuadImageTask(Task):
     def __init__(self, image_name, path=".", name=None, timeout=None, trigger_dict=dict(), callback_list=list()):
         Task.__init__(self, name, timeout=timeout, trigger_dict=trigger_dict, callback_list=callback_list)
         self.image_name = image_name
@@ -162,8 +165,29 @@ class LoadImageTask(Task):
         self.result = QuadImage(k_ind, k_value, image_ind, image)
 
 
+class SaveQuadImageTask(Task):
+    def __init__(self, quad_image, save_path=".", name=None, timeout=None, trigger_dict=dict(), callback_list=list()):
+        Task.__init__(self, name, timeout=timeout, trigger_dict=trigger_dict, callback_list=callback_list)
+        self.quad_image = quad_image        # type: QuadImage
+        self.save_path = save_path
+        self.logger.setLevel(logging.INFO)
+
+    def action(self):
+        self.logger.info("{0} entering action. ".format(self))
+        filename = "{0}_{1}_{2:.5f}_.png".format(self.quad_image.k_ind, self.quad_image.image_ind,
+                                                 self.quad_image.k_value)
+        full_name = os.path.join(self.save_path, filename)
+        with open(full_name, "wb") as fh:
+            try:
+                write_png(fh, self.quad_image.image, filter_type=1)
+            except Exception as e:
+                self.logger.error("Image error: {0}".format(e))
+                self.logger.error("Image type: {0}".format(type(self.quad_image.image)))
+        self.result = True
+
+
 class LoadQuadScanDirTask(Task):
-    def __init__(self, quadscandir, process_now=True, threshold=0.0, kernel_size=3,
+    def __init__(self, quadscandir, process_now=True, threshold=None, kernel_size=3,
                  image_processor_task=None, process_exec_type="process",
                  name=None, timeout=None, trigger_dict=dict(), callback_list=list()):
         Task.__init__(self, name, timeout=timeout, trigger_dict=trigger_dict, callback_list=callback_list)
@@ -237,8 +261,8 @@ class LoadQuadScanDirTask(Task):
         for file_name in file_list:
             if file_name.endswith(".png"):
                 image_file_list.append(file_name)
-                t = LoadImageTask(file_name, load_dir, name=file_name,
-                                  callback_list=[self.image_processor.process_image])
+                t = LoadQuadImageTask(file_name, load_dir, name=file_name,
+                                      callback_list=[self.image_processor.process_image])
                 t.logger.setLevel(logging.WARN)
                 load_task_list.append(t)
 
@@ -251,7 +275,20 @@ class LoadQuadScanDirTask(Task):
         self.image_processor.stop_processing()
         self.image_processor.get_result(wait=True)
 
-        self.result = ImageList(data_dict, image_list, self.processed_image_list)
+        acc_params = AcceleratorParameters(electron_energy=float(data_dict["beam_energy"]),
+                                           quad_length=float(data_dict["quad_length"]),
+                                           quad_screen_dist=float(data_dict["quad_2_screen"]),
+                                           k_max=float(data_dict["k_max"]),
+                                           k_min=float(data_dict["k_min"]),
+                                           num_k=int(data_dict["num_k_values"]),
+                                           num_images=int(data_dict["num_shots"]),
+                                           cal=data_dict["pixel_size"],
+                                           quad_name=data_dict["quad"],
+                                           screen_name=data_dict["screen"],
+                                           roi_center=data_dict["roi_center"],
+                                           roi_dim=data_dict["roi_dim"])
+
+        self.result = QuadScanData(acc_params, image_list, self.processed_image_list)
 
     def processed_image_done(self, image_processor_task):
         # type: (ImageProcessorTask) -> None
@@ -266,8 +303,9 @@ class LoadQuadScanDirTask(Task):
         Task.cancel(self)
 
 
-def process_image_func(image, k_ind, image_ind, threshold, roi_cent, roi_dim, cal=[1.0, 1.0], kernel=3, bpp=16):
+def process_image_func(image, k_ind, k_value, image_ind, threshold, roi_cent, roi_dim, cal=[1.0, 1.0], kernel=3, bpp=16):
     logger.info("Processing image {0}, {1} in pool".format(k_ind, image_ind))
+    # logger.debug("Threshold={0}, cal={1}, kernel={2}".format(threshold, cal, kernel))
     x = np.array([int(roi_cent[0] - roi_dim[0] / 2.0), int(roi_cent[0] + roi_dim[0] / 2.0)])
     y = np.array([int(roi_cent[1] - roi_dim[1] / 2.0), int(roi_cent[1] + roi_dim[1] / 2.0)])
 
@@ -287,6 +325,8 @@ def process_image_func(image, k_ind, image_ind, threshold, roi_cent, roi_dim, ca
     pic_roi = medfilt2d(pic_roi / n, kernel)
 
     # Threshold image
+    if threshold is None:
+        threshold = pic_roi[0:20, 0:20].mean()*2 + pic_roi[-20:, -20:].mean()*2
     pic_roi[pic_roi < threshold] = 0.0
 
     line_x = pic_roi.sum(0)
@@ -307,14 +347,15 @@ def process_image_func(image, k_ind, image_ind, threshold, roi_cent, roi_dim, ca
     sigma_y = np.sqrt(np.sum((y_v - y_cent) ** 2 * line_y) / l_y_n)
 
     # Store processed data
-    result = ProcessedImage(k_ind=k_ind, image_ind=image_ind, pic_roi=pic_roi, line_x=line_x, line_y=line_y,
-                            x_cent=x_cent, y_cent=y_cent, sigma_x=sigma_x, sigma_y=sigma_y, q=q, enabled=enabled)
+    result = ProcessedImage(k_ind=k_ind, k_value=k_value, image_ind=image_ind, pic_roi=pic_roi,
+                            line_x=line_x, line_y=line_y, x_cent=x_cent, y_cent=y_cent,
+                            sigma_x=sigma_x, sigma_y=sigma_y, q=q, enabled=enabled)
 
     return result
 
 
 class ImageProcessorTask(Task):
-    def __init__(self, roi_cent=None, roi_dim=None, threshold=0.1, cal=[1.0, 1.0], kernel=3, process_exec="process",
+    def __init__(self, roi_cent=None, roi_dim=None, threshold=None, cal=[1.0, 1.0], kernel=3, process_exec="process",
                  name=None, timeout=None, trigger_dict=dict(), callback_list=list()):
         Task.__init__(self,  name, timeout=timeout, trigger_dict=trigger_dict, callback_list=callback_list)
         self.logger.setLevel(logging.DEBUG)
@@ -360,8 +401,8 @@ class ImageProcessorTask(Task):
             roi_cent = [roi_dim[0]/2, roi_dim[1]/2]
         else:
             roi_cent = self.roi_cent
-        self.processor.add_work_item(quad_image.image, quad_image.k_ind, quad_image.image_ind, self.threshold,
-                                     roi_cent, roi_dim, self.cal, self.kernel, bpp)
+        self.processor.add_work_item(quad_image.image, quad_image.k_ind, quad_image.k_value, quad_image.image_ind,
+                                     self.threshold, roi_cent, roi_dim, self.cal, self.kernel, bpp)
 
     def _image_done(self, processor_task):
         # type: (ProcessPoolTask) -> None
@@ -383,12 +424,53 @@ class ImageProcessorTask(Task):
         self.roi_dim = roi_dim
 
     def set_processing_parameters(self, threshold, cal, kernel):
+        self.logger.info("{0} Setting threshold={1}, cal={2}, kernel={3}".format(self, threshold, cal, kernel))
         self.threshold = threshold
         self.kernel = kernel
         self.cal = cal
 
 
-class ScanTask(Task):
+class ProcessAllImagesTask(Task):
+    def __init__(self, quad_scan_data, threshold=None, kernel_size=3,
+                 image_processor_task=None, process_exec_type="process",
+                 name=None, timeout=None, trigger_dict=dict(), callback_list=list()):
+        Task.__init__(self, name, timeout=timeout, trigger_dict=trigger_dict, callback_list=callback_list)
+        self.quad_scan_data = quad_scan_data    # type: QuadScanData
+        self.threshold = threshold
+        self.kernel = kernel_size
+
+        if image_processor_task is None:
+            self.image_processor = ImageProcessorTask(threshold=threshold, kernel=kernel_size,
+                                                      process_exec=process_exec_type,
+                                                      trigger_dict=trigger_dict, name="processall_image_proc")
+        else:
+            # If the image_processor was supplied, don't add self as trigger.
+            self.image_processor = image_processor_task
+        if self.image_processor.is_started() is False:
+            self.logger.info("Starting image_processor")
+            self.image_processor.start()
+        self.image_processor.add_callback(self.processed_image_done)
+        self.processed_image_list = list()
+
+    def action(self):
+        self.processed_image_list = list()
+        self.image_processor.set_roi(self.quad_scan_data.acc_params.roi_center, self.quad_scan_data.acc_params.roi_dim)
+        self.image_processor.set_processing_parameters(self.threshold, self.quad_scan_data.acc_params.cal, self.kernel)
+        for image in self.quad_scan_data.images:
+            self.image_processor.process_image(image)
+        self.image_processor.stop_processing()
+        self.image_processor.get_result(wait=True)      # Wait for all images to finish processing
+        self.result = self.processed_image_list
+
+    def processed_image_done(self, image_processor_task):
+        # type: (ImageProcessorTask) -> None
+        proc_image = image_processor_task.get_result(wait=False)    # type: ProcessedImage
+        if image_processor_task.is_done() is False:
+            self.logger.debug("Adding processed image {0} {1} to list".format(proc_image.k_ind, proc_image.image_ind))
+            self.processed_image_list.append(proc_image)
+
+
+class TangoScanTask(Task):
     def __init__(self, scan_param, device_handler, name=None, timeout=None, trigger_dict=dict(), callback_list=list()):
         # type: (ScanParam) -> None
         Task.__init__(self, name, timeout=timeout, trigger_dict=trigger_dict, callback_list=callback_list)
@@ -440,6 +522,10 @@ class ScanTask(Task):
             pos_list.append(step_result[1].value)
             timestamp_list.append(step_result[1].time)
             meas_list.append(step_result[2])
+            if self.is_done() is False:
+                self.logger.debug("{0} Calling {1} callbacks".format(self, len(self.callback_list)))
+                for callback in self.callback_list:
+                    callback(self)
             next_pos += self.scan_param.scan_step
             if next_pos > self.scan_param.scan_end_pos:
                 self.event_done.set()
@@ -526,27 +612,27 @@ class FitQuadDataTask(Task):
     Fit supplied quad data and calculate beam twiss parameters
     """
 
-    def __init__(self, k_list, processed_image_list, accelerator_params, algo="full",
+    def __init__(self, processed_image_list, accelerator_params, algo="full",
                  name=None, timeout=None, trigger_dict=dict(), callback_list=list()):
         Task.__init__(self, name, timeout=timeout, trigger_dict=trigger_dict, callback_list=callback_list)
-        self.k_list = k_list                                # type: list
-        self.processed_image_list = processed_image_list    # type: list
+        self.processed_image_list = processed_image_list    # type: list of QuadImage
+        # K value for each image is stored in the image list
         self.accelerator_params = accelerator_params        # type: AcceleratorParameters
         self.algo = algo
 
     def action(self):
         self.logger.info("{0} entering action.".format(self))
         if self.algo == "full":
-            self.fit_full_transfer_matrix()
+            fitresult = self.fit_full_transfer_matrix()
         else:
-            self.fit_thin_lens()
-        self.result = None
+            fitresult = self.fit_thin_lens()
+        self.result = fitresult
 
     def fit_thin_lens(self):
         self.logger.info("Fitting image data using thin lens approximation")
-        k_data = np.array(self.k_list).flatten()
+        k_data = np.array([pi.k_value for pi in self.processed_image_list]).flatten()
         sigma_data = np.array([pi.sigma_x for pi in self.processed_image_list]).flatten()
-        en_data = np.array(self.get_result("scan", "enabled_data")).flatten()
+        en_data = np.array([pi.enabled for pi in self.processed_image_list]).flatten()
         try:
             s2 = (sigma_data[en_data]) ** 2
         except IndexError:
@@ -555,12 +641,13 @@ class FitQuadDataTask(Task):
             return
         k = k_data[en_data]
         ind = np.isfinite(s2)
-        poly = np.polyfit(k[ind], s2[ind], 2)
-        self.set_result("scan", "fit_poly", poly)
+        p = np.polyfit(k[ind], s2[ind], 2, full=True)
+        poly = p[0]
+        res = p[1]
         self.logger.debug("Fit coefficients: {0}".format(poly))
-        d = self.get_parameter("analysis", "quad_screen_dist")
-        L = self.get_parameter("analysis", "quad_length")
-        gamma = self.get_parameter("analysis", "electron_energy") / 0.511
+        d = self.accelerator_params.quad_screen_dist
+        L = self.accelerator_params.quad_length
+        gamma = self.accelerator_params.electron_energy / 0.511
         self.logger.debug("d: {0}, poly[0]: {1}, poly[1]: {2}, poly[2]: {3}".format(d, poly[0], poly[1], poly[2]))
         eps = 1 / (d ** 2 * L) * np.sqrt(poly[0] * poly[2] - poly[1] ** 2 / 4)
         eps_n = eps * gamma
@@ -571,22 +658,22 @@ class FitQuadDataTask(Task):
         self.logger.info("beta   = {0:.4g} m".format(beta))
         self.logger.info("alpha  = {0:.4g} rad".format(alpha))
         self.logger.info("-------------------------------")
-        self.set_result("analysis", "eps", eps_n)
-        self.set_result("analysis", "beta", beta)
-        self.set_result("analysis", "alpha", alpha)
 
         x = np.linspace(k.min(), k.max(), 100)
         y = np.polyval(poly, x)
-        self.set_result("analysis", "fit_data", [x, np.sqrt(y)])
+        fit_data = [x, np.sqrt(y)]
+        fitresult = FitResult(poly=poly, alpha=alpha, beta=beta, eps_n=eps_n, eps=eps, gamma_e=gamma,
+                              fit_data=fit_data, residual=res)
+        return fitresult
 
     def fit_full_transfer_matrix(self):
         self.logger.info("Fitting using full transfer matrix")
-        k_data = np.array(self.get_result("scan", "k_data")).flatten()
-        sigma_data = np.array(self.get_result("scan", "sigma_x")).flatten()
-        en_data = np.array(self.get_result("scan", "enabled_data")).flatten()
-        d = self.get_parameter("analysis", "quad_screen_dist")
-        L = self.get_parameter("analysis", "quad_length")
-        gamma_energy = self.get_parameter("analysis", "electron_energy") / 0.511
+        k_data = np.array([pi.k_value for pi in self.processed_image_list]).flatten()
+        sigma_data = np.array([pi.sigma_x for pi in self.processed_image_list]).flatten()
+        en_data = np.array([pi.enabled for pi in self.processed_image_list]).flatten()
+        d = self.accelerator_params.quad_screen_dist
+        L = self.accelerator_params.quad_length
+        gamma_energy = self.accelerator_params.electron_energy / 0.511
         self.logger.debug("sigma_data: {0}".format(sigma_data.shape))
         self.logger.debug("en_data: {0}".format(en_data.shape))
         self.logger.debug("k_data: {0}".format(k_data))
@@ -606,24 +693,23 @@ class FitQuadDataTask(Task):
         B = np.real(1 / k_sqrt * np.sin(k_sqrt * L) + d * np.cos(k_sqrt * L))
         M = np.vstack((A*A, -2*A*B, B*B)).transpose()
         try:
-            x = np.linalg.lstsq(M, s2[ind])
+            l_data = np.linalg.lstsq(M, s2[ind], rcond=None)
+            x = l_data[0]
+            res = l_data[1]
         except Exception as e:
             self.logger.error("Error when fitting lstsqr: {0}".format(e))
             return
         self.logger.debug("Fit coefficients: {0}".format(x[0]))
-        eps = np.sqrt(x[0][2] * x[0][0] - x[0][1]**2)
+        eps = np.sqrt(x[2] * x[0] - x[1]**2)
         eps_n = eps * gamma_energy
-        beta = x[0][0] / eps
-        alpha = x[0][1] / eps
+        beta = x[0] / eps
+        alpha = x[1] / eps
 
         self.logger.info("-------------------------------")
         self.logger.info("eps_n  = {0:.3f} mm x mrad".format(eps_n * 1e6))
         self.logger.info("beta   = {0:.4g} m".format(beta))
         self.logger.info("alpha  = {0:.4g} rad".format(alpha))
         self.logger.info("-------------------------------")
-        self.set_result("analysis", "eps", eps_n)
-        self.set_result("analysis", "beta", beta)
-        self.set_result("analysis", "alpha", alpha)
 
         x = np.linspace(k.min(), k.max(), 100)
         x_sqrt = np.sqrt(x*(1+0j))
@@ -631,7 +717,10 @@ class FitQuadDataTask(Task):
         Bx = np.real(1 / x_sqrt * np.sin(x_sqrt * L) + d * np.cos(x_sqrt * L))
 
         y = Ax**2 * beta * eps - 2 * Ax * Bx * alpha * eps + Bx**2 * (1 + alpha**2) * eps / beta
-        self.set_result("analysis", "fit_data", [x, np.sqrt(y)])
+        fit_data = [x, np.sqrt(y)]
+        fitresult = FitResult(poly=None, alpha=alpha, beta=beta, eps_n=eps_n, eps=eps, gamma_e=gamma_energy,
+                              fit_data=fit_data, residual=res)
+        return fitresult
 
 
 class DeviceHandler(object):
@@ -770,7 +859,7 @@ if __name__ == "__main__":
     elif test == "load_im":
         image_name = "03_03_1.035_.png"
         path_name = "D:\\Programmering\emittancescansinglequad\\saved-images\\2018-04-16_13-40-48_I-MS1-MAG-QB-01_I-MS1-DIA-SCRN-01"
-        t1 = LoadImageTask(image_name, path_name, name="load_im")
+        t1 = LoadQuadImageTask(image_name, path_name, name="load_im")
         t1.start()
 
     elif test == "load_im_dir":
@@ -791,13 +880,18 @@ if __name__ == "__main__":
                                scan_pos_check_interval=0.1, scan_pos_tol=0.01,
                                measure_attr_name_list=["double_scalar", "double_scalar_w"],
                                measure_device_list=[dev_name, dev_name], measure_number=3, measure_interval=0.5)
-        t1 = ScanTask(scan_param, handler, name="scan_task", timeout=3.0)
+        t1 = TangoScanTask(scan_param, handler, name="scan_task", timeout=3.0)
         t1.start()
 
     elif test == "fit":
         path_name = "..\\..\\emittancesinglequad\\saved-images\\2018-04-16_13-40-48_I-MS1-MAG-QB-01_I-MS1-DIA-SCRN-01"
         # path_name = "D:\\Programmering\emittancescansinglequad\\saved-images\\2018-04-16_13-40-48_I-MS1-MAG-QB-01_I-MS1-DIA-SCRN-01"
-        t2 = LoadQuadScanDirTask(path_name, process_exec_type="thread", name="quad_dir")
+        t2 = LoadQuadScanDirTask(path_name, process_exec_type="thread", kernel_size=3, name="quad_dir")
         t2.start()
-        quad_image = t2.get_result(True)
-
+        quad_scan_data = t2.get_result(True)    # type: QuadScanData
+        acc_params = quad_scan_data.acc_params
+        quad_images = quad_scan_data.proc_images
+        t3 = FitQuadDataTask(quad_images, acc_params, "full", name="fit_data")
+        t3.start()
+        t4 = ProcessAllImagesTask(quad_scan_data, process_exec_type="thread", name="proc_all")
+        t4.start()

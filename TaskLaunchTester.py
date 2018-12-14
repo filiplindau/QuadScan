@@ -18,7 +18,7 @@ if __name__ == "__main__":
         image_name = "03_03_1.035_.png"
         path_name = "..\\..\\emittancesinglequad\\saved-images\\2018-04-16_13-40-48_I-MS1-MAG-QB-01_I-MS1-DIA-SCRN-01"
         # path_name = "D:\\Programmering\emittancescansinglequad\\saved-images\\2018-04-16_13-40-48_I-MS1-MAG-QB-01_I-MS1-DIA-SCRN-01"
-        t2 = LoadImageTask(image_name, path_name, name="load_im", callback_list=[t1.process_image])
+        t2 = LoadQuadImageTask(image_name, path_name, name="load_im", callback_list=[t1.process_image])
         # t2.add_callback(t1.process_image)
         t2.start()
         # quad_image = t2.get_result(True)
