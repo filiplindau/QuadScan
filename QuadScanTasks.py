@@ -144,7 +144,7 @@ class LoadQuadImageTask(Task):
         self.logger.setLevel(logging.INFO)
 
     def action(self):
-        self.logger.info("{0} entering action. ".format(self))
+        self.logger.info("{0} entering action. Loading file {1}".format(self, self.image_name))
         name = self.image_name.split("_")
         try:
             k_ind = np.maximum(0, int(name[0]) - 1).astype(np.int)
@@ -303,7 +303,8 @@ class LoadQuadScanDirTask(Task):
         Task.cancel(self)
 
 
-def process_image_func(image, k_ind, k_value, image_ind, threshold, roi_cent, roi_dim, cal=[1.0, 1.0], kernel=3, bpp=16):
+def process_image_func(image, k_ind, k_value, image_ind, threshold, roi_cent, roi_dim, cal=[1.0, 1.0], kernel=3,
+                       bpp=16, normalize=False):
     logger.info("Processing image {0}, {1} in pool".format(k_ind, image_ind))
     # logger.debug("Threshold={0}, cal={1}, kernel={2}".format(threshold, cal, kernel))
     x = np.array([int(roi_cent[0] - roi_dim[0] / 2.0), int(roi_cent[0] + roi_dim[0] / 2.0)])
@@ -322,7 +323,10 @@ def process_image_func(image, k_ind, k_value, image_ind, threshold, roi_cent, ro
     #     n = 1
 
     # Median filtering:
-    pic_roi = medfilt2d(pic_roi / n, kernel)
+    if normalize is True:
+        pic_roi = medfilt2d(pic_roi / n, kernel)
+    else:
+        pic_roi = medfilt2d(pic_roi, kernel)
 
     # Threshold image
     if threshold is None:

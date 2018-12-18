@@ -159,6 +159,12 @@ class Task(object):
         with self.lock:
             self.callback_list.append(callback)
 
+    def remove_callback(self, callback):
+        self.logger.info("{0} removing callback {1}".format(self, callback))
+        with self.lock:
+            if callback in self.callback_list:
+                self.callback_list.remove(callback)
+
     def get_done_event(self):
         return self.event_done
 

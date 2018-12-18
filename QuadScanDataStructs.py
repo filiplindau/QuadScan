@@ -122,10 +122,9 @@ SectionScreen stores screen data for a screen in a section.
 
 QuadScanData = namedtuple("QuadScanData", "acc_params images proc_images")
 """
-QuadScanData stores data from a quadscan. Scan parameters in daq_data, raw images, and processed images.
+QuadScanData stores data from a quadscan. Scan parameters in acc_params, raw images, and processed images.
 
-:param daq_data: Dictionary with scan data. quad, quad_length, quad_2_screen, screen, pixel_dim, num_k_values,
-                 num_shots (per k position), k_min, k_max, roi_center, roi_dim, beam_energy
+:param acc_params: Named tuple AcceleratorParameters
 :param images: List of lists of images for the scan.
 :param proc_images: List of lists of process images (roi crop, thresholding, median filtering).  
 """
@@ -135,3 +134,13 @@ FitResult = namedtuple("FitResult", "poly alpha beta eps eps_n gamma_e fit_data 
 """
 FitResult stores fit parameters for a quad scan.
 """
+
+
+class DataStore(object):
+    def __init__(self):
+        self.quad_scan_data = None      # type: QuadScanData
+        self.section = None
+        self.quad = None                # type: SectionQuad
+        self.screen = None              # type: SectionScreen
+        self.fit_result = None          # type: FitResult
+        self.scan_param = None          # type: ScanParam
