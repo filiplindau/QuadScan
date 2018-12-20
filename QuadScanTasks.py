@@ -583,8 +583,10 @@ class PopulateDeviceListTask(Task):
                     quad_list.append(quad)
                 except IndexError as e:
                     self.logger.error("Index error when parsing quad {0}: {1}".format(q, e))
+                    pass
                 except KeyError as e:
                     self.logger.error("Key error when parsing quad {0}: {1}".format(q, e))
+                    pass
 
             # Screen names are e.g. i-ms1/dia/scrn-01
             screen_dev_list = db.get_device_exported("*{0}*/dia/scrn*".format(s)).value_string
@@ -598,8 +600,10 @@ class PopulateDeviceListTask(Task):
                     screen_list.append(scr)
                 except IndexError as e:
                     self.logger.error("Index error when parsing screen {0}: {1}".format(sc, e))
+                    pass
                 except KeyError as e:
                     self.logger.error("Key error when parsing screen {0}: {1}".format(sc, e))
+                    pass
 
             sect_quads[s] = quad_list
             sect_screens[s] = screen_list
