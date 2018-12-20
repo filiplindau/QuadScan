@@ -550,9 +550,9 @@ class PopulateDeviceListTask(Task):
     Screens... name, position
     """
 
-    def __init__(self, sections, name=None, timeout=None, trigger_dict=dict(),
+    def __init__(self, sections, name=None, action_exec_type="thread", timeout=None, trigger_dict=dict(),
                  callback_list=list()):
-        Task.__init__(self, name, timeout=timeout, trigger_dict=trigger_dict, callback_list=callback_list)
+        Task.__init__(self, name, action_exec_type="thread", timeout=timeout, trigger_dict=trigger_dict, callback_list=callback_list)
         self.sections = sections
 
     def action(self):
@@ -810,8 +810,8 @@ def test_f(in_data):
 
 if __name__ == "__main__":
     tests = ["delay", "dev_handler", "exc", "monitor", "load_im", "load_im_dir", "proc_im",
-             "scan", "fit"]
-    test = "fit"
+             "scan", "fit", "populate"]
+    test = "populate"
     if test == "delay":
         t1 = DelayTask(2.0, name="task1")
         t2 = DelayTask(1.0, name="task2", trigger_dict={"delay": t1})
@@ -899,3 +899,11 @@ if __name__ == "__main__":
         t3.start()
         t4 = ProcessAllImagesTask(quad_scan_data, process_exec_type="thread", name="proc_all")
         t4.start()
+
+    elif test == "populate":
+        t1 = PopulateDeviceListTask(["MS1", "MS2"], name="pop", action_exec_type="process")
+        t1.start()
+        logger.info("Task started, doing something else")
+        time.sleep(0.5)
+        logger.info("Ok, then")
+        # logger.info("Populate returned: {0}".format(t1.get_result(True)))

@@ -13,8 +13,8 @@ import pyqtgraph as pq
 import sys
 import numpy as np
 import itertools
-from QuadScanController import QuadScanController
-from QuadScanState import StateDispatcher
+# from QuadScanController import QuadScanController
+# from QuadScanState import StateDispatcher
 from quadscan_gui_splitter import Ui_QuadScanDialog
 import threading
 import time

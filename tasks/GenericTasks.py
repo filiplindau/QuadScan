@@ -8,7 +8,10 @@ Tasks for async sequencing.
 
 import threading
 import multiprocessing
-import Queue
+try:
+    import Queue
+except ModuleNotFoundError:
+    import queue as Queue
 import uuid
 import logging
 import time
@@ -109,6 +112,11 @@ class ThreadWithExc(threading.Thread):
         thread represented by this instance.
         """
         _async_raise(self._get_my_tid(), exctype)
+
+
+def p_action(task_obj, queue):
+    task_obj.action()
+    queue.put(task_obj.get_result(wait=True))
 
 
 class Task(object):
@@ -224,8 +232,10 @@ class Task(object):
                 self.action()
                 self.logger.debug("{0} action done".format(self))
             else:
-                process = multiprocessing.Process(target=self.action)
+                queue = multiprocessing.Queue(2)
+                process = multiprocessing.Process(target=p_action, args=(self, queue))
                 process.start()
+                self.result = queue.get(block=True, timeout=self.timeout)
                 self.logger.debug("{0} action process done".format(self))
         except self.CancelException:
             self.logger.info("{0} Cancelled".format(self))
