@@ -116,6 +116,7 @@ class ThreadWithExc(threading.Thread):
 
 def p_action(task_obj, queue):
     task_obj.action()
+    # task_obj()
     queue.put(task_obj.get_result(wait=True))
 
 
