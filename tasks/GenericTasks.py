@@ -158,6 +158,9 @@ class Task(object):
         self.logger.info("{0} adding callback {1}".format(self, callback))
         with self.lock:
             self.callback_list.append(callback)
+        # Callback immediately if we are already finished
+        if self.is_done() is True:
+            callback(self)
 
     def remove_callback(self, callback):
         self.logger.info("{0} removing callback {1}".format(self, callback))
@@ -370,7 +373,7 @@ class RepeatTask(Task):
     """
     def __init__(self, task, repetitions, delay=0, name=None, timeout=None, trigger_dict=dict(), callback_list=list()):
         Task.__init__(self, name, timeout=timeout, trigger_dict=trigger_dict, callback_list=callback_list)
-        self.task = task
+        self.task = task                    # type: Task
         self.repetitions = repetitions
         self.delay = delay
 
@@ -393,6 +396,11 @@ class RepeatTask(Task):
             time.sleep(self.delay)
             current_rep += 1
         self.result = result_list
+
+    def cancel(self):
+        if self.task.is_cancelled() is False:
+            self.task.cancel()
+        Task.cancel(self)
 
 
 class SequenceTask(Task):

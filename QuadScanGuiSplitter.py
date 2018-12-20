@@ -95,7 +95,15 @@ class QuadScanGui(QtGui.QWidget):
         self.process_image_proxy = None  # Signal proxy to track mouse position over image
         self.scan_proc_proxy = None  # Signal proxy to track mouse position over image
 
-        self.data_store = DataStore()
+        self.quad_scan_data = QuadScanData(acc_params=None, images=None, proc_images=None)
+        self.section_devices = SectionDevices(sect_quad_dict=None, sect_screen_dict=None)
+        self.device_handler = DeviceHandler("b-v0-gunlaser-csdb-0:10000", name="Handler")
+        self.section_list = ["MS1", "MS2", "MS3", "SP02"]
+        self.current_section = "MS1"
+        self.current_quad = None        # type: SectionQuad
+        self.current_screen = None      # type: SectionScreen
+        self.quad_tasks = list()        # Repeat tasks for selected quad
+        self.screen_tasks = list()      # Repeat tasks for selected screen
 
         self.gui_lock = threading.Lock()
 
@@ -111,6 +119,9 @@ class QuadScanGui(QtGui.QWidget):
         self.image_processor.start()
         # self.state_dispatcher = StateDispatcher(self.controller)
         # self.state_dispatcher.start()
+        t1 = PopulateDeviceListTask(sections=self.section_list, name="pop_sections")
+        t1.start()
+        t1.add_callback(self.populate_sections)
 
         root.info("Exit gui init")
 
@@ -345,22 +356,133 @@ class QuadScanGui(QtGui.QWidget):
                 # root.debug("image {0}".format(image.pic_roi))
                 self.update_image_selection(image.pic_roi)
             else:
+                root.debug("Load data complete. Storing quad scan data.")
                 task.remove_callback(self.update_load_data)
-                quad_scan_data = task.get_result(wait=False)   # type: QuadScanData
-                self.data_store.quad_scan_data = quad_scan_data
-                self.update_analysis_parameters()
+                if isinstance(task, LoadQuadScanDirTask):
+                    quad_scan_data = task.get_result(wait=False)   # type: QuadScanData
+                    # root.debug("Task name: {0}".format(task.name))
+                    # root.debug("Load task result type: {0}".format(type(quad_scan_data)))
+                    # if isinstance(quad_scan_data, dict):
+                    #     root.debug("Dict: {0}".format(quad_scan_data))
+                    self.quad_scan_data = quad_scan_data
+                    root.debug("Proc images len: {0}".format(len(quad_scan_data.proc_images)))
+                    root.debug("Proc images: {0}".format(quad_scan_data.proc_images))
+                    self.update_analysis_parameters()
 
     def update_analysis_parameters(self):
-        acc_params = self.data_store.quad_scan_data.acc_params  # type: AcceleratorParameters
-        self.ui.p_electron_energy_label.setText(acc_params.electron_energy)
-        self.ui.p_quad_length_label.setText(acc_params.quad_length)
-        self.ui.p_quad_screen_dist_label.setText(acc_params.quad_screen_dist)
+        root.debug("Acc params {0}".format(self.quad_scan_data.acc_params))
+        acc_params = self.quad_scan_data.acc_params  # type: AcceleratorParameters
+        self.ui.p_electron_energy_label.setText("{0:.2f} MeV".format(acc_params.electron_energy))
+        self.ui.p_quad_length_label.setText("{0:.2f} m".format(acc_params.quad_length))
+        self.ui.p_quad_screen_dist_label.setText("{0:.2f} m".format(acc_params.quad_screen_dist))
 
         self.ui.p_k_index_slider.setMaximum(acc_params.num_k)
         self.ui.p_image_index_slider.setMaximum(acc_params.num_images)
 
     def update_section(self):
-        root.info("Updating section")
+        root.info("Changing section settings")
+        sect = str(self.ui.section_combobox.currentText()).lower()
+        try:
+            quads = self.section_devices.sect_quad_dict[sect]
+            screens = self.section_devices.sect_screen_dict[sect]
+        except KeyError:
+            # Section not in dict. Exit
+            root.error("Section not in dict")
+            return
+
+        # Check if a new section was chosen, then re-populate the comboboxes for magnets and screens
+        self.ui.quad_combobox.blockSignals(True)
+        self.ui.screen_combobox.blockSignals(True)
+        if sect != self.current_section or self.section_init_flag is True:
+            root.debug("New section, populating comboboxes")
+            root.debug("Number of quads: {0}".format(len(quads)))
+            self.ui.quad_combobox.clear()
+            self.ui.screen_combobox.clear()
+
+            # root.debug("Quad combobox count: {0}".format(self.ui.quad_combobox.count()))
+            for qd in quads:
+                self.ui.quad_combobox.addItem(qd.name.upper())
+            for sc in screens:
+                self.ui.screen_combobox.addItem(sc.name.upper())
+            try:
+                self.ui.quad_combobox.setCurrentIndex(0)
+                self.ui.screen_combobox.setCurrentIndex(0)
+            except IndexError:
+                # Quad, screen lists not populated. Cannot select device yet
+                return
+            self.section_init_flag = False
+            self.current_section = sect
+        if len(quads) > 0:
+            quad_name = str(self.ui.quad_combobox.currentText()).lower()
+            # This will work since the combobox is populated in the same order as the stored section quadlist
+            quad_sel = quads[self.ui.quad_combobox.currentIndex()]          # type: SectionQuad
+            quad_length = quad_sel.length
+            quad_pos = quad_sel.position
+            self.ui.quad_length_label.setText("{0:.2f}".format(quad_length))
+            self.ui.quad_combobox.blockSignals(False)
+        else:
+            quad_name = None
+        if len(screens) > 0:
+            screen_name = str(self.ui.screen_combobox.currentText()).lower()
+            screen_sel = screens[self.ui.screen_combobox.currentIndex()]    # type: SectionScreen
+            screen_pos = screen_sel.position
+            self.ui.screen_combobox.blockSignals(False)
+        else:
+            screen_name = None
+
+        # Set the quad and screen selected:
+        if quad_name is not None and screen_name is not None:
+            if self.current_screen.name != screen_name:
+                self.screen_init_flag = True
+            if self.current_quad.name != quad_name or self.current_screen.name != screen_name:
+                root.debug("New device selected.")
+                self.set_section()
+            self.ui.quad_screen_dist_label.setText("{0:2f}".format(screen_pos - quad_pos))
+
+    def set_section(self, new_quad, new_screen):
+        """
+        Set section from current_sect, current_quad, current_screen:
+
+        Will add devices to the device handler for quad mag, crq + scrn, liveviewer, beamviewer
+
+        Stop current monitor of k-value, image
+
+        Start new monitor task of k-value, image
+
+        :return:
+        """
+        root.info("Set section {0} with {1} and {2}".format(self.current_section,
+                                                            new_quad.name,
+                                                            new_screen.name))
+        if new_quad.name != self.current_quad.name:
+            for t in self.quad_tasks:
+                t.cancel()
+            self.quad_tasks = list()
+            k_task = TangoReadAttributeTask("k", new_quad.name, self.device_handler,
+                                            name="k_read", callback_list=[self.read_k])
+            k_rep_task = RepeatTask(k_task, -1, 0.3, name="k_repeat")
+            k_rep_task.start()
+            self.quad_tasks.append(k_rep_task)
+            self.current_quad = new_quad
+            # Add more device connections here
+
+        if new_screen.name != self.current_screen.name:
+            for t in self.screen_tasks:
+                t.cancel()
+            self.screen_tasks = list()
+            image_task = TangoReadAttributeTask("image", new_screen.liveviewer, self.device_handler,
+                                                name="image_read", callback_list=[self.read_image])
+            rep_task = RepeatTask(image_task, -1, 0.3, name="image_repeat")
+            rep_task.start()
+            self.screen_tasks.append(rep_task)
+            self.current_screen = new_screen
+
+            # Add more device connections here
+
+    def populate_sections(self, task):
+        root.info("Populate section finished.")
+        self.section_devices = task.get_result(wait=False)
+        self.update_section()
 
     def update_scan_devices(self):
         root.info("Updating scan devices")
@@ -375,12 +497,14 @@ class QuadScanGui(QtGui.QWidget):
         root.info("Processing images")
 
     def update_image_selection(self, image=None):
-        root.info("Updating image ")
-        if image is None:
+        if image is None or isinstance(image, int):
             k_ind = self.ui.p_k_index_slider.value()
             im_ind = self.ui.p_image_index_slider.value()
-            image = self.data_store.quad_scan_data.proc_images[k_ind][im_ind].pic_roi
-        self.ui.process_image_widget.setImage(image)
+            image = self.quad_scan_data.proc_images[k_ind][im_ind].pic_roi
+        try:
+            self.ui.process_image_widget.setImage(image)
+        except TypeError as e:
+            root.error("Error setting image: {0}".format(e))
 
     def set_algo(self):
         root.info("Setting fit algo")

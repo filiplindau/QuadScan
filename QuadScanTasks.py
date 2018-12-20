@@ -330,7 +330,7 @@ def process_image_func(image, k_ind, k_value, image_ind, threshold, roi_cent, ro
 
     # Threshold image
     if threshold is None:
-        threshold = pic_roi[0:20, 0:20].mean()*2 + pic_roi[-20:, -20:].mean()*2
+        threshold = pic_roi[0:20, 0:20].mean()*3 + pic_roi[-20:, -20:].mean()*3
     pic_roi[pic_roi < threshold] = 0.0
 
     line_x = pic_roi.sum(0)
