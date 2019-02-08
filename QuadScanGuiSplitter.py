@@ -366,7 +366,7 @@ class QuadScanGui(QtGui.QWidget):
                     #     root.debug("Dict: {0}".format(quad_scan_data))
                     self.quad_scan_data = quad_scan_data
                     root.debug("Proc images len: {0}".format(len(quad_scan_data.proc_images)))
-                    root.debug("Proc images: {0}".format(quad_scan_data.proc_images))
+                    # root.debug("Proc images: {0}".format(quad_scan_data.proc_images))
                     self.update_analysis_parameters()
 
     def update_analysis_parameters(self):
@@ -378,6 +378,7 @@ class QuadScanGui(QtGui.QWidget):
 
         self.ui.p_k_index_slider.setMaximum(acc_params.num_k)
         self.ui.p_image_index_slider.setMaximum(acc_params.num_images)
+        self.ui.p_image_index_slider.setMaximum(len(self.quad_scan_data.proc_images))
 
     def update_section(self):
         root.info("Changing section settings")
@@ -500,7 +501,9 @@ class QuadScanGui(QtGui.QWidget):
         if image is None or isinstance(image, int):
             k_ind = self.ui.p_k_index_slider.value()
             im_ind = self.ui.p_image_index_slider.value()
-            image = self.quad_scan_data.proc_images[k_ind][im_ind].pic_roi
+            root.debug("Selecting image {0}, {1}".format(k_ind, im_ind))
+            # root.debug("Proc_images shape: {0}".format(len(self.quad_scan_data.proc_images)))
+            image = self.quad_scan_data.proc_images[im_ind].pic_roi
         try:
             self.ui.process_image_widget.setImage(image)
         except TypeError as e:
