@@ -12,7 +12,8 @@ QuadImage stores one full image from a quad scan.
 
 
 ProcessedImage = namedtuple("ProcessedImage",
-                            "k_ind k_value image_ind pic_roi line_x line_y x_cent y_cent sigma_x sigma_y q enabled")
+                            "k_ind k_value image_ind pic_roi line_x line_y x_cent y_cent "
+                            "sigma_x sigma_y q enabled threshold")
 """
 ProcessedImage stores one processed image from a quad scan:
 :param k_ind: index for the k value list for this image
@@ -27,6 +28,7 @@ ProcessedImage stores one processed image from a quad scan:
 :param sigma_y: RMS size y coord (second moment)
 :param q: pic_roi total charge (sum)
 :param enabled: boolean if this image is to be used for fitting
+:param threshold: Threshold used
  
 """
 
@@ -128,8 +130,8 @@ QuadScanData = namedtuple("QuadScanData", "acc_params images proc_images")
 QuadScanData stores data from a quadscan. Scan parameters in acc_params, raw images, and processed images.
 
 :param acc_params: Named tuple AcceleratorParameters
-:param images: List of lists of images for the scan.
-:param proc_images: List of lists of process images (roi crop, thresholding, median filtering).  
+:param images: List of images for the scan.
+:param proc_images: List of process images (roi crop, thresholding, median filtering).  
 """
 
 

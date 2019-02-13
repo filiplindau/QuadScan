@@ -19,7 +19,7 @@
   </property>
   <layout class="QVBoxLayout" name="verticalLayout">
    <item>
-    <widget class="QSplitter" name="splitter">
+    <widget class="QSplitter" name="scan_analysis_splitter">
      <property name="styleSheet">
       <string notr="true">QSplitter::handle {
 	image:url(:/icons/vert_splitter_handle.png)
@@ -778,6 +778,7 @@
           <widget class="QLabel" name="eps_label">
            <property name="font">
             <font>
+             <family>Arial</family>
              <pointsize>12</pointsize>
             </font>
            </property>
@@ -1385,6 +1386,9 @@ QSplitter::handle:horizontal {
                <property name="text">
                 <string>Raw</string>
                </property>
+               <attribute name="buttonGroup">
+                <string notr="true">buttonGroup</string>
+               </attribute>
               </widget>
              </item>
              <item>
@@ -1395,6 +1399,9 @@ QSplitter::handle:horizontal {
                <property name="checked">
                 <bool>true</bool>
                </property>
+               <attribute name="buttonGroup">
+                <string notr="true">buttonGroup</string>
+               </attribute>
               </widget>
              </item>
              <item>
@@ -1432,7 +1439,7 @@ QSplitter::handle:horizontal {
                <number>3</number>
               </property>
               <item>
-               <widget class="QSplitter" name="splitter_4">
+               <widget class="QSplitter" name="analysis_pic_plot_splitter">
                 <property name="styleSheet">
                  <string notr="true">QSplitter::handle {
 	image:url(:/icons/hor_splitter_handle.png);
@@ -1468,6 +1475,11 @@ QSplitter::handle:horizontal {
                     </item>
                     <item>
                      <widget class="QLabel" name="p_k_value_label">
+                      <property name="font">
+                       <font>
+                        <family>Arial</family>
+                       </font>
+                      </property>
                       <property name="text">
                        <string>k = -.-- 1/m²</string>
                       </property>
@@ -1555,7 +1567,7 @@ QSplitter::handle:horizontal {
                    </widget>
                   </item>
                   <item>
-                   <widget class="QSplitter" name="splitter_3">
+                   <widget class="QSplitter" name="analysis_plots_splitter">
                     <property name="styleSheet">
                      <string notr="true">QSplitter::handle {
 	image:url(:/icons/vert_splitter_handle.png)
@@ -1607,4 +1619,7 @@ QSplitter::handle:horizontal {
   <include location="quadscan_res.qrc"/>
  </resources>
  <connections/>
+ <buttongroups>
+  <buttongroup name="buttonGroup"/>
+ </buttongroups>
 </ui>

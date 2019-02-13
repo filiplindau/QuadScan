@@ -42,7 +42,7 @@ f = logging.Formatter("%(asctime)s - %(name)s.   %(funcName)s - %(levelname)s - 
 fh = logging.StreamHandler()
 fh.setFormatter(f)
 logger.addHandler(fh)
-logger.setLevel(logging.DEBUG)
+logger.setLevel(logging.INFO)
 
 
 class TangoDeviceConnectTask(Task):
@@ -191,7 +191,7 @@ class LoadQuadScanDirTask(Task):
                  image_processor_task=None, process_exec_type="process",
                  name=None, timeout=None, trigger_dict=dict(), callback_list=list()):
         Task.__init__(self, name, timeout=timeout, trigger_dict=trigger_dict, callback_list=callback_list)
-        self.logger.setLevel(logging.DEBUG)
+        self.logger.setLevel(logging.INFO)
 
         self.pathname = quadscandir
         self.process_now = process_now
@@ -199,6 +199,8 @@ class LoadQuadScanDirTask(Task):
         self.kernel_size = kernel_size
         self.processed_image_list = list()
         self.task_seq = None
+        # The images are processed as they are loaded:
+        self.image_processor = None         # type: ImageProcessorTask
         if image_processor_task is None:
             self.image_processor = ImageProcessorTask(threshold=threshold, kernel=kernel_size,
                                                       process_exec=process_exec_type,
@@ -209,7 +211,7 @@ class LoadQuadScanDirTask(Task):
         if self.image_processor.is_started() is False:
             self.logger.info("Starting image_processor")
             self.image_processor.start()
-        self.image_processor.add_callback(self.processed_image_done)
+        self.image_processor.add_callback(self.processed_image_done)    # Call this method after completing each image
 
     def action(self):
         load_dir = self.pathname
@@ -272,8 +274,13 @@ class LoadQuadScanDirTask(Task):
         # Wait for image sequence to be done reading:
         image_list = self.task_seq.get_result(wait=True)
         # Now wait for images to be done processing:
-        self.image_processor.stop_processing()
-        self.image_processor.get_result(wait=True)
+        self.logger.debug("{0}: Waiting for image processing to finish".format(self))
+        while self.image_processor.pending_images_in_queue > 0:
+            time.sleep(0.01)
+        # self.image_processor.wait_for_queue_empty()
+        self.logger.debug("{0}: Image processing finished".format(self))
+        # self.image_processor.stop_processing()
+        self.image_processor.get_result(wait=False)
 
         acc_params = AcceleratorParameters(electron_energy=float(data_dict["beam_energy"]),
                                            quad_length=float(data_dict["quad_length"]),
@@ -289,6 +296,7 @@ class LoadQuadScanDirTask(Task):
                                            roi_dim=data_dict["roi_dim"])
 
         self.result = QuadScanData(acc_params, image_list, self.processed_image_list)
+        self.image_processor.clear_callback_list()
 
     def processed_image_done(self, image_processor_task):
         # type: (ImageProcessorTask) -> None
@@ -304,8 +312,9 @@ class LoadQuadScanDirTask(Task):
 
 
 def process_image_func(image, k_ind, k_value, image_ind, threshold, roi_cent, roi_dim, cal=[1.0, 1.0], kernel=3,
-                       bpp=16, normalize=False):
-    logger.info("Processing image {0}, {1} in pool".format(k_ind, image_ind))
+                       bpp=16, normalize=False, enabled=True):
+    logger.debug("Processing image {0}, {1} in pool".format(k_ind, image_ind))
+    t0 = time.time()
     # logger.debug("Threshold={0}, cal={1}, kernel={2}".format(threshold, cal, kernel))
     x = np.array([int(roi_cent[0] - roi_dim[0] / 2.0), int(roi_cent[0] + roi_dim[0] / 2.0)])
     y = np.array([int(roi_cent[1] - roi_dim[1] / 2.0), int(roi_cent[1] + roi_dim[1] / 2.0)])
@@ -337,12 +346,12 @@ def process_image_func(image, k_ind, k_value, image_ind, threshold, roi_cent, ro
     line_y = pic_roi.sum(1)
     q = line_x.sum()  # Total signal (charge) in the image
 
-    enabled = False
+    # enabled = False
     l_x_n = np.sum(line_x)
     l_y_n = np.sum(line_y)
     # Enable point only if there is data:
-    if l_x_n > 0.0:
-        enabled = True
+    if l_x_n <= 0.0:
+        enabled = False
     x_v = cal[0] * np.arange(line_x.shape[0])
     y_v = cal[1] * np.arange(line_y.shape[0])
     x_cent = np.sum(x_v * line_x) / l_x_n
@@ -353,8 +362,8 @@ def process_image_func(image, k_ind, k_value, image_ind, threshold, roi_cent, ro
     # Store processed data
     result = ProcessedImage(k_ind=k_ind, k_value=k_value, image_ind=image_ind, pic_roi=pic_roi,
                             line_x=line_x, line_y=line_y, x_cent=x_cent, y_cent=y_cent,
-                            sigma_x=sigma_x, sigma_y=sigma_y, q=q, enabled=enabled)
-
+                            sigma_x=sigma_x, sigma_y=sigma_y, q=q, enabled=enabled, threshold=threshold)
+    logger.debug("Image {0}, {1} processed in pool, time {2:.2f} ms".format(k_ind, image_ind, 1e3*(time.time()-t0)))
     return result
 
 
@@ -362,7 +371,7 @@ class ImageProcessorTask(Task):
     def __init__(self, roi_cent=None, roi_dim=None, threshold=None, cal=[1.0, 1.0], kernel=3, process_exec="process",
                  name=None, timeout=None, trigger_dict=dict(), callback_list=list()):
         Task.__init__(self,  name, timeout=timeout, trigger_dict=trigger_dict, callback_list=callback_list)
-        self.logger.setLevel(logging.DEBUG)
+        self.logger.setLevel(logging.INFO)
 
         self.kernel = kernel
         self.cal = cal
@@ -376,27 +385,34 @@ class ImageProcessorTask(Task):
         # self.processor = ProcessPoolTask(test_f, name="process_pool")
         self.stop_processing_event = threading.Event()
 
+        self.queue_empty_event = threading.Event()
+        self.pending_images_in_queue = 0
+
     def action(self):
         self.logger.info("{0} entering action. ".format(self))
-        self.processor.start()
+        self.pending_images_in_queue = 0
+        self.stop_processing_event.clear()
+        if self.processor.is_started() is False:
+            self.processor.start()
         self.stop_processing_event.wait(self.timeout)
         if self.stop_processing_event.is_set() is False:
             self.cancel()
             return
-        self.logger.info("{0} exit processing")
+        self.logger.info("{0} exit processing".format(self))
         self.processor.finish_processing()
         self.processor.get_result(wait=True, timeout=self.timeout)
         self.result = True
 
-    def process_image(self, data, bpp=16):
-        self.logger.debug("{0} process image data type {1}".format(self, type(data)))
+    def process_image(self, data, bpp=16, enabled=True):
+        self.queue_empty_event.clear()
+        self.pending_images_in_queue += 1
         if isinstance(data, Task):
             # The task is from a callback
             quad_image = data.get_result(wait=False)    # type: QuadImage
         else:
             quad_image = data                           # type: QuadImage
-        self.logger.info("{0}: Adding image {1} {2} to processing queue".format(self, quad_image.k_ind,
-                                                                                quad_image.image_ind))
+        self.logger.debug("{0}: Adding image {1} {2} to processing queue".format(self, quad_image.k_ind,
+                                                                                 quad_image.image_ind))
         if self.roi_dim is None:
             roi_dim = quad_image.image.shape
         else:
@@ -406,13 +422,17 @@ class ImageProcessorTask(Task):
         else:
             roi_cent = self.roi_cent
         self.processor.add_work_item(quad_image.image, quad_image.k_ind, quad_image.k_value, quad_image.image_ind,
-                                     self.threshold, roi_cent, roi_dim, self.cal, self.kernel, bpp)
+                                     self.threshold, roi_cent, roi_dim, self.cal, self.kernel, bpp,
+                                     False, enabled)
 
     def _image_done(self, processor_task):
         # type: (ProcessPoolTask) -> None
         if self.is_done() is False:
-            self.logger.debug("{0}: Image processing done.".format(self))
+            self.logger.debug("{0}: Image processing done. {1} images in queue".format(self, self.pending_images_in_queue))
             self.result = processor_task.get_result(wait=False)
+            self.pending_images_in_queue -= 1
+            if self.pending_images_in_queue <= 0:
+                self.queue_empty_event.set()
             if processor_task.is_done() is False:
                 self.logger.debug("Calling {0} callbacks".format(len(self.callback_list)))
                 for callback in self.callback_list:
@@ -433,15 +453,21 @@ class ImageProcessorTask(Task):
         self.kernel = kernel
         self.cal = cal
 
+    def wait_for_queue_empty(self):
+        self.queue_empty_event.wait(self.timeout)
+
 
 class ProcessAllImagesTask(Task):
     def __init__(self, quad_scan_data, threshold=None, kernel_size=3,
                  image_processor_task=None, process_exec_type="process",
                  name=None, timeout=None, trigger_dict=dict(), callback_list=list()):
         Task.__init__(self, name, timeout=timeout, trigger_dict=trigger_dict, callback_list=callback_list)
+        self.logger.setLevel(logging.INFO)
         self.quad_scan_data = quad_scan_data    # type: QuadScanData
         self.threshold = threshold
         self.kernel = kernel_size
+        self.images_done_event = threading.Event()
+        self.pending_images = 0
 
         if image_processor_task is None:
             self.image_processor = ImageProcessorTask(threshold=threshold, kernel=kernel_size,
@@ -449,7 +475,7 @@ class ProcessAllImagesTask(Task):
                                                       trigger_dict=trigger_dict, name="processall_image_proc")
         else:
             # If the image_processor was supplied, don't add self as trigger.
-            self.image_processor = image_processor_task
+            self.image_processor = image_processor_task     # Type: ImageProcessorTask
         if self.image_processor.is_started() is False:
             self.logger.info("Starting image_processor")
             self.image_processor.start()
@@ -457,21 +483,39 @@ class ProcessAllImagesTask(Task):
         self.processed_image_list = list()
 
     def action(self):
+        self.logger.info("{0}: entering action".format(self))
         self.processed_image_list = list()
+
         self.image_processor.set_roi(self.quad_scan_data.acc_params.roi_center, self.quad_scan_data.acc_params.roi_dim)
         self.image_processor.set_processing_parameters(self.threshold, self.quad_scan_data.acc_params.cal, self.kernel)
-        for image in self.quad_scan_data.images:
-            self.image_processor.process_image(image)
-        self.image_processor.stop_processing()
-        self.image_processor.get_result(wait=True)      # Wait for all images to finish processing
+        # self.image_processor.start()
+        self.pending_images = len(self.quad_scan_data.images)
+        for ind, image in enumerate(self.quad_scan_data.images):
+            try:
+                en = self.quad_scan_data.proc_images[ind].enabled
+            except IndexError, AttributeError:
+                en = True
+            self.image_processor.process_image(image, enabled=en)
+        self.logger.debug("{0}: Starting wait for images".format(self))
+        self.images_done_event.wait(self.timeout)
+        # self.image_processor.stop_processing()
+        # self.image_processor.get_result(wait=True)      # Wait for all images to finish processing
+        self.logger.debug("{0}: Storing result".format(self))
         self.result = self.processed_image_list
+        self.image_processor.clear_callback_list()
 
     def processed_image_done(self, image_processor_task):
         # type: (ImageProcessorTask) -> None
         proc_image = image_processor_task.get_result(wait=False)    # type: ProcessedImage
         if image_processor_task.is_done() is False:
             self.logger.debug("Adding processed image {0} {1} to list".format(proc_image.k_ind, proc_image.image_ind))
-            self.processed_image_list.append(proc_image)
+            with self.lock:
+                self.processed_image_list.append(proc_image)
+                self.pending_images -= 1
+                if self.pending_images <= 0:
+                    self.images_done_event.set()
+        else:
+            self.images_done_event.set()
 
 
 class TangoScanTask(Task):
@@ -623,7 +667,7 @@ class FitQuadDataTask(Task):
     def __init__(self, processed_image_list, accelerator_params, algo="full",
                  name=None, timeout=None, trigger_dict=dict(), callback_list=list()):
         Task.__init__(self, name, timeout=timeout, trigger_dict=trigger_dict, callback_list=callback_list)
-        self.processed_image_list = processed_image_list    # type: list of QuadImage
+        self.processed_image_list = processed_image_list    # type: list of ProcessedImage
         # K value for each image is stored in the image list
         self.accelerator_params = accelerator_params        # type: AcceleratorParameters
         self.algo = algo
@@ -696,12 +740,12 @@ class FitQuadDataTask(Task):
         ind = np.isfinite(s2)
 
         k_sqrt = np.sqrt(k[ind]*(1+0j))
-        self.logger.debug("k_sqrt = {0}".format(k_sqrt))
+        # self.logger.debug("k_sqrt = {0}".format(k_sqrt))
         A = np.real(np.cos(k_sqrt * L) - d * k_sqrt * np.sin(k_sqrt * L))
         B = np.real(1 / k_sqrt * np.sin(k_sqrt * L) + d * np.cos(k_sqrt * L))
         M = np.vstack((A*A, -2*A*B, B*B)).transpose()
         try:
-            l_data = np.linalg.lstsq(M, s2[ind], rcond=None)
+            l_data = np.linalg.lstsq(M, s2[ind], rcond=-1)
             x = l_data[0]
             res = l_data[1]
         except Exception as e:
@@ -815,7 +859,7 @@ def test_f(in_data):
 if __name__ == "__main__":
     tests = ["delay", "dev_handler", "exc", "monitor", "load_im", "load_im_dir", "proc_im",
              "scan", "fit", "populate"]
-    test = "populate"
+    test = "load_im_dir"
     if test == "delay":
         t1 = DelayTask(2.0, name="task1")
         t2 = DelayTask(1.0, name="task2", trigger_dict={"delay": t1})
@@ -873,7 +917,7 @@ if __name__ == "__main__":
     elif test == "load_im_dir":
         image_name = "03_03_1.035_.png"
         path_name = "..\\..\\emittancesinglequad\\saved-images\\2018-04-16_13-40-48_I-MS1-MAG-QB-01_I-MS1-DIA-SCRN-01"
-        t1 = LoadQuadScanDirTask(path_name, "quad_dir")
+        t1 = LoadQuadScanDirTask(path_name, "quad_dir", process_exec_type="thread")
         t1.start()
 
     elif test == "proc_im":

@@ -165,7 +165,8 @@ class Task(object):
     def add_callback(self, callback):
         self.logger.info("{0} adding callback {1}".format(self, callback))
         with self.lock:
-            self.callback_list.append(callback)
+            if callback not in self.callback_list:
+                self.callback_list.append(callback)
         # Callback immediately if we are already finished
         if self.is_done() is True:
             callback(self)
@@ -175,6 +176,10 @@ class Task(object):
         with self.lock:
             if callback in self.callback_list:
                 self.callback_list.remove(callback)
+
+    def clear_callback_list(self):
+        with self.lock:
+            self.callback_list = list()
 
     def get_done_event(self):
         return self.event_done
@@ -248,6 +253,7 @@ class Task(object):
             return
         with self.lock:
             self.completed = True
+            self.started = False
         self.emit()
 
     def start(self):
@@ -423,6 +429,7 @@ class SequenceTask(Task):
     def __init__(self, task_list, name=None, timeout=None, trigger_dict=dict(), callback_list=list()):
         Task.__init__(self, name, timeout=timeout, trigger_dict=trigger_dict, callback_list=callback_list)
         self.task_list = task_list
+        self.logger.setLevel(logging.INFO)
 
     def action(self):
         self.logger.info("{0} running task sequence of length {1}.".format(self, len(self.task_list)))
@@ -577,18 +584,20 @@ class ProcessPoolTask(Task):
         if self.finish_process_event.is_set() is False:
             self.cancel()
         while self.completed_work_items < self.next_process_id:
+            self.logger.debug("{0}: Waiting for {1} work items".format(self, self.next_process_id - self.completed_work_items))
             time.sleep(0.01)
-        self.stop_processes()
+        self.stop_processes(terminate=False)
         self.result = self.result_dict
 
     def add_work_item(self, *args, **kwargs):
-        self.logger.info("{0}: Adding work item".format(self))
+        self.logger.debug("{0}: Adding work item".format(self))
         # self.logger.debug("{0}: Args: {1}, kwArgs: {2}".format(self, args, kwargs))
         proc_id = self.next_process_id
         self.next_process_id += 1
+        self.logger.debug("{0}: queue size: {1}".format(self, self.in_queue.qsize()))
         self.in_queue.put((self.work_func, args, kwargs, proc_id))
         self.result_dict[proc_id] = None
-        self.logger.debug("{0}: Queue added. Process id: {1}".format(self, proc_id))
+        # self.logger.debug("{0}: Work item added to queue. Process id: {1}".format(self, proc_id))
 
     def create_processes(self):
         if self.processes is not None:
@@ -601,11 +610,12 @@ class ProcessPoolTask(Task):
             p_list.append(p)
         self.processes = p_list
 
-    def stop_processes(self):
+    def stop_processes(self, terminate=True):
         self.logger.info("{0}: Stopping processes".format(self))
-        if self.processes is not None:
-            for p in self.processes:
-                p.terminate()
+        if terminate is True:
+            if self.processes is not None:
+                for p in self.processes:
+                    p.terminate()
         # self.processes = None
         self.stop_result_thread_flag = True
         try:
@@ -638,23 +648,30 @@ class ProcessPoolTask(Task):
                 break
 
     def result_thread_func(self):
+        """
+        This method runs in a thread collecting the results from the worker processes.
+        :return:
+        """
         self.logger.debug("{0}: Starting result collection thread".format(self))
         while self.stop_result_thread_flag is False:
+            # Wait for a new result item:
             try:
                 result = self.out_queue.get(True, 0.1)
             except multiprocessing.queues.Empty:
                 continue
+            # Get result and which process it was that sent the result:
             retval = result[0]
             proc_id = result[1]
             self.completed_work_items += 1
             try:
-                self.result_dict[proc_id] = retval
+                with self.lock:
+                    self.result_dict[proc_id] = retval
             except KeyError as e:
                 self.logger.error("Work item id {0} not found.".format(proc_id))
                 raise e
             if isinstance(retval, Exception):
                 raise retval
-            self.logger.debug("{0}: result_dict {1}".format(self, pprint.pformat(self.result_dict)))
+            # self.logger.debug("{0}: result_dict {1}".format(self, pprint.pformat(self.result_dict)))
             self.result = retval
             for callback in self.callback_list:
                 callback(self)
