@@ -664,13 +664,14 @@ class FitQuadDataTask(Task):
     Fit supplied quad data and calculate beam twiss parameters
     """
 
-    def __init__(self, processed_image_list, accelerator_params, algo="full",
+    def __init__(self, processed_image_list, accelerator_params, algo="full", axis="x",
                  name=None, timeout=None, trigger_dict=dict(), callback_list=list()):
         Task.__init__(self, name, timeout=timeout, trigger_dict=trigger_dict, callback_list=callback_list)
         self.processed_image_list = processed_image_list    # type: list of ProcessedImage
         # K value for each image is stored in the image list
         self.accelerator_params = accelerator_params        # type: AcceleratorParameters
         self.algo = algo
+        self.axis = axis
 
     def action(self):
         self.logger.info("{0} entering action.".format(self))
@@ -683,7 +684,10 @@ class FitQuadDataTask(Task):
     def fit_thin_lens(self):
         self.logger.info("Fitting image data using thin lens approximation")
         k_data = np.array([pi.k_value for pi in self.processed_image_list]).flatten()
-        sigma_data = np.array([pi.sigma_x for pi in self.processed_image_list]).flatten()
+        if self.axis == "x":
+            sigma_data = np.array([pi.sigma_x for pi in self.processed_image_list]).flatten()
+        else:
+            sigma_data = np.array([pi.sigma_y for pi in self.processed_image_list]).flatten()
         en_data = np.array([pi.enabled for pi in self.processed_image_list]).flatten()
         try:
             s2 = (sigma_data[en_data]) ** 2
@@ -721,7 +725,10 @@ class FitQuadDataTask(Task):
     def fit_full_transfer_matrix(self):
         self.logger.info("Fitting using full transfer matrix")
         k_data = np.array([pi.k_value for pi in self.processed_image_list]).flatten()
-        sigma_data = np.array([pi.sigma_x for pi in self.processed_image_list]).flatten()
+        if self.axis == "x":
+            sigma_data = np.array([pi.sigma_x for pi in self.processed_image_list]).flatten()
+        else:
+            sigma_data = np.array([pi.sigma_y for pi in self.processed_image_list]).flatten()
         en_data = np.array([pi.enabled for pi in self.processed_image_list]).flatten()
         d = self.accelerator_params.quad_screen_dist
         L = self.accelerator_params.quad_length

@@ -108,6 +108,7 @@ class QuadScanGui(QtGui.QWidget):
         self.current_screen = None      # type: SectionScreen
         self.quad_tasks = list()        # Repeat tasks for selected quad
         self.screen_tasks = list()      # Repeat tasks for selected screen
+        self.processing_tasks = list()
 
         self.gui_lock = threading.Lock()
 
@@ -227,6 +228,12 @@ class QuadScanGui(QtGui.QWidget):
         else:
             self.ui.p_raw_image_radio.setChecked(True)
 
+        val = self.settings.value("use_x_axis", True, type=bool)
+        if bool(val) is True:
+            self.ui.p_x_radio.setChecked(True)
+        else:
+            self.ui.p_y_radio.setChecked(True)
+
         k_start = self.settings.value("k_start", "0", type=float)
         self.ui.k_start_spinbox.setValue(k_start)
 
@@ -259,12 +266,15 @@ class QuadScanGui(QtGui.QWidget):
         self.ui.screen_combobox.currentIndexChanged.connect(self.update_section)
 
         self.ui.process_image_widget.roi.sigRegionChangeFinished.connect(self.update_process_image_roi)
+        hw = self.ui.process_image_widget.getHistogramWidget()
+        hw.sigLevelChangeFinished.connect(self.update_process_image_histogram)
         self.ui.process_button.clicked.connect(self.start_processing)
         self.ui.p_threshold_spinbox.editingFinished.connect(self.start_processing)
         self.ui.p_median_kernel_spinbox.editingFinished.connect(self.start_processing)
         self.ui.p_k_index_slider.valueChanged.connect(self.update_image_selection)
         self.ui.p_image_index_slider.valueChanged.connect(self.update_image_selection)
         self.ui.p_raw_image_radio.toggled.connect(self.change_raw_filtered_view)
+        self.ui.p_x_radio.toggled.connect(self.change_analysis_axis)
         self.sigma_x_plot.sigClicked.connect(self.points_clicked)
         self.sigma_x_plot.sigRightClicked.connect(self.points_clicked)
         self.ui.fit_algo_combobox.currentIndexChanged.connect(self.set_algo)
@@ -346,6 +356,7 @@ class QuadScanGui(QtGui.QWidget):
         self.settings.setValue("threshold", self.ui.p_threshold_spinbox.value())
         self.settings.setValue("median_kernel", self.ui.p_median_kernel_spinbox.value())
         self.settings.setValue("filtered_image_show", self.ui.p_filtered_image_radio.isChecked())
+        self.settings.setValue("use_x_axis", self.ui.p_x_radio.isChecked())
 
         if "Full matrix" in str(self.ui.fit_algo_combobox.currentText()):
             algo = "full matrix"
@@ -392,7 +403,7 @@ class QuadScanGui(QtGui.QWidget):
             if task.is_done() is False:
                 image = task.get_result(wait=False)   # type: ProcessedImage
                 # root.debug("image {0}".format(image.pic_roi))
-                self.update_image_selection(image.pic_roi)
+                self.update_image_selection(image.pic_roi, auto_levels=True)
             else:
                 root.debug("Load data complete. Storing quad scan data.")
                 task.remove_callback(self.update_load_data)
@@ -592,10 +603,19 @@ class QuadScanGui(QtGui.QWidget):
 
         self.update_image_selection()
 
+    def change_analysis_axis(self):
+        self.start_processing()
+
     def update_process_image_threshold(self):
         root.info("Updating image threshold from histogram widget")
         hl = self.ui.process_image_widget.getHistogramWidget().getLevels()
         root.debug("Levels: {0}".format(hl))
+
+    def update_process_image_histogram(self):
+        levels = self.ui.process_image_widget.getHistogramWidget().getLevels()
+        root.info("Histogram changed: {0}".format(levels))
+        self.ui.p_threshold_spinbox.setValue(levels[0])
+        self.start_processing()
 
     def update_camera_roi(self):
         root.info("Updating ROI for camera image")
@@ -612,7 +632,7 @@ class QuadScanGui(QtGui.QWidget):
                     self.update_image_selection(None)
                 self.start_fit()
 
-    def update_image_selection(self, image=None):
+    def update_image_selection(self, image=None, auto_levels=False):
         if image is None or isinstance(image, int):
             im_ind = self.ui.p_image_index_slider.value()
             if self.ui.p_raw_image_radio.isChecked():
@@ -621,17 +641,7 @@ class QuadScanGui(QtGui.QWidget):
                 image = image_struct.image
                 try:
 
-                    self.ui.process_image_widget.setImage(image, autoRange=False)
-                    # Restore view from before:
-                    # x_range = [self.process_image_raw_roi[0],
-                    #            self.process_image_raw_roi[0] + self.process_image_raw_roi[2]]
-                    # y_range = [self.process_image_raw_roi[1],
-                    #            self.process_image_raw_roi[1] + self.process_image_raw_roi[3]]
-                    # root.debug("x range: {0}, y range: {1}".format(x_range, y_range))
-                    # self.ui.process_image_widget.view.setRange(xRange=x_range, yRange=y_range)
-                    # self.ui.process_image_widget.roi.blockSignals(True)
-                    # self.ui.process_image_widget.roi.setPos(self.process_image_raw_roi[0:2])
-                    # self.ui.process_image_widget.roi.setSize(self.process_image_raw_roi[2:4])
+                    self.ui.process_image_widget.setImage(image, autoRange=False, autoLevels=auto_levels)
                     self.ui.process_image_widget.roi.show()
                     # self.ui.process_image_widget.roi.blockSignals(False)
                     self.ui.process_image_widget.update()
@@ -642,17 +652,9 @@ class QuadScanGui(QtGui.QWidget):
                 # Filtered image selected
                 image_struct = self.quad_scan_data.proc_images[im_ind]    # type: ProcessedImage
                 image = image_struct.pic_roi
-                # view_range = self.ui.process_image_widget.view.viewRange()
-                # root.debug("Raw view range: {0}".format(view_range))
-                # pos = [view_range[0][0], view_range[1][0]]
-                # size = [view_range[0][1] - view_range[0][0], view_range[1][1] - view_range[1][0]]
-                # self.process_image_raw_roi = [pos[0], pos[1], size[0], size[1]]
                 try:
-                    # self.ui.process_image_widget.roi.blockSignals(True)
                     self.ui.process_image_widget.roi.hide()
-                    # self.ui.process_image_widget.roi.setPos([0, 0])
-                    self.ui.process_image_widget.setImage(image, autoRange=False)
-                    # self.ui.process_image_widget.roi.blockSignals(False)
+                    self.ui.process_image_widget.setImage(image, autoRange=False, autoLevels=auto_levels)
                 except TypeError as e:
                     root.error("Error setting image: {0}".format(e))
 
@@ -672,6 +674,10 @@ class QuadScanGui(QtGui.QWidget):
         root.info("{0}: Updating fit result.".format(self))
         if task is not None:
             fitresult = task.get_result(wait=False)     # type: FitResult
+            if self.ui.p_x_radio.isChecked():
+                self.ui.result_axis_label.setText("x-axis")
+            else:
+                self.ui.result_axis_label.setText("y-axis")
             self.ui.eps_label.setText("{0:.2f} mm x mmrad".format(1e6 * fitresult.eps_n))
             self.ui.beta_label.setText("{0:.2f} m".format(fitresult.beta))
             self.ui.alpha_label.setText("{0:.2f}".format(fitresult.alpha))
@@ -680,7 +686,7 @@ class QuadScanGui(QtGui.QWidget):
 
     def plot_sigma_data(self):
         root.info("Plotting sigma data")
-        use_x_axis = True
+        use_x_axis = self.ui.p_x_radio.isChecked()
         if use_x_axis is True:
             sigma = np.array([proc_im.sigma_x for proc_im in self.quad_scan_data.proc_images])
         else:
@@ -751,6 +757,10 @@ class QuadScanGui(QtGui.QWidget):
         root.info("Stop scan pressed")
 
     def start_processing(self):
+        if len(self.processing_tasks) > 0:
+            for task in self.processing_tasks:
+                task.cancel()
+                self.processing_tasks.remove(task)
         th = self.ui.p_threshold_spinbox.value()
         kern = self.ui.p_median_kernel_spinbox.value()
         root.info("Start processing. Threshold: {0}, Kernel: {1}".format(th, kern))
@@ -767,15 +777,20 @@ class QuadScanGui(QtGui.QWidget):
                                     name="process_images",
                                     callback_list=[self.update_image_processing])
         task.start()
+        self.processing_tasks.append(task)
 
     def start_fit(self):
         if "Full matrix" in str(self.ui.fit_algo_combobox.currentText()):
             algo = "full"
         else:
             algo = "thin lens"
+        if self.ui.p_x_radio.isChecked():
+            axis = "x"
+        else:
+            axis = "y"
         task = FitQuadDataTask(self.quad_scan_data.proc_images,
                                self.quad_scan_data.acc_params,
-                               algo=algo)
+                               algo=algo, axis=axis)
         task.add_callback(self.update_fit_result)
         task.start()
 
@@ -799,7 +814,7 @@ class QuadScanGui(QtGui.QWidget):
         # sx = self.controller.get_result("scan", "sigma_x")
         # kd = self.controller.get_result("scan", "k_data")
         # en_data = self.controller.get_result("scan", "enabled_data")
-        use_x_axis = True
+        use_x_axis = self.ui.p_x_radio.isChecked()
         if use_x_axis is True:
             sx = [proc_im.sigma_x for proc_im in self.quad_scan_data.proc_images]
         else:

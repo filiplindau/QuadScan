@@ -280,7 +280,8 @@ class Task(object):
             self.trigger_done_list = list()
             self.trigger_result_dict = dict()
             self.trigger_event.set()
-            self.run_thread.raise_exc(self.CancelException)
+            if self.run_thread.isAlive():
+                self.run_thread.raise_exc(self.CancelException)
         self.emit()
 
     def is_cancelled(self):
