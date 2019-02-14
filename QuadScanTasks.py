@@ -67,7 +67,7 @@ class TangoReadAttributeTask(Task):
         self.attribute_name = attribute_name
         self.device_handler = device_handler
 
-        self.logger.setLevel(logging.WARN)
+        self.logger.setLevel(logging.WARNING)
 
     def action(self):
         self.logger.info("{0} reading {1} on {2}. ".format(self, self.attribute_name, self.device_name))
@@ -513,7 +513,9 @@ class ProcessAllImagesTask(Task):
         for ind, image in enumerate(self.quad_scan_data.images):
             try:
                 en = self.quad_scan_data.proc_images[ind].enabled
-            except IndexError, AttributeError:
+            except IndexError:
+                en = True
+            except AttributeError:
                 en = True
             self.image_processor.process_image(image, enabled=en)
         self.logger.debug("{0}: Starting wait for images".format(self))
@@ -633,40 +635,48 @@ class PopulateDeviceListTask(Task):
             # Quad names are e.g. i-ms1/mag/qb-01
             quad_dev_list = db.get_device_exported("*{0}*/mag/q*".format(s)).value_string
             quad_list = list()
-            for q in quad_dev_list:
+            for mag_name in quad_dev_list:
                 quad = dict()
                 try:
                     # Extract data for each found quad:
-                    quad["name"] = q.split("/")[-1].lower()
-                    p = db.get_device_property(q, ["__si", "length", "polarity", "circuitproxies"])
-                    quad["position"] = np.double(p["__si"][0])
-                    quad["length"] = np.double(p["length"][0])
-                    quad["polarity"] = np.double(p["polarity"][0])
-                    quad["crq"] = p["circuitproxies"][0]
 
+                    name = mag_name.split("/")[-1].lower()
+                    p = db.get_device_property(mag_name, ["__si", "length", "polarity", "circuitproxies"])
+                    position = np.double(p["__si"][0])
+                    length = np.double(p["length"][0])
+                    polarity = np.double(p["polarity"][0])
+                    crq = p["circuitproxies"][0]
+                    quad = SectionQuad(name, position, length, mag_name, crq, polarity)
                     quad_list.append(quad)
                 except IndexError as e:
-                    self.logger.error("Index error when parsing quad {0}: {1}".format(q, e))
+                    self.logger.exception("Index error when parsing quad {0}: ".format(mag_name))
+                    # self.logger.error("Index error when parsing quad {0}: {1}".format(q, e))
                     pass
                 except KeyError as e:
-                    self.logger.error("Key error when parsing quad {0}: {1}".format(q, e))
+                    self.logger.error("Key error when parsing quad {0}: {1}".format(mag_name, e))
                     pass
 
             # Screen names are e.g. i-ms1/dia/scrn-01
             screen_dev_list = db.get_device_exported("*{0}*/dia/scrn*".format(s)).value_string
             screen_list = list()
-            for sc in screen_dev_list:
+            for sc_name in screen_dev_list:
                 scr = dict()
                 try:
                     # Extract data for each found screen
-                    scr["name"] = sc.split("/")[-1].lower()
-                    scr["position"] = np.double(db.get_device_property(sc, "__si")["__si"][0])
+                    name = sc_name.split("/")[-1].lower()
+                    lima_name = sc_name.replace("/", "-")
+                    position = np.double(db.get_device_property(sc_name, "__si")["__si"][0])
+                    liveviewer = "lima/liveviewer/{0}".format(lima_name)
+                    beamviewer = "lima/beamviewer/{0}".format(lima_name)
+                    limaccd = "lima/limaccd/{0}".format(lima_name)
+                    scr = SectionScreen(name, position, liveviewer, beamviewer, limaccd)
                     screen_list.append(scr)
+                # If name and/or position for the screen is not retrievable we cannot use it:
                 except IndexError as e:
-                    self.logger.error("Index error when parsing screen {0}: {1}".format(sc, e))
+                    self.logger.exception("Index error when parsing screen {0}: ".format(mag_name))
                     pass
                 except KeyError as e:
-                    self.logger.error("Key error when parsing screen {0}: {1}".format(sc, e))
+                    self.logger.exception("Key error when parsing screen {0}: ".format(mag_name))
                     pass
 
             sect_quads[s] = quad_list
@@ -701,7 +711,7 @@ class FitQuadDataTask(Task):
         else:
             fitresult = self.fit_thin_lens()
         self.result = fitresult
-        self.logger.debug("{0}: Fit time {1:.2f} s".format(time.time()-t0))
+        self.logger.debug("{0}: Fit time {1:.2f} s".format(self, time.time()-t0))
 
     def fit_thin_lens(self):
         self.logger.info("Fitting image data using thin lens approximation")

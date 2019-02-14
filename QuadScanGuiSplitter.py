@@ -84,7 +84,7 @@ class QuadScanGui(QtGui.QWidget):
         self.current_state = "unknown"
         self.last_load_dir = "."
         self.data_base_dir = "."
-        self.section_init_flag = False
+        self.section_init_flag = True
         self.screen_init_flag = True
 
         self.line_x_plot = None
@@ -104,7 +104,7 @@ class QuadScanGui(QtGui.QWidget):
         self.fit_result = FitResult(poly=None, alpha=None, beta=None, eps=None, eps_n=None,
                                     gamma_e=None, fit_data=None, residual=None)
         self.section_devices = SectionDevices(sect_quad_dict=None, sect_screen_dict=None)
-        self.device_handler = DeviceHandler("b-v0-gunlaser-csdb-0:10000", name="Handler")
+        self.device_handler = DeviceHandler("g-v-csdb-0:10000", name="Handler")
         self.section_list = ["MS1", "MS2", "MS3", "SP02"]
         self.current_section = "MS1"
         self.current_quad = None        # type: SectionQuad
@@ -318,6 +318,9 @@ class QuadScanGui(QtGui.QWidget):
         if analysis_plots_splitter_sizes[0] is not None:
             self.ui.analysis_plots_splitter.setSizes([np.int(s) for s in analysis_plots_splitter_sizes])
 
+        tab_index = self.settings.value("tab_index", 0, type=int)
+        self.ui.tabWidget.setCurrentIndex(tab_index)
+
         # Install event filter
         self.ui.k_current_spinbox.installEventFilter(self)
 
@@ -348,6 +351,16 @@ class QuadScanGui(QtGui.QWidget):
         :return:
         """
         self.image_processor.stop_processing()
+        for t in self.screen_tasks:
+            try:
+                t.cancel()
+            except AttributeError:
+                pass
+        for t in self.quad_tasks:
+            try:
+                t.cancel()
+            except AttributeError:
+                pass
         self.settings.setValue("load_path", self.last_load_dir)
         self.settings.setValue("base_path", self.data_base_dir)
 
@@ -359,6 +372,7 @@ class QuadScanGui(QtGui.QWidget):
         self.settings.setValue("scan_analysis_splitter", self.ui.scan_analysis_splitter.sizes())
         self.settings.setValue("analysis_pic_plot_splitter", self.ui.analysis_pic_plot_splitter.sizes())
         self.settings.setValue("analysis_plots_splitter", self.ui.analysis_plots_splitter.sizes())
+        self.settings.setValue("tab_index", self.ui.tabWidget.currentIndex())
 
         self.settings.setValue("threshold", self.ui.p_threshold_spinbox.value())
         self.settings.setValue("median_kernel", self.ui.p_median_kernel_spinbox.value())
@@ -385,7 +399,9 @@ class QuadScanGui(QtGui.QWidget):
 
     def load_data(self):
         """
-        Initiate load data state
+        Initiate load data from save directory. Starts a LoadQuadScanTask and sets a callback update_load_data
+        when completed.
+
         :return:
         """
         root.info("Loading data from disk")
@@ -405,6 +421,17 @@ class QuadScanGui(QtGui.QWidget):
         self.ui.data_source_label.setText(source_name)
 
     def update_load_data(self, task):
+        """
+        Callback function for loading data from disk.
+        It can be called during the load for each processed image and
+        finally when completed.
+
+        For each image: Update image selection
+        When completed: Store quad scan data and start fit
+
+        :param task:
+        :return:
+        """
         root.info("Update load data {0}".format(task.name))
         if task is not None:
             if task.is_done() is False:
@@ -470,14 +497,14 @@ class QuadScanGui(QtGui.QWidget):
         or if a new magnet/screen within the current section has been chosen.
         :return:
         """
-        root.info("Changing section settings")
-        sect = str(self.ui.section_combobox.currentText()).lower()
+        sect = str(self.ui.section_combobox.currentText()).upper()
+        root.info("Update section settings to {0}".format(sect))
         try:
             quads = self.section_devices.sect_quad_dict[sect]
             screens = self.section_devices.sect_screen_dict[sect]
-        except KeyError:
+        except KeyError as e:
             # Section not in dict. Exit
-            root.error("Section not in dict")
+            root.exception("Section {0} not in dict {1}".format(sect, self.section_devices.sect_quad_dict.keys()))
             return
 
         # Check if a new section was chosen, then re-populate the comboboxes for magnets and screens
@@ -503,7 +530,7 @@ class QuadScanGui(QtGui.QWidget):
             self.section_init_flag = False
             self.current_section = sect
         if len(quads) > 0:
-            quad_name = str(self.ui.quad_combobox.currentText()).lower()
+            quad_name = str(self.ui.quad_combobox.currentText()).upper()
             # This will work since the combobox is populated in the same order as the stored section quadlist
             quad_sel = quads[self.ui.quad_combobox.currentIndex()]          # type: SectionQuad
             quad_length = quad_sel.length
@@ -512,21 +539,26 @@ class QuadScanGui(QtGui.QWidget):
             self.ui.quad_combobox.blockSignals(False)
         else:
             quad_name = None
+            quad_pos = 0
         if len(screens) > 0:
-            screen_name = str(self.ui.screen_combobox.currentText()).lower()
+            screen_name = str(self.ui.screen_combobox.currentText()).upper()
             screen_sel = screens[self.ui.screen_combobox.currentIndex()]    # type: SectionScreen
             screen_pos = screen_sel.position
+            screen_pos = 0
             self.ui.screen_combobox.blockSignals(False)
         else:
             screen_name = None
 
         # Set the quad and screen selected:
         if quad_name is not None and screen_name is not None:
-            if self.current_screen.name != screen_name:
-                self.screen_init_flag = True
-            if self.current_quad.name != quad_name or self.current_screen.name != screen_name:
-                root.debug("New device selected.")
-                self.set_section()
+            if self.current_screen is None:
+                self.set_section(quads[0], screens[0])
+            else:
+                if self.current_screen.name != screen_name:
+                    self.screen_init_flag = True
+                if self.current_quad.name != quad_name or self.current_screen.name != screen_name:
+                    root.debug("New device selected.")
+                    self.set_section(quad_sel, screen_sel)
             self.ui.quad_screen_dist_label.setText("{0:2f}".format(screen_pos - quad_pos))
 
     def set_section(self, new_quad, new_screen):
@@ -539,24 +571,35 @@ class QuadScanGui(QtGui.QWidget):
 
         Start new monitor task of k-value, image
 
+        :param new_quad:
+        :param new_screen:
         :return:
         """
         root.info("Set section {0} with {1} and {2}".format(self.current_section,
                                                             new_quad.name,
                                                             new_screen.name))
-        if new_quad.name != self.current_quad.name:
+        try:
+            load_quad = new_quad.name != self.current_quad.name
+        except AttributeError:
+            load_quad = True
+        if load_quad:
             for t in self.quad_tasks:
                 t.cancel()
             self.quad_tasks = list()
-            k_task = TangoReadAttributeTask("k", new_quad.name, self.device_handler,
+            k_task = TangoReadAttributeTask("mainfieldcomponent", new_quad.crq, self.device_handler,
                                             name="k_read", callback_list=[self.read_k])
+            # k_task.start()
             k_rep_task = RepeatTask(k_task, -1, 0.3, name="k_repeat")
             k_rep_task.start()
             self.quad_tasks.append(k_rep_task)
             self.current_quad = new_quad
             # Add more device connections here
 
-        if new_screen.name != self.current_screen.name:
+        try:
+            load_screen = new_screen.name != self.current_screen.name
+        except AttributeError:
+            load_screen = True
+        if load_screen:
             for t in self.screen_tasks:
                 t.cancel()
             self.screen_tasks = list()
@@ -670,7 +713,7 @@ class QuadScanGui(QtGui.QWidget):
                 except TypeError as e:
                     root.error("Error setting image: {0}".format(e))
 
-            self.ui.p_k_value_label.setText("k = {0:.3f} 1/m2".format(image_struct.k_value))
+            self.ui.p_k_value_label.setText(u"k = {0:.3f} 1/m\u00B2".format(image_struct.k_value))
             self.ui.p_k_ind_label.setText("k index {0}/{1}".format(image_struct.k_ind,
                                                                    self.quad_scan_data.acc_params.num_k - 1))
             self.ui.p_image_label.setText("image {0}/{1}".format(image_struct.image_ind,
@@ -678,7 +721,9 @@ class QuadScanGui(QtGui.QWidget):
         else:
             # If an image was sent directly to the method, such as when updating a loading task
             try:
+                self.ui.process_image_widget.blockSignals(True)
                 self.ui.process_image_widget.setImage(image)
+                self.ui.process_image_widget.blockSignals(False)
             except TypeError as e:
                 root.error("Error setting image: {0}".format(e))
 
@@ -813,7 +858,7 @@ class QuadScanGui(QtGui.QWidget):
             axis = "y"
         task = FitQuadDataTask(self.quad_scan_data.proc_images,
                                self.quad_scan_data.acc_params,
-                               algo=algo, axis=axis)
+                               algo=algo, axis=axis, name="fit")
         task.add_callback(self.update_fit_result)
         task.start()
 
@@ -913,6 +958,20 @@ class QuadScanGui(QtGui.QWidget):
                 return
             self.ui.mouse_label.setText(
                 "Proc image at ({0}, {1}) px: {2:.0f}".format(min(x, 9999), min(y, 9999), intensity))
+
+    def read_k(self, task):
+        try:
+            k = task.get_result(wait=False)
+            self.ui.current_k_label.setText(u"k={0:.2f} 1/m\u00B2".format(k.value))
+        except AttributeError:
+            root.warning("Not valid task")
+
+    def read_image(self, task):
+        try:
+            image = task.get_result(wait=False)
+            self.ui.camera_widget.setImage(image.value)
+        except AttributeError:
+            root.warning("Not valid task")
 
 
 if __name__ == "__main__":

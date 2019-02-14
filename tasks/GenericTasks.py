@@ -391,21 +391,28 @@ class RepeatTask(Task):
     def __init__(self, task, repetitions, delay=0, name=None, timeout=None, trigger_dict=dict(), callback_list=list()):
         Task.__init__(self, name, timeout=timeout, trigger_dict=trigger_dict, callback_list=callback_list)
         self.task = task                    # type: Task
+        if repetitions is None:
+            repetitions = -1
         self.repetitions = repetitions
         self.delay = delay
+        self.logger.setLevel(logging.WARNING)
 
     def action(self):
         self.logger.info("{0} repeating task {1} {2} times.".format(self, self.task, self.repetitions))
         current_rep = 0
         result_list = list()
-        while current_rep < self.repetitions:
+        while self.repetitions < current_rep or self.repetitions == -1:
+            self.logger.debug("{0}: Starting task".format(self))
             self.task.start()
             res = self.task.get_result(wait=True, timeout=self.timeout)
+            self.logger.debug("{0}: Task returned result {1}".format(self, res))
             # Check if cancelled or error..
             if self.task.is_cancelled() is True:
+                self.logger.info("Task was cancelled")
                 self.cancel()
                 break
             if self.is_cancelled() is True:
+                self.logger.info("Repeat cancelled. Exiting.")
                 break
             if self.repetitions >= 0:
                 # Only store intermediate results in a list if there is not an infinite number of repetitions.

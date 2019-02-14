@@ -101,13 +101,14 @@ The sections are ms1, ms2, ms3, sp02.
 """
 
 
-SectionQuad = namedtuple("SectionQuad", "name position length crq polarity")
+SectionQuad = namedtuple("SectionQuad", "name position length mag crq polarity")
 """
 SectionQuad stores quad data for a quadrupole magnet in a section.
 
-:param name: Tango MAG name of the quad, e.g. I-MS1/MAG/QB-01
+:param name: Base name of the quad, e.g. QB-01
 :param position: Longitudinal position of the quad along the linac.
 :param length: Quad length
+:param mag: Tango MAG name of the quad, e.g. I-MS1/MAG/QB-01
 :param crq: Tango name of the circuit connected to the magnet.
 :param polarity: Magnet polarity
 """
