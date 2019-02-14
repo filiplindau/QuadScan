@@ -87,12 +87,32 @@ class TangoWriteAttributeTask(Task):
         self.logger.setLevel(logging.INFO)
 
     def action(self):
-        self.logger.info("{0} writing {1} to {2} on {2}. ".format(self,
+        self.logger.info("{0} writing {1} to {2} on {3}. ".format(self,
                                                                   self.value,
                                                                   self.attribute_name,
                                                                   self.device_name))
         dev = self.device_handler.get_device(self.device_name)
         res = dev.write_attribute(self.attribute_name, self.value)
+        self.result = res
+
+
+class TangoCommandTask(Task):
+    def __init__(self, command_name, device_name, device_handler, value=None, name=None, timeout=None,
+                 trigger_dict=dict(), callback_list=list()):
+        Task.__init__(self, name, timeout=timeout, trigger_dict=trigger_dict, callback_list=callback_list)
+        self.device_name = device_name
+        self.command_name = command_name
+        self.device_handler = device_handler
+        self.value = value
+        self.logger.setLevel(logging.INFO)
+
+    def action(self):
+        self.logger.info("{0} sending command {1} with {2} on {3}. ".format(self,
+                                                                            self.command_name,
+                                                                            self.value,
+                                                                            self.device_name))
+        dev = self.device_handler.get_device(self.device_name)
+        res = dev.command_inout(self.command_name, self.value)
         self.result = res
 
 
@@ -675,11 +695,13 @@ class FitQuadDataTask(Task):
 
     def action(self):
         self.logger.info("{0} entering action.".format(self))
+        t0 = time.time()
         if self.algo == "full":
             fitresult = self.fit_full_transfer_matrix()
         else:
             fitresult = self.fit_thin_lens()
         self.result = fitresult
+        self.logger.debug("{0}: Fit time {1:.2f} s".format(time.time()-t0))
 
     def fit_thin_lens(self):
         self.logger.info("Fitting image data using thin lens approximation")

@@ -41,6 +41,9 @@ pq.graphicsItems.GradientEditorItem.Gradients['thermalclip'] = {
 
 
 class MyScatterPlotItem(pq.ScatterPlotItem):
+    """
+    Subclassed to allow capture of right clicks and emitting signal.
+    """
     sigRightClicked = QtCore.Signal(object, object, object)  ## self, points, right
 
     def mouseClickEvent(self, ev):
@@ -183,7 +186,9 @@ class QuadScanGui(QtGui.QWidget):
         self.ui.fit_widget.setLabel("left", "sigma", "m")
         self.ui.fit_widget.getPlotItem().showGrid(alpha=0.3)
 
-        self.charge_plot = self.ui.charge_widget.plot()
+        # self.charge_plot = self.ui.charge_widget.plot()
+        self.charge_plot = MyScatterPlotItem()
+        self.ui.charge_widget.getPlotItem().addItem(self.charge_plot)
         self.charge_plot.setPen((180, 250, 180))
         self.ui.charge_widget.setLabel("bottom", "K", " 1/m²")
         self.ui.charge_widget.setLabel("left", "charge", "a.u.")
@@ -277,6 +282,8 @@ class QuadScanGui(QtGui.QWidget):
         self.ui.p_x_radio.toggled.connect(self.change_analysis_axis)
         self.sigma_x_plot.sigClicked.connect(self.points_clicked)
         self.sigma_x_plot.sigRightClicked.connect(self.points_clicked)
+        self.charge_plot.sigClicked.connect(self.points_clicked)
+        self.charge_plot.sigRightClicked.connect(self.points_clicked)
         self.ui.fit_algo_combobox.currentIndexChanged.connect(self.set_algo)
         self.ui.load_disk_button.clicked.connect(self.load_data)
         self.ui.p_roi_cent_x_spinbox.editingFinished.connect(self.set_roi)
@@ -458,6 +465,11 @@ class QuadScanGui(QtGui.QWidget):
         self.ui.p_threshold_spinbox.setValue(threshold)
 
     def update_section(self):
+        """
+        Update the section according current selections. Checks if a new section has been chosen
+        or if a new magnet/screen within the current section has been chosen.
+        :return:
+        """
         root.info("Changing section settings")
         sect = str(self.ui.section_combobox.currentText()).lower()
         try:
@@ -519,7 +531,7 @@ class QuadScanGui(QtGui.QWidget):
 
     def set_section(self, new_quad, new_screen):
         """
-        Set section from current_sect, current_quad, current_screen:
+        Setup hardware access to section from current_sect, current_quad, current_screen:
 
         Will add devices to the device handler for quad mag, crq + scrn, liveviewer, beamviewer
 
@@ -715,8 +727,9 @@ class QuadScanGui(QtGui.QWidget):
                 q_brush_list.append(qo_brush)
 
         self.sigma_x_plot.setData(x=k, y=sigma, symbol=sigma_symbol_list, brush=sigma_brush_list, size=10, pen=None)
-        self.charge_plot.setData(x=k, y=q, symbol=q_symbol_list, symbolBrush=q_brush_list,
-                                 symbolPen=None, pen=None)
+        self.charge_plot.setData(x=k, y=q, symbol=q_symbol_list, brush=q_brush_list, size=10, pen=None)
+        # self.charge_plot.setData(x=k, y=q, symbol=q_symbol_list, symbolBrush=q_brush_list,
+        #                          symbolPen=None, pen=None)
         y_range = [0, q.max()]
         x_range = [k.min(), k.max()]
         self.ui.charge_widget.getViewBox().setRange(xRange=x_range, yRange=y_range, disableAutoRange=True)
@@ -745,10 +758,20 @@ class QuadScanGui(QtGui.QWidget):
         root.info("Setting base save directory")
 
     def start_camera(self):
-        root.info("Start camera pressed")
+        root.info("Starting camera {0}".format(self.current_screen))
+        task = TangoCommandTask("start", self.current_screen, self.device_handler)
+        task.start()
 
     def stop_camera(self):
-        root.info("Stop camera pressed")
+        root.info("Stopping camera {0}".format(self.current_screen))
+        task = TangoCommandTask("stop", self.current_screen, self.device_handler)
+        task.start()
+
+    def insert_screen(self):
+        root.info("Inserting screen {0}".format(self.current_screen))
+
+    def remove_screen(self):
+        root.info("Removing screen {0}".format(self.current_screen))
 
     def start_scan(self):
         root.info("Start scan pressed")
@@ -805,21 +828,25 @@ class QuadScanGui(QtGui.QWidget):
         :return:
         """
         try:
+            # Catch if the click did not hit a point:
             pos = point_list[0].pos()
             root.info("Point clicked: {0}".format(pos))
         except IndexError:
             root.debug("No points in list - exit")
             return
         root.debug("Right button: {0}".format(right))
-        # sx = self.controller.get_result("scan", "sigma_x")
-        # kd = self.controller.get_result("scan", "k_data")
-        # en_data = self.controller.get_result("scan", "enabled_data")
-        use_x_axis = self.ui.p_x_radio.isChecked()
-        if use_x_axis is True:
-            sx = [proc_im.sigma_x for proc_im in self.quad_scan_data.proc_images]
+
+        # Check which plot was clicked:
+        if scatterplotitem == self.charge_plot:
+            y = [proc_im.q for proc_im in self.quad_scan_data.proc_images]
         else:
-            sx = [proc_im.sigma_y for proc_im in self.quad_scan_data.proc_images]
-        kd = [proc_im.k_value for proc_im in self.quad_scan_data.proc_images]
+            use_x_axis = self.ui.p_x_radio.isChecked()
+            if use_x_axis is True:
+                y = [proc_im.sigma_x for proc_im in self.quad_scan_data.proc_images]
+            else:
+                y = [proc_im.sigma_y for proc_im in self.quad_scan_data.proc_images]
+
+        x = [proc_im.k_value for proc_im in self.quad_scan_data.proc_images]
         en_data = [proc_im.enabled for proc_im in self.quad_scan_data.proc_images]
         enabled = not right             # True if left button is pressed
         eps = 1e-9
@@ -829,14 +856,13 @@ class QuadScanGui(QtGui.QWidget):
         sel_dist = np.inf
         k_toggle_i = None
         tog_dist = np.inf
-        tog_spot = None
         for p in point_list:
             pos = p.pos()
             # We need to loop through the list of data points to find the index of the points clicked:
-            for k_i, k_val in enumerate(kd):
+            for k_i, k_val in enumerate(x):
                     # Check if the point is within eps:
                     if abs(pos.x() - k_val) < eps:
-                        if abs(pos.y() - (sx[k_i])) < eps:
+                        if abs(pos.y() - (y[k_i])) < eps:
                             d = (pos.x() - mouse_pos.x())**2 + (pos.y() - mouse_pos.y())**2
                             if d < sel_dist:
                                 k_sel_i = k_i
@@ -845,7 +871,6 @@ class QuadScanGui(QtGui.QWidget):
                                 if d < tog_dist:
                                     k_toggle_i = k_i
                                     tog_dist = d
-                                    tog_spot = p
 
         if k_toggle_i is not None:
             en_data[k_toggle_i] = enabled
@@ -855,19 +880,10 @@ class QuadScanGui(QtGui.QWidget):
             proc_image_list[k_toggle_i] = proc_im
             self.quad_scan_data = self.quad_scan_data._replace(proc_images=proc_image_list)
 
-            # if enabled is False:
-            #     tog_spot.setSymbol("x")
-            #     tog_spot.setBrush((200, 50, 50))
-            # else:
-            #     tog_spot.setSymbol("o")
-            #     tog_spot.setBrush((150, 150, 250, 100))
             self.ui.fit_widget.update()
 
         if k_sel_i is not None:
-            # self.ui.p_image_index_slider.blockSignals(True)
-            # self.ui.k_slider.setValue(k_sel_i)
             self.ui.p_image_index_slider.setValue(k_sel_i)
-            # self.ui.p_image_index_slider.blockSignals(False)
 
             self.update_image_selection()
             self.start_fit()
