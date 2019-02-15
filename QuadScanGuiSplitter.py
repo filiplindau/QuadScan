@@ -451,11 +451,7 @@ class QuadScanGui(QtGui.QWidget):
                 root.debug("Load data complete. Storing quad scan data.")
                 hw = self.ui.process_image_widget.getHistogramWidget()
                 hl = hw.getLevels()
-                root.debug("Histogram levels: {0}".format(hl))
-                root.debug("Threshold: {0}".format(self.ui.p_threshold_spinbox.value()))
                 hw.setLevels(self.ui.p_threshold_spinbox.value(), self.load_image_max)
-                root.debug("Histogram levels: {0}".format(hw.getLevels()))
-                # hw.blockSignals(False)
                 task.remove_callback(self.update_load_data)
                 if isinstance(task, LoadQuadScanDirTask):
                     quad_scan_data = task.get_result(wait=False)   # type: QuadScanData
@@ -687,8 +683,8 @@ class QuadScanGui(QtGui.QWidget):
     def update_process_image_histogram(self):
         levels = self.ui.process_image_widget.getHistogramWidget().getLevels()
         root.info("Histogram changed: {0}".format(levels))
-        self.ui.p_threshold_spinbox.setValue(levels[0])
-        self.start_processing()
+        # self.ui.p_threshold_spinbox.setValue(levels[0])
+        # self.start_processing()
 
     def update_camera_roi(self):
         root.info("Updating ROI for camera image")
@@ -716,7 +712,6 @@ class QuadScanGui(QtGui.QWidget):
 
                     self.ui.process_image_widget.setImage(image, autoRange=False, autoLevels=auto_levels)
                     self.ui.process_image_widget.roi.show()
-                    # self.ui.process_image_widget.roi.blockSignals(False)
                     self.ui.process_image_widget.update()
                 except TypeError as e:
                     root.error("Error setting image: {0}".format(e))
@@ -739,9 +734,7 @@ class QuadScanGui(QtGui.QWidget):
         else:
             # If an image was sent directly to the method, such as when updating a loading task
             try:
-                # self.ui.process_image_widget.getHistogramWidget().blockSignals(True)
                 self.ui.process_image_widget.setImage(image)
-                # self.ui.process_image_widget.getHistogramWidget().blockSignals(False)
             except TypeError as e:
                 root.error("Error setting image: {0}".format(e))
 
