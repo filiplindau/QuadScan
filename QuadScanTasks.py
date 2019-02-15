@@ -42,7 +42,7 @@ f = logging.Formatter("%(asctime)s - %(name)s.   %(funcName)s - %(levelname)s - 
 fh = logging.StreamHandler()
 fh.setFormatter(f)
 logger.addHandler(fh)
-logger.setLevel(logging.INFO)
+logger.setLevel(logging.DEBUG)
 
 
 class TangoDeviceConnectTask(Task):
@@ -161,7 +161,7 @@ class LoadQuadImageTask(Task):
         Task.__init__(self, name, timeout=timeout, trigger_dict=trigger_dict, callback_list=callback_list)
         self.image_name = image_name
         self.path = path
-        self.logger.setLevel(logging.INFO)
+        self.logger.setLevel(logging.DEBUG)
 
     def action(self):
         self.logger.info("{0} entering action. Loading file {1}".format(self, self.image_name))
@@ -211,7 +211,7 @@ class LoadQuadScanDirTask(Task):
                  image_processor_task=None, process_exec_type="process",
                  name=None, timeout=None, trigger_dict=dict(), callback_list=list()):
         Task.__init__(self, name, timeout=timeout, trigger_dict=trigger_dict, callback_list=callback_list)
-        self.logger.setLevel(logging.INFO)
+        self.logger.setLevel(logging.DEBUG)
 
         self.pathname = quadscandir
         self.process_now = process_now
@@ -241,6 +241,7 @@ class LoadQuadScanDirTask(Task):
         except OSError as e:
             e = "List dir failed: {0}".format(e)
             self.result = e
+            self.logger.error(e)
             self.cancel()
 
         # See if there is a file called daq_info.txt
@@ -248,6 +249,7 @@ class LoadQuadScanDirTask(Task):
         if os.path.isfile(os.path.join(load_dir, filename)) is False:
             e = "daq_info.txt not found in {0}".format(load_dir)
             self.result = e
+            self.logger.error(e)
             self.cancel()
 
         logger.info("{0}: Loading Jason format data".format(self))
@@ -279,13 +281,14 @@ class LoadQuadScanDirTask(Task):
         self.image_processor.set_processing_parameters(self.threshold, data_dict["pixel_size"], self.kernel_size)
         file_list = os.listdir(load_dir)
         image_file_list = list()
-        load_task_list = list()
+        load_task_list = list()         # List of tasks, each loading an image. Loading should be done in sequence
+                                        # as this in not sped up by paralellization
         for file_name in file_list:
             if file_name.endswith(".png"):
                 image_file_list.append(file_name)
                 t = LoadQuadImageTask(file_name, load_dir, name=file_name,
                                       callback_list=[self.image_processor.process_image])
-                t.logger.setLevel(logging.WARN)
+                t.logger.setLevel(logging.WARNING)
                 load_task_list.append(t)
 
         self.logger.debug("{1} Found {0} images in directory".format(len(image_file_list), self))
@@ -351,12 +354,14 @@ def process_image_func(image, k_ind, k_value, image_ind, threshold, roi_cent, ro
     # else:
     #     n = 1
 
+    logger.debug("Before medfilt")
     # Median filtering:
     if normalize is True:
         pic_roi = medfilt2d(pic_roi / n, kernel)
     else:
         pic_roi = medfilt2d(pic_roi, kernel)
 
+    logger.debug("Before thresholding")
     # Threshold image
     if threshold is None:
         threshold = pic_roi[0:20, 0:20].mean()*3 + pic_roi[-20:, -20:].mean()*3
@@ -369,6 +374,8 @@ def process_image_func(image, k_ind, k_value, image_ind, threshold, roi_cent, ro
     # enabled = False
     l_x_n = np.sum(line_x)
     l_y_n = np.sum(line_y)
+
+    logger.debug("Before enable")
     # Enable point only if there is data:
     if l_x_n <= 0.0:
         enabled = False
@@ -379,6 +386,7 @@ def process_image_func(image, k_ind, k_value, image_ind, threshold, roi_cent, ro
     y_cent = np.sum(y_v * line_y) / l_y_n
     sigma_y = np.sqrt(np.sum((y_v - y_cent) ** 2 * line_y) / l_y_n)
 
+    logger.debug("Before result")
     # Store processed data
     result = ProcessedImage(k_ind=k_ind, k_value=k_value, image_ind=image_ind, pic_roi=pic_roi,
                             line_x=line_x, line_y=line_y, x_cent=x_cent, y_cent=y_cent,
@@ -391,7 +399,7 @@ class ImageProcessorTask(Task):
     def __init__(self, roi_cent=None, roi_dim=None, threshold=None, cal=[1.0, 1.0], kernel=3, process_exec="process",
                  name=None, timeout=None, trigger_dict=dict(), callback_list=list()):
         Task.__init__(self,  name, timeout=timeout, trigger_dict=trigger_dict, callback_list=callback_list)
-        self.logger.setLevel(logging.INFO)
+        self.logger.setLevel(logging.DEBUG)
 
         self.kernel = kernel
         self.cal = cal

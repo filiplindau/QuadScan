@@ -567,7 +567,7 @@ class ProcessPoolTask(Task):
         self.stop_result_thread_flag = False
         self.result_dict = dict()
 
-        self.logger.setLevel(logging.INFO)
+        self.logger.setLevel(logging.DEBUG)
 
     def run(self):
         self.create_processes()
@@ -712,7 +712,7 @@ class ThreadPoolTask(Task):
         self.stop_result_thread_flag = False
         self.result_dict = dict()
 
-        self.logger.setLevel(logging.INFO)
+        self.logger.setLevel(logging.DEBUG)
 
     def run(self):
         self.create_threads()
@@ -733,6 +733,7 @@ class ThreadPoolTask(Task):
         self.result_thread = threading.Thread(target=self.result_thread_func)
         self.result_thread.start()
 
+        self.logger.debug("{0}: Starting wait for finish thread")
         self.finish_threads_event.wait(self.timeout)
         if self.finish_threads_event.is_set() is False:
             self.cancel()
@@ -746,7 +747,9 @@ class ThreadPoolTask(Task):
         # self.logger.debug("{0}: Args: {1}, kwArgs: {2}".format(self, args, kwargs))
         thread_id = self.next_thread_id
         self.next_thread_id += 1
+        self.logger.debug("{0}: before in queue. args {1}, kwargs {2}, thread id {3}".format(self, args, kwargs, thread_id))
         self.in_queue.put((self.work_func, args, kwargs, thread_id))
+        self.logger.debug("{0}: after in queue")
         self.result_dict[thread_id] = None
         self.logger.debug("{0}: Queue added. Thread id: {1}".format(self, thread_id))
 
@@ -814,7 +817,8 @@ class ThreadPoolTask(Task):
                 raise e
             if isinstance(retval, Exception):
                 raise retval
-            self.logger.debug("{0}: result_dict {1}".format(self, pprint.pformat(self.result_dict)))
+            self.logger.debug("{0}: proc id {1} completed".format(self, proc_id))
+            # self.logger.debug("{0}: result_dict {1}".format(self, pprint.pformat(self.result_dict)))
             self.result = retval
             for callback in self.callback_list:
                 callback(self)
