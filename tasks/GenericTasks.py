@@ -196,6 +196,13 @@ class Task(object):
                     self.event_done.wait()
         return self.result
 
+    def get_name(self):
+        """
+        Retrieve the name of the task. The name can be supplied on creating. If not, it will be auto-generated.
+        :return: Task name
+        """
+        return self.name
+
     def action(self):
         self.logger.info("{0} entering action.".format(self))
         self.result = None
