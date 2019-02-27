@@ -555,6 +555,7 @@ class TangoScanTask(Task):
         self.scan_param = scan_param
         self.device_handler = device_handler
         self.scan_result = None
+        self.last_step_result = None
 
     def action(self):
         self.logger.info("{0} starting scan of {1} from {2} to {3}. ".format(self, self.scan_param.scan_attr_name,
@@ -600,6 +601,8 @@ class TangoScanTask(Task):
             pos_list.append(step_result[1].value)
             timestamp_list.append(step_result[1].time)
             meas_list.append(step_result[2])
+            self.last_step_result = step_result
+            # Step done, notify callbacks:
             if self.is_done() is False:
                 self.logger.debug("{0} Calling {1} callbacks".format(self, len(self.callback_list)))
                 for callback in self.callback_list:
@@ -610,6 +613,9 @@ class TangoScanTask(Task):
 
         self.scan_result = ScanResult(pos_list, meas_list, timestamp_list)
         self.result = self.scan_result
+
+    def get_last_step_result(self):
+        return self.last_step_result
 
 
 class PopulateDeviceListTask(Task):

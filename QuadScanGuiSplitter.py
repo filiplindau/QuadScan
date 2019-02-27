@@ -11,6 +11,7 @@ from PyQt4 import QtGui, QtCore
 
 import pyqtgraph as pq
 import sys
+import glob
 import numpy as np
 import itertools
 # from QuadScanController import QuadScanController
@@ -113,6 +114,7 @@ class QuadScanGui(QtGui.QWidget):
         self.quad_tasks = list()        # Repeat tasks for selected quad
         self.screen_tasks = list()      # Repeat tasks for selected screen
         self.processing_tasks = list()
+        self.scan_task = None
 
         self.gui_lock = threading.Lock()
 
@@ -288,7 +290,8 @@ class QuadScanGui(QtGui.QWidget):
         self.charge_plot.sigClicked.connect(self.points_clicked)
         self.charge_plot.sigRightClicked.connect(self.points_clicked)
         self.ui.fit_algo_combobox.currentIndexChanged.connect(self.set_algo)
-        self.ui.load_disk_button.clicked.connect(self.load_data)
+        self.ui.load_disk_button.clicked.connect(self.load_data_disk)
+        self.ui.load_scan_button.clicked.connect(self.load_data_scan)
         self.ui.p_roi_cent_x_spinbox.editingFinished.connect(self.set_roi)
         self.ui.p_roi_cent_y_spinbox.editingFinished.connect(self.set_roi)
         self.ui.p_roi_size_w_spinbox.editingFinished.connect(self.set_roi)
@@ -400,7 +403,7 @@ class QuadScanGui(QtGui.QWidget):
         root.info("Set roi from spinboxes")
         self.start_processing()
 
-    def load_data(self):
+    def load_data_disk(self):
         """
         Initiate load data from save directory. Starts a LoadQuadScanTask and sets a callback update_load_data
         when completed.
@@ -408,7 +411,14 @@ class QuadScanGui(QtGui.QWidget):
         :return:
         """
         root.info("Loading data from disk")
-        load_dir = QtGui.QFileDialog.getExistingDirectory(self, "Select directory", self.last_load_dir)
+        # load_dir = QtGui.QFileDialog.getExistingDirectory(self, "Select directory", self.last_load_dir)
+        filedialog = QtGui.QFileDialog(self, "Load data", directory=self.last_load_dir)
+        filedialog.setOption(QtGui.QFileDialog.DontUseNativeDialog, False)
+        filedialog.setFileMode(QtGui.QFileDialog.Directory)
+        filedialog.directoryEntered.connect(self.load_dir_entered)
+        filedialog.directoryEntered.emit(self.last_load_dir)
+        filedialog.exec_()
+        load_dir = str(filedialog.directory().absolutePath())
         self.last_load_dir = load_dir
         root.debug("Loading from directory {0}".format(load_dir))
         self.image_processor.add_callback(self.update_load_data)        # This method is called when loading is finished
@@ -424,6 +434,45 @@ class QuadScanGui(QtGui.QWidget):
         t1.start()
         source_name = QtCore.QDir.fromNativeSeparators(load_dir).split("/")[-1]
         self.ui.data_source_label.setText(source_name)
+
+    def load_data_scan(self):
+        """
+        Move data from scan to analysis datastructures.
+
+        :return:
+        """
+        root.info("Loading data from scan")
+        root.debug("Selected: {0}".format(sel_dir))
+
+    def load_dir_entered(self, load_dir):
+        s_dir = str(load_dir)
+        file_list = glob.glob("{0}/*.png".format(s_dir))
+        root.info("Entered directory {0}. {1} files found.".format(s_dir, len(file_list)))
+        filename = "daq_info.txt"
+        if os.path.isfile(os.path.join(s_dir, filename)) is False:
+            s = "daq_info.txt not found"
+        else:
+            root.debug("Loading Jason format data")
+            data_dict = dict()
+            with open(os.path.join(s_dir, filename), "r") as daq_file:
+                while True:
+                    line = daq_file.readline()
+                    if line == "" or line[0:5] == "*****":
+                        break
+                    try:
+                        key, value = line.split(":")
+                        data_dict[key.strip()] = value.strip()
+                    except ValueError:
+                        pass
+            try:
+                s = "Load data. {0} images, {1}, {2} < k < {3}, {4} MeV".format(len(file_list),
+                                                                                data_dict["quad"],
+                                                                                data_dict["k_min"],
+                                                                                data_dict["k_max"],
+                                                                                data_dict["beam_energy"])
+            except KeyError:
+                s = "Load data. {0} images. Could not parse daq_info.txt".format(len(file_list))
+        self.sender().setWindowTitle(s)
 
     def update_load_data(self, task):
         """
@@ -625,6 +674,13 @@ class QuadScanGui(QtGui.QWidget):
             # Add more device connections here
 
     def populate_sections(self, task):
+        """
+        Callback from populate devices task, which goes through the tango database and checks for devices
+        applicable to quadscans.
+
+        :param task: Task object that sent the callback
+        :return:
+        """
         root.info("Populate section finished.")
         self.section_devices = task.get_result(wait=False)
         self.update_section()
@@ -633,6 +689,12 @@ class QuadScanGui(QtGui.QWidget):
         root.info("Updating scan devices")
 
     def update_process_image_roi(self):
+        """
+        Callback for updating the ROI selection in the raw process image. When changed the roi spinboxes
+        are updated and a process all images task is started.
+
+        :return:
+        """
         root.info("Updating ROI for process image")
         pos = self.ui.process_image_widget.roi.pos()
         size = self.ui.process_image_widget.roi.size()
@@ -653,6 +715,13 @@ class QuadScanGui(QtGui.QWidget):
         self.start_processing()
 
     def change_raw_filtered_view(self):
+        """
+        Select which image to be shown in the process image widget.
+        Raw is before thresholding, cropping, and median filtering.
+        Filtered is after these operations.
+
+        :return:
+        """
         # Save current view:
         view_range = self.ui.process_image_widget.view.viewRange()
         pos = [view_range[0][0], view_range[1][0]]
@@ -830,10 +899,48 @@ class QuadScanGui(QtGui.QWidget):
         root.info("Removing screen {0}".format(self.current_screen))
 
     def start_scan(self):
+        """
+        Start a new scan
+        :return:
+        """
         root.info("Start scan pressed")
+        if self.scan_task is not None:
+            self.scan_task.cancel()
+        if str(self.ui.camera_state_label.text()).upper() != "RUNNING":
+            root.warning("Camera not running. Can't start scan")
+        k0 = self.ui.k_start_spinbox.value()
+        k1 = self.ui.k_end_spinbox.value()
+        dk = (k1 - k0) / np.maximum(1, self.ui.num_k_spinbox.value() - 1)
+        scan_param = ScanParam(scan_attr_name="mainfieldcomponent", scan_device_name=self.current_quad.cqr,
+                               scan_start_pos=k0, scan_end_pos=k1, scan_step=dk,
+                               scan_pos_tol=np.maximum(dk*0.01, 0.001), scan_pos_check_interval=0.1,
+                               measure_attr_name_list=["image"], measure_device_list=self.current_screen.liveviewer,
+                               measure_number=self.ui.num_images_spinbox.value(),
+                               measure_interval=self.ui.reprate_spinbox.value())
+        self.scan_task = TangoScanTask(scan_param=scan_param, device_handler=self.device_handler, name="scan",
+                                       timeout=5.0, callback_list=[self.scan_callback])
 
     def stop_scan(self):
         root.info("Stop scan pressed")
+
+    def assert_scan_start_conditions(self):
+        root.info("Checking start conditions (camera running, screen in, quad on")
+        cam_state = TangoReadAttributeTask()
+
+    def scan_callback(self, task):
+        """
+        Callback for each step of the scan and also when the scan is completed.
+        Update scan info and the latest image.
+
+        :param task: scan task
+        :return:
+        """
+        root.debug("Scan callback")
+        if not task.is_done():
+            res = task.get_result(wait=False)
+            pos = res[1].value
+            timestamp = res[1].time
+            measure_list = res[2]
 
     def start_processing(self):
         if len(self.processing_tasks) > 0:
