@@ -654,6 +654,7 @@ class QuadScanGui(QtGui.QWidget):
             k_rep_task.start()
             self.quad_tasks.append(k_rep_task)
             self.current_quad = new_quad
+            self.ui.current_quad_sel_label.setText("{0}".format(new_quad.name))
             # Add more device connections here
 
         try:
@@ -665,8 +666,23 @@ class QuadScanGui(QtGui.QWidget):
                 t.cancel()
             self.screen_tasks = list()
             image_task = TangoReadAttributeTask("image", new_screen.liveviewer, self.device_handler,
-                                                name="image_read", callback_list=[self.read_image])
-            rep_task = RepeatTask(image_task, -1, 0.3, name="image_repeat")
+                                                name="cam_image_read", callback_list=[self.read_image])
+            rep_task = RepeatTask(image_task, -1, 0.3, name="cam_image_repeat")
+            rep_task.start()
+            self.screen_tasks.append(rep_task)
+            cam_state_task = TangoReadAttributeTask("state", new_screen.liveviewer, self.device_handler,
+                                                    name="cam_state_read", callback_list=[self.read_image])
+            rep_task = RepeatTask(cam_state_task, -1, 0.5, name="cam_state_repeat")
+            rep_task.start()
+            self.screen_tasks.append(rep_task)
+            cam_state_task = TangoReadAttributeTask("framerate", new_screen.liveviewer, self.device_handler,
+                                                    name="cam_reprate_read", callback_list=[self.read_image])
+            rep_task = RepeatTask(cam_state_task, -1, 0.5, name="cam_reprate_repeat")
+            rep_task.start()
+            self.screen_tasks.append(rep_task)
+            screen_in_task = TangoReadAttributeTask("statusin", new_screen.screen, self.device_handler,
+                                                    name="screen_in_read", callback_list=[self.read_image])
+            rep_task = RepeatTask(screen_in_task, -1, 0.5, name="screen_in_repeat")
             rep_task.start()
             self.screen_tasks.append(rep_task)
             self.current_screen = new_screen
@@ -1086,11 +1102,31 @@ class QuadScanGui(QtGui.QWidget):
             root.warning("Not valid task")
 
     def read_image(self, task):
+        """
+        Callback for camera related tango attributes
+
+        :param task: Task instance sending the callback
+        :return:
+        """
+        name = task.get_name()
+        root.debug("Read image for task {0}".format(name))
         try:
-            image = task.get_result(wait=False)
-            self.ui.camera_widget.setImage(image.value)
-        except AttributeError:
-            root.warning("Not valid task")
+            result = task.get_result(wait=False)
+            if name == "cam_image_read":
+                self.ui.camera_widget.setImage(result.value)
+            elif name == "cam_state_read":
+                self.ui.camera_state_label.setText("{0}".format(str(result.value)).upper())
+            elif name == "cam_reprate_read":
+                self.ui.reprate_label.setText("{0:.1f} Hz".format(result.value))
+            elif name == "screen_in_read":
+                if result.value:
+                    self.ui.screen_state_label.setText("IN")
+                else:
+                    self.ui.screen_state_label.setText("OUT")
+            else:
+                root.error("Task {0} not useful for camera updating".format(name))
+        except AttributeError as e:
+            root.warning("{0}: Not valid task... {1}".format(name, e))
 
 
 if __name__ == "__main__":

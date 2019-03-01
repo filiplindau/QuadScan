@@ -114,15 +114,16 @@ SectionQuad stores quad data for a quadrupole magnet in a section.
 """
 
 
-SectionScreen = namedtuple("SectionScreen", "name position liveviewer beamviewer limaccd")
+SectionScreen = namedtuple("SectionScreen", "name position liveviewer beamviewer limaccd screen")
 """
 SectionScreen stores screen data for a screen in a section.
 
-:param name: Tango DIA name of the screen, e.g. I-MS1/DIA/SCRN-01
+:param name: Screen short name, e.g. SCRN-01
 :param position: Longitudinal position of the screen along the linac.
 :param liveviewer: Tango name of the camera liveviewer, e.g. lima/liveviewer/I-MS1-
 :param beamviewer: Tango name of the camera beamviewer, e.g. lima/beamviewer/I-MS1-
 :param limaccd: Tango name of the camera limaccd, e.g. lima/limaccd/I-MS1-
+:param screen: Tango DIA name of the screen, e.g. I-MS1/DIA/SCRN-01
 """
 
 

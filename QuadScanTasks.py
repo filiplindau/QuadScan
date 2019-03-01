@@ -72,7 +72,12 @@ class TangoReadAttributeTask(Task):
     def action(self):
         self.logger.info("{0} reading {1} on {2}. ".format(self, self.attribute_name, self.device_name))
         dev = self.device_handler.get_device(self.device_name)
-        attr = dev.read_attribute(self.attribute_name)
+        try:
+            attr = dev.read_attribute(self.attribute_name)
+        except AttributeError as e:
+            self.logger.exception("{0}: Attribute error reading {1} on {2}: {3}".format(self,
+                                                                                        self.attribute_name,
+                                                                                        self.device_name))
         self.result = attr
 
 
@@ -298,7 +303,10 @@ class LoadQuadScanDirTask(Task):
         image_list = self.task_seq.get_result(wait=True)
         # Now wait for images to be done processing:
         self.logger.debug("{0}: Waiting for image processing to finish".format(self))
-        while self.image_processor.pending_images_in_queue > 0:
+        starttime = time.time()
+        dt = 0
+        while self.image_processor.pending_images_in_queue > 0 and dt < self.timeout:
+            dt = time.time() - starttime
             time.sleep(0.01)
         # self.image_processor.wait_for_queue_empty()
         self.logger.debug("{0}: Image processing finished".format(self))
@@ -354,14 +362,16 @@ def process_image_func(image, k_ind, k_value, image_ind, threshold, roi_cent, ro
     # else:
     #     n = 1
 
-    logger.debug("Before medfilt")
+    logger.debug("Before medfilt, pic roi {0}, kernel {1}".format(pic_roi.shape, kernel))
     # Median filtering:
-    if normalize is True:
-        pic_roi = medfilt2d(pic_roi / n, kernel)
-    else:
-        pic_roi = medfilt2d(pic_roi, kernel)
+    try:
+        if normalize is True:
+            pic_roi = medfilt2d(pic_roi / n, kernel)
+        else:
+            pic_roi = medfilt2d(pic_roi, kernel)
+    except ValueError as e:
+        logger.warning("Medfilt kernel value error: {0}".format(e))
 
-    logger.debug("Before thresholding")
     # Threshold image
     if threshold is None:
         threshold = pic_roi[0:20, 0:20].mean()*3 + pic_roi[-20:, -20:].mean()*3
@@ -375,7 +385,6 @@ def process_image_func(image, k_ind, k_value, image_ind, threshold, roi_cent, ro
     l_x_n = np.sum(line_x)
     l_y_n = np.sum(line_y)
 
-    logger.debug("Before enable")
     # Enable point only if there is data:
     if l_x_n <= 0.0:
         enabled = False
@@ -386,7 +395,6 @@ def process_image_func(image, k_ind, k_value, image_ind, threshold, roi_cent, ro
     y_cent = np.sum(y_v * line_y) / l_y_n
     sigma_y = np.sqrt(np.sum((y_v - y_cent) ** 2 * line_y) / l_y_n)
 
-    logger.debug("Before result")
     # Store processed data
     result = ProcessedImage(k_ind=k_ind, k_value=k_value, image_ind=image_ind, pic_roi=pic_roi,
                             line_x=line_x, line_y=line_y, x_cent=x_cent, y_cent=y_cent,
@@ -449,9 +457,10 @@ class ImageProcessorTask(Task):
             roi_cent = [roi_dim[0]/2, roi_dim[1]/2]
         else:
             roi_cent = self.roi_cent
-        self.processor.add_work_item(quad_image.image, quad_image.k_ind, quad_image.k_value, quad_image.image_ind,
-                                     self.threshold, roi_cent, roi_dim, self.cal, self.kernel, bpp,
-                                     False, enabled)
+        self.processor.add_work_item(image=quad_image.image, k_ind=quad_image.k_ind, k_value=quad_image.k_value,
+                                     image_ind=quad_image.image_ind, threshold=self.threshold, roi_cent=roi_cent,
+                                     roi_dim=roi_dim, cal=self.cal, kernel=self.kernel, bpp=bpp, normalize= False,
+                                     enabled=enabled)
 
     def _image_done(self, processor_task):
         # type: (ProcessPoolTask) -> None
@@ -683,7 +692,7 @@ class PopulateDeviceListTask(Task):
                     liveviewer = "lima/liveviewer/{0}".format(lima_name)
                     beamviewer = "lima/beamviewer/{0}".format(lima_name)
                     limaccd = "lima/limaccd/{0}".format(lima_name)
-                    scr = SectionScreen(name, position, liveviewer, beamviewer, limaccd)
+                    scr = SectionScreen(name, position, liveviewer, beamviewer, limaccd, sc_name)
                     screen_list.append(scr)
                 # If name and/or position for the screen is not retrievable we cannot use it:
                 except IndexError as e:
