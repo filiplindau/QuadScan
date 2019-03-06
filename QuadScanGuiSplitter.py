@@ -942,7 +942,8 @@ class QuadScanGui(QtGui.QWidget):
                                measure_number=self.ui.num_images_spinbox.value(),
                                measure_interval=self.ui.reprate_spinbox.value())
         self.scan_task = TangoScanTask(scan_param=scan_param, device_handler=self.device_handler, name="scan",
-                                       timeout=5.0, callback_list=[self.scan_callback])
+                                       timeout=5.0, callback_list=[self.scan_callback],
+                                       read_callback=self.scan_image_callback)
         self.scan_task.start()
         root.info("Scan started. Parameters: {0}".format(scan_param))
 
@@ -1013,19 +1014,14 @@ class QuadScanGui(QtGui.QWidget):
             save_dict["camera_bpp"] = 16
         except KeyError as e:
             msg = "Could not generate daq_info: {0}".format(e)
-            self.logger.error(msg)
-            self.controller.set_status(msg)
-            self.next_state = "idle"
-            self.stop_run()
-            return "idle"
+            root.exception(e)
+            return False
         except IndexError as e:
             msg = "Could not generate daq_info: {0}".format(e)
-            self.logger.error(msg)
-            self.controller.set_status(msg)
-            self.next_state = "idle"
-            self.stop_run()
-            return "idle"
-        full_name = os.path.join(self.save_path, "daq_info.txt")
+            root.exception(e)
+            return False
+        save_path = str(self.ui.save_path_linedit.text())
+        full_name = os.path.join(save_path, "daq_info.txt")
         with open(full_name, "w") as f:
             for key, value in save_dict.iteritems():
                 s = "{0} : {1}\n".format(key.ljust(13, " "), value)
@@ -1034,18 +1030,19 @@ class QuadScanGui(QtGui.QWidget):
             f.write("+------+-------+----------+----------+----------------------+\n")
             f.write("|  k   |  shot |    set   |   read   |        saved         |\n")
             f.write("|  #   |   #   |  k-value |  k-value |     image file       |\n")
+        return True
 
     def scan_callback(self, task):
         """
         Callback for each step of the scan and also when the scan is completed.
-        Update scan info and the latest image.
+        Update scan info.
 
         :param task: scan task
         :return:
         """
         root.debug("Scan callback")
         if not task.is_done():
-            res = task.get_result(wait=False)
+            res = task.get_result(wait=False)       # Result contains: [write_pos_res, read_pos_res, measure_list]
             pos = res[1].value
             timestamp = res[1].time
             measure_list = res[2]
@@ -1053,6 +1050,14 @@ class QuadScanGui(QtGui.QWidget):
                                for ind, im in enumerate(measure_list)]
             images = self.quad_scan_data_scan.images + quad_image_list
             self.quad_scan_data_scan._replace(images=images)
+
+    def scan_image_callback(self, task):
+        """
+        Callabck for a new image that had been read. This image is saved and shown in the GUI.
+        :param task:
+        :return:
+        """
+        root.debug("Scan image callback")
 
     def start_processing(self):
         if len(self.processing_tasks) > 0:

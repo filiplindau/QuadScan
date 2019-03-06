@@ -558,13 +558,15 @@ class ProcessAllImagesTask(Task):
 
 
 class TangoScanTask(Task):
-    def __init__(self, scan_param, device_handler, name=None, timeout=None, trigger_dict=dict(), callback_list=list()):
+    def __init__(self, scan_param, device_handler, name=None, timeout=None, trigger_dict=dict(), callback_list=list(),
+                 read_callback=None):
         # type: (ScanParam) -> None
         Task.__init__(self, name, timeout=timeout, trigger_dict=trigger_dict, callback_list=callback_list)
         self.scan_param = scan_param
         self.device_handler = device_handler
         self.scan_result = None
         self.last_step_result = None
+        self.read_callback = read_callback
 
     def action(self):
         self.logger.info("{0} starting scan of {1} from {2} to {3}. ".format(self, self.scan_param.scan_attr_name,
@@ -592,9 +594,14 @@ class TangoScanTask(Task):
                                                          timeout=self.timeout)
             measure_task_list = list()
             for meas_ind, meas_attr in enumerate(self.scan_param.measure_attr_name_list):
-                read_task = TangoReadAttributeTask(meas_attr, self.scan_param.measure_device_list[meas_ind],
-                                                   self.device_handler, name="read_{0}".format(meas_attr),
-                                                   timeout=self.timeout)
+                if self.read_callback is None:
+                    read_task = TangoReadAttributeTask(meas_attr, self.scan_param.measure_device_list[meas_ind],
+                                                       self.device_handler, name="read_{0}".format(meas_attr),
+                                                       timeout=self.timeout)
+                else:
+                    read_task = TangoReadAttributeTask(meas_attr, self.scan_param.measure_device_list[meas_ind],
+                                                       self.device_handler, name="read_{0}".format(meas_attr),
+                                                       timeout=self.timeout, callback_list=[self.read_callback])
                 rep_task = RepeatTask(read_task, self.scan_param.measure_number, self.scan_param.measure_interval,
                                       name="rep_{0}".format(meas_attr), timeout=self.timeout)
                 measure_task_list.append(rep_task)
