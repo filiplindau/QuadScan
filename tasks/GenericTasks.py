@@ -203,6 +203,12 @@ class Task(object):
         """
         return self.name
 
+    def set_name(self, name):
+        """
+        Set new name of the task.
+        """
+        self.name = name
+
     def action(self):
         self.logger.info("{0} entering action.".format(self))
         self.result = None
@@ -398,6 +404,7 @@ class RepeatTask(Task):
     def __init__(self, task, repetitions, delay=0, name=None, timeout=None, trigger_dict=dict(), callback_list=list()):
         Task.__init__(self, name, timeout=timeout, trigger_dict=trigger_dict, callback_list=callback_list)
         self.task = task                    # type: Task
+        self.base_name = self.task.get_name()
         if repetitions is None:
             repetitions = -1
         self.repetitions = repetitions
@@ -410,6 +417,7 @@ class RepeatTask(Task):
         result_list = list()
         while self.repetitions < current_rep or self.repetitions == -1:
             self.logger.debug("{0}: Starting task".format(self))
+            self.task.set_name("{0}_{1}".format(self.base_name, current_rep))
             self.task.start()
             res = self.task.get_result(wait=True, timeout=self.timeout)
             self.logger.debug("{0}: Task returned result {1}".format(self, res))

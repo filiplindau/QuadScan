@@ -42,6 +42,9 @@ pq.graphicsItems.GradientEditorItem.Gradients['thermalclip'] = {
               (1, (255, 255, 255, 255))], 'mode': 'rgb'}
 
 
+no_database = False
+
+
 class MyScatterPlotItem(pq.ScatterPlotItem):
     """
     Subclassed to allow capture of right clicks and emitting signal.
@@ -133,7 +136,11 @@ class QuadScanGui(QtGui.QWidget):
         self.image_processor.start()
         # self.state_dispatcher = StateDispatcher(self.controller)
         # self.state_dispatcher.start()
-        t1 = PopulateDeviceListTask(sections=self.section_list, name="pop_sections")
+        if no_database:
+            t1 = PopulateDummyDeviceList(sections=self.section_list, local_name="192.168.1.101:10000",
+                                         name="pop_sections")
+        else:
+            t1 = PopulateDeviceListTask(sections=self.section_list, name="pop_sections")
         t1.start()
         t1.add_callback(self.populate_sections)
 
@@ -693,8 +700,12 @@ class QuadScanGui(QtGui.QWidget):
             rep_task = RepeatTask(screen_in_task, -1, 0.5, name="screen_in_repeat")
             rep_task.start()
             self.screen_tasks.append(rep_task)
-            cam_cal_task = TangoReadAttributeTask("", new_screen.beamviewer, self.device_handler,
-                                                  name="cam_cal_read", callback_list=[self.read_image])
+            cam_cal_task = BagOfTasksTask([TangoReadAttributeTask("measurementruler", new_screen.beamviewer,
+                                                                  self.device_handler, name="cam_cal_ruler"),
+                                           TangoReadAttributeTask("measurementrulerwidth", new_screen.beamviewer,
+                                                                  self.device_handler, name="cam_cal_width")
+                                           ],
+                                          name="cam_cal_read", callback_list=[self.read_image])
             cam_cal_task.start()
             self.current_screen = new_screen
 
@@ -931,21 +942,33 @@ class QuadScanGui(QtGui.QWidget):
         :return:
         """
         root.info("Start scan pressed")
-        self.assert_scan_start_conditions()
-        k0 = self.ui.k_start_spinbox.value()
-        k1 = self.ui.k_end_spinbox.value()
-        dk = (k1 - k0) / np.maximum(1, self.ui.num_k_spinbox.value() - 1)
-        scan_param = ScanParam(scan_attr_name="mainfieldcomponent", scan_device_name=self.current_quad.cqr,
-                               scan_start_pos=k0, scan_end_pos=k1, scan_step=dk,
-                               scan_pos_tol=np.maximum(dk*0.01, 0.001), scan_pos_check_interval=0.1,
-                               measure_attr_name_list=["image"], measure_device_list=self.current_screen.liveviewer,
-                               measure_number=self.ui.num_images_spinbox.value(),
-                               measure_interval=self.ui.reprate_spinbox.value())
-        self.scan_task = TangoScanTask(scan_param=scan_param, device_handler=self.device_handler, name="scan",
-                                       timeout=5.0, callback_list=[self.scan_callback],
-                                       read_callback=self.scan_image_callback)
-        self.scan_task.start()
-        root.info("Scan started. Parameters: {0}".format(scan_param))
+        if self.assert_scan_start_conditions():
+            if self.generate_daq_info():
+                k0 = self.ui.k_start_spinbox.value()
+                k1 = self.ui.k_end_spinbox.value()
+                dk = (k1 - k0) / np.maximum(1, self.ui.num_k_spinbox.value() - 1)
+                scan_param = ScanParam(scan_attr_name="mainfieldcomponent", scan_device_name=self.current_quad.cqr,
+                                       scan_start_pos=k0, scan_end_pos=k1, scan_step=dk,
+                                       scan_pos_tol=np.maximum(dk*0.01, 0.001), scan_pos_check_interval=0.1,
+                                       measure_attr_name_list=["image"], measure_device_list=self.current_screen.liveviewer,
+                                       measure_number=self.ui.num_images_spinbox.value(),
+                                       measure_interval=self.ui.reprate_spinbox.value())
+                # callback_list=[self.scan_callback] is called for each completed step.
+                # read_callback=self.scan_image_callback is called for every measurement (image taken)
+                self.scan_task = TangoScanTask(scan_param=scan_param, device_handler=self.device_handler, name="scan",
+                                               timeout=5.0, callback_list=[self.scan_callback],
+                                               read_callback=self.scan_image_callback)
+                self.scan_task.start()
+                if self.ui.update_analysis_radiobutton.is_checked():
+                    # Should also update roi from camera roi
+                    self.update_analysis_parameters()
+                    self.image_processor.clear_callback_list()
+                    self.image_processor.add_callback(self.scan_image_processed_callback)
+                root.info("Scan started. Parameters: {0}".format(scan_param))
+            else:
+                root.error("Scan not started. Could not generate daq_info")
+        else:
+            root.error("Scan not started. Start conditions not met.")
 
     def stop_scan(self):
         root.info("Stop scan pressed")
@@ -973,6 +996,10 @@ class QuadScanGui(QtGui.QWidget):
         return True
 
     def generate_daq_info(self):
+        """
+        Generate daq_info.txt file and AcceleratorParameters. Init quad_scan_data_scan with these parameters.
+        :return: True is success
+        """
         root.info("Generating daq_info")
         k0 = self.ui.k_start_spinbox.value()
         k1 = self.ui.k_end_spinbox.value()
@@ -1045,11 +1072,17 @@ class QuadScanGui(QtGui.QWidget):
             res = task.get_result(wait=False)       # Result contains: [write_pos_res, read_pos_res, measure_list]
             pos = res[1].value
             timestamp = res[1].time
-            measure_list = res[2]
-            quad_image_list = [QuadImage(k_ind=0, k_value=pos, image_ind=ind, image=im)
-                               for ind, im in enumerate(measure_list)]
-            images = self.quad_scan_data_scan.images + quad_image_list
-            self.quad_scan_data_scan._replace(images=images)
+            # measure_list = res[2]
+            # quad_image_list = [QuadImage(k_ind=0, k_value=pos, image_ind=ind, image=im)
+            #                    for ind, im in enumerate(measure_list)]
+            # images = self.quad_scan_data_scan.images + quad_image_list
+            # self.quad_scan_data_scan._replace(images=images)
+        if self.ui.update_analysis_radiobutton.is_checked():
+            self.quad_scan_data_analysis = self.quad_scan_data_scan
+            self.update_analysis_parameters()
+            self.update_image_selection()
+            self.update_fit_signal.emit()
+            self.start_fit()
 
     def scan_image_callback(self, task):
         """
@@ -1058,6 +1091,36 @@ class QuadScanGui(QtGui.QWidget):
         :return:
         """
         root.debug("Scan image callback")
+        name_elements = task.get_name().split("_")
+        image = task.get_result(wait=False).value
+        try:
+            im_ind = name_elements[4]
+            k_ind = name_elements[2]
+            k_value = name_elements[3]
+            self.ui.camera_widget.setImage(image, autoLevels=False, autoRange=False)
+            quadimage = QuadImage(k_ind=k_ind, k_value=k_value, image_ind=im_ind, image=image)
+            # Appending image to images list in "immutable" named tuple....... :)
+            self.quad_scan_data_scan.images.append(quadimage)
+            self.image_processor.set_roi(self.quad_scan_data.acc_params.roi_center,
+                                         self.quad_scan_data.acc_params.roi_dim)
+            threshold = self.ui.p_threshold_spinbox.value()
+            kernel = self.ui.p_median_kernel_spinbox.value()
+            self.image_processor.set_processing_parameters(threshold, self.quad_scan_data.acc_params.cal, kernel)
+
+            self.image_processor.process_image(quadimage, enabled=True)
+        except IndexError as e:
+            root.exception("Error for returned image in scan")
+            self.ui.status_textedit.append("Error for returned image in scan\n")
+            return
+        task = SaveQuadImageTask(quadimage, save_path=str(self.ui.save_path_linedit.text()),
+                                 name=str(self.ui.save_name_lineedit))
+        task.start()
+
+    def scan_image_processed_callback(self, task):
+        root.debug("Scan image processed.")
+        proc_image = task.get_result(wait=False)    # type: ProcessedImage
+        ind = proc_image.k_ind * self.quad_scan_data_scan.acc_params.num_k + proc_image.image_ind
+        self.quad_scan_data_scan.proc_images.append(proc_image)
 
     def start_processing(self):
         if len(self.processing_tasks) > 0:
@@ -1225,7 +1288,9 @@ class QuadScanGui(QtGui.QWidget):
                 else:
                     self.ui.screen_state_label.setText("OUT")
             elif name == "cam_cal_read":
-                self.camera_cal = result.value
+                cal = result.value[1] / result.value[0]
+                root.debug("Camera calibration: {0} mm/pixel".format(cal))
+                self.camera_cal = [cal, cal]
             else:
                 root.error("Task {0} not useful for camera updating".format(name))
         except AttributeError as e:

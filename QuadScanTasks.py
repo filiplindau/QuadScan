@@ -574,6 +574,7 @@ class TangoScanTask(Task):
                                                                              self.scan_param.scan_end_pos))
         self.logger.info("{0} measuring {1}. ".format(self, self.scan_param.measure_attr_name_list))
         pos_list = list()
+        pos_ind = 0
         timestamp_list = list()
         meas_list = list()
         next_pos = self.scan_param.scan_start_pos
@@ -594,13 +595,14 @@ class TangoScanTask(Task):
                                                          timeout=self.timeout)
             measure_task_list = list()
             for meas_ind, meas_attr in enumerate(self.scan_param.measure_attr_name_list):
+                m_name = "read_{0}_{1}_{2}".format(meas_attr, pos_ind, self.last_step_result)
                 if self.read_callback is None:
                     read_task = TangoReadAttributeTask(meas_attr, self.scan_param.measure_device_list[meas_ind],
-                                                       self.device_handler, name="read_{0}".format(meas_attr),
+                                                       self.device_handler, name=m_name,
                                                        timeout=self.timeout)
                 else:
                     read_task = TangoReadAttributeTask(meas_attr, self.scan_param.measure_device_list[meas_ind],
-                                                       self.device_handler, name="read_{0}".format(meas_attr),
+                                                       self.device_handler, name=m_name,
                                                        timeout=self.timeout, callback_list=[self.read_callback])
                 rep_task = RepeatTask(read_task, self.scan_param.measure_number, self.scan_param.measure_interval,
                                       name="rep_{0}".format(meas_attr), timeout=self.timeout)
@@ -699,6 +701,89 @@ class PopulateDeviceListTask(Task):
                     liveviewer = "lima/liveviewer/{0}".format(lima_name)
                     beamviewer = "lima/beamviewer/{0}".format(lima_name)
                     limaccd = "lima/limaccd/{0}".format(lima_name)
+                    scr = SectionScreen(name, position, liveviewer, beamviewer, limaccd, sc_name)
+                    screen_list.append(scr)
+                # If name and/or position for the screen is not retrievable we cannot use it:
+                except IndexError as e:
+                    self.logger.exception("Index error when parsing screen {0}: ".format(mag_name))
+                    pass
+                except KeyError as e:
+                    self.logger.exception("Key error when parsing screen {0}: ".format(mag_name))
+                    pass
+
+            sect_quads[s] = quad_list
+            sect_screens[s] = screen_list
+            self.logger.debug("{0} Populating section {1}:\n "
+                              "    Found quads: {2} \n "
+                              "    Found screens: {3} \n"
+                              "--------------------------------------------------------\n"
+                              "".format(self, s.upper(), quad_list, screen_list))
+        self.result = SectionDevices(sect_quads, sect_screens)
+
+
+class PopulateDummyDeviceList(Task):
+    """
+    Populate matching section data by assuming dummy devices with no database.
+
+    This does not establish a connection with the device servers. That is done by
+    the device handler.
+
+    Data retrieved:
+    Quads... name, length, position, polarity
+    Screens... name, position
+    """
+
+    def __init__(self, sections, local_name="192.168.1.101:10000", name=None, action_exec_type="thread",
+                 timeout=None, trigger_dict=dict(), callback_list=list()):
+        Task.__init__(self, name, action_exec_type="thread", timeout=timeout, trigger_dict=trigger_dict, callback_list=callback_list)
+        self.sections = sections
+        self.local_name = local_name
+
+    def action(self):
+        self.logger.info("{0} Populating matching sections by assuming dummy devices.".format(self))
+
+        sections = self.sections
+        sect_quads = dict()
+        sect_screens = dict()
+
+        # Loop through sections to find matching devices based on their names:
+        for s in sections:
+            # Quad names are e.g. i-ms1/mag/qb-01
+            quad_dev_list = ["{0}/{1}/mag/qf01#dbase=no".format(self.local_name, s)]
+            quad_list = list()
+            for mag_name in quad_dev_list:
+                quad = dict()
+                try:
+                    # Extract data for each found quad:
+
+                    name = mag_name.split("/")[-1].lower()
+                    position = 5.0
+                    length = 0.2
+                    polarity = 1.0
+                    crq = "{0}/{1}/crq/qf01#dbase=no".format(self.local_name, s)
+                    quad = SectionQuad(name, position, length, mag_name, crq, polarity)
+                    quad_list.append(quad)
+                except IndexError as e:
+                    self.logger.exception("Index error when parsing quad {0}: ".format(mag_name))
+                    # self.logger.error("Index error when parsing quad {0}: {1}".format(q, e))
+                    pass
+                except KeyError as e:
+                    self.logger.error("Key error when parsing quad {0}: {1}".format(mag_name, e))
+                    pass
+
+            # Screen names are e.g. i-ms1/dia/scrn-01
+            screen_dev_list = "{0}/{1}/dia/scrn01#dbase=no".format(self.local_name, s)
+            screen_list = list()
+            for sc_name in screen_dev_list:
+                scr = dict()
+                try:
+                    # Extract data for each found screen
+                    name = sc_name.split("/")[-1].lower()
+                    lima_name = "{0}-dia-scrn01#dbase=no".format(s)
+                    position = 10.0
+                    liveviewer = "{0}/lima/liveviewer/{1}".format(self.local_name, lima_name)
+                    beamviewer = "{0}/lima/beamviewer/{1}".format(self.local_name, lima_name)
+                    limaccd = "{0}/lima/limaccd/{1}".format(self.local_name, lima_name)
                     scr = SectionScreen(name, position, liveviewer, beamviewer, limaccd, sc_name)
                     screen_list.append(scr)
                 # If name and/or position for the screen is not retrievable we cannot use it:
