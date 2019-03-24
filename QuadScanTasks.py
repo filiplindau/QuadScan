@@ -733,11 +733,11 @@ class PopulateDummyDeviceList(Task):
     Screens... name, position
     """
 
-    def __init__(self, sections, local_name="192.168.1.101:10000", name=None, action_exec_type="thread",
+    def __init__(self, sections, dummy_name_dict, name=None, action_exec_type="thread",
                  timeout=None, trigger_dict=dict(), callback_list=list()):
         Task.__init__(self, name, action_exec_type="thread", timeout=timeout, trigger_dict=trigger_dict, callback_list=callback_list)
         self.sections = sections
-        self.local_name = local_name
+        self.dummy_name_dict = dummy_name_dict
 
     def action(self):
         self.logger.info("{0} Populating matching sections by assuming dummy devices.".format(self))
@@ -749,7 +749,7 @@ class PopulateDummyDeviceList(Task):
         # Loop through sections to find matching devices based on their names:
         for s in sections:
             # Quad names are e.g. i-ms1/mag/qb-01
-            quad_dev_list = ["{0}/{1}/mag/qf01#dbase=no".format(self.local_name, s)]
+            quad_dev_list = [self.dummy_name_dict["mag"]]
             quad_list = list()
             for mag_name in quad_dev_list:
                 quad = dict()
@@ -760,7 +760,7 @@ class PopulateDummyDeviceList(Task):
                     position = 5.0
                     length = 0.2
                     polarity = 1.0
-                    crq = "{0}/{1}/crq/qf01#dbase=no".format(self.local_name, s)
+                    crq = self.dummy_name_dict["crq"]
                     quad = SectionQuad(name, position, length, mag_name, crq, polarity)
                     quad_list.append(quad)
                 except IndexError as e:
@@ -772,18 +772,17 @@ class PopulateDummyDeviceList(Task):
                     pass
 
             # Screen names are e.g. i-ms1/dia/scrn-01
-            screen_dev_list = "{0}/{1}/dia/scrn01#dbase=no".format(self.local_name, s)
+            screen_dev_list = [self.dummy_name_dict["screen"]]
             screen_list = list()
             for sc_name in screen_dev_list:
                 scr = dict()
                 try:
                     # Extract data for each found screen
                     name = sc_name.split("/")[-1].lower()
-                    lima_name = "{0}-dia-scrn01#dbase=no".format(s)
                     position = 10.0
-                    liveviewer = "{0}/lima/liveviewer/{1}".format(self.local_name, lima_name)
-                    beamviewer = "{0}/lima/beamviewer/{1}".format(self.local_name, lima_name)
-                    limaccd = "{0}/lima/limaccd/{1}".format(self.local_name, lima_name)
+                    liveviewer = self.dummy_name_dict["liveviewer"]
+                    beamviewer = self.dummy_name_dict["beamviewer"]
+                    limaccd = self.dummy_name_dict["limaccd"]
                     scr = SectionScreen(name, position, liveviewer, beamviewer, limaccd, sc_name)
                     screen_list.append(scr)
                 # If name and/or position for the screen is not retrievable we cannot use it:

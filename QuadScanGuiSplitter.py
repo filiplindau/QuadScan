@@ -42,7 +42,13 @@ pq.graphicsItems.GradientEditorItem.Gradients['thermalclip'] = {
               (1, (255, 255, 255, 255))], 'mode': 'rgb'}
 
 
-no_database = False
+no_database = True
+dummy_name_dict = {"mag": "192.168.1.101:10000/i-ms1/mag/qb-01#dbase=no",
+                   "crq": "192.168.1.101:10000/i-ms1/mag/qb-01#dbase=no",
+                   "screen": "192.168.1.101:10001/i-ms1/dia/scrn-01#dbase=no",
+                   "beamviewer": "192.168.1.101:10002/lima/beamviewer/i-ms1-dia-scrn-01#dbase=no",
+                   "liveviewer": "192.168.1.101:10003/lima/liveviewer/i-ms1-dia-scrn-01#dbase=no",
+                   "limaccd": "192.168.1.101:10004/lima/limaccd/i-ms1-dia-scrn-01#dbase=no"}
 
 
 class MyScatterPlotItem(pq.ScatterPlotItem):
@@ -111,7 +117,11 @@ class QuadScanGui(QtGui.QWidget):
         self.fit_result = FitResult(poly=None, alpha=None, beta=None, eps=None, eps_n=None,
                                     gamma_e=None, fit_data=None, residual=None)
         self.section_devices = SectionDevices(sect_quad_dict=None, sect_screen_dict=None)
-        self.device_handler = DeviceHandler("g-v-csdb-0:10000", name="Handler")
+        if no_database:
+            self.device_handler = DeviceHandler(name="Handler")
+        else:
+            self.device_handler = DeviceHandler("g-v-csdb-0:10000", name="Handler")
+
         self.section_list = ["MS1", "MS2", "MS3", "SP02"]
         self.current_section = "MS1"
         self.current_quad = None        # type: SectionQuad
@@ -137,7 +147,7 @@ class QuadScanGui(QtGui.QWidget):
         # self.state_dispatcher = StateDispatcher(self.controller)
         # self.state_dispatcher.start()
         if no_database:
-            t1 = PopulateDummyDeviceList(sections=self.section_list, local_name="192.168.1.101:10000",
+            t1 = PopulateDummyDeviceList(sections=self.section_list, dummy_name_dict=dummy_name_dict,
                                          name="pop_sections")
         else:
             t1 = PopulateDeviceListTask(sections=self.section_list, name="pop_sections")
@@ -212,6 +222,10 @@ class QuadScanGui(QtGui.QWidget):
         self.ui.fit_algo_combobox.addItem("Full matrix repr")
         self.ui.fit_algo_combobox.addItem("Thin lens approx")
         self.ui.fit_algo_combobox.setCurrentIndex(0)
+
+        # Scan status init
+        self.ui.scan_status_label.setText("STOPPED: k -/- image -/-")
+        self.ui.scan_progress_label.setText("[----------]")
 
         sections = ["MS1", "MS2", "MS3", "SP02"]
         for sect in sections:
@@ -972,6 +986,8 @@ class QuadScanGui(QtGui.QWidget):
 
     def stop_scan(self):
         root.info("Stop scan pressed")
+        self.ui.scan_status_label.setText("STOPPED: k -/- image -/-")
+        self.ui.scan_progress_label.setText("[----------]")
         if self.scan_task is not None:
             self.scan_task.cancel()
 
@@ -1077,6 +1093,8 @@ class QuadScanGui(QtGui.QWidget):
             #                    for ind, im in enumerate(measure_list)]
             # images = self.quad_scan_data_scan.images + quad_image_list
             # self.quad_scan_data_scan._replace(images=images)
+        else:
+            self.ui.scan_status_label("DONE")
         if self.ui.update_analysis_radiobutton.is_checked():
             self.quad_scan_data_analysis = self.quad_scan_data_scan
             self.update_analysis_parameters()
@@ -1095,7 +1113,9 @@ class QuadScanGui(QtGui.QWidget):
         image = task.get_result(wait=False).value
         try:
             im_ind = name_elements[4]
+            num_images = self.quad_scan_data_scan.acc_params.num_images
             k_ind = name_elements[2]
+            num_k = self.quad_scan_data_scan.acc_params.num_k
             k_value = name_elements[3]
             self.ui.camera_widget.setImage(image, autoLevels=False, autoRange=False)
             quadimage = QuadImage(k_ind=k_ind, k_value=k_value, image_ind=im_ind, image=image)
@@ -1106,8 +1126,12 @@ class QuadScanGui(QtGui.QWidget):
             threshold = self.ui.p_threshold_spinbox.value()
             kernel = self.ui.p_median_kernel_spinbox.value()
             self.image_processor.set_processing_parameters(threshold, self.quad_scan_data.acc_params.cal, kernel)
-
             self.image_processor.process_image(quadimage, enabled=True)
+
+            s = "RUNNING: k {0}/{1} image {2}/{3}".format(k_ind, k_ind/float(num_k), im_ind, im_ind/float(num_images))
+            self.ui.scan_status_label.setText(s)
+            p = int((k_ind/float(num_k) * num_images + im_ind/float(num_images)) / (num_k * num_images) * 10)
+            self.ui.scan_progress_label.setText("[{0}{1}]".format("="*p, "-"*(10-p)))
         except IndexError as e:
             root.exception("Error for returned image in scan")
             self.ui.status_textedit.append("Error for returned image in scan\n")
@@ -1276,18 +1300,18 @@ class QuadScanGui(QtGui.QWidget):
         root.debug("Read image for task {0}".format(name))
         try:
             result = task.get_result(wait=False)
-            if name == "cam_image_read":
+            if "cam_image_read" in name:
                 self.ui.camera_widget.setImage(result.value)
-            elif name == "cam_state_read":
+            elif "cam_state_read" in name:
                 self.ui.camera_state_label.setText("{0}".format(str(result.value)).upper())
-            elif name == "cam_reprate_read":
+            elif "cam_reprate_read" in name:
                 self.ui.reprate_label.setText("{0:.1f} Hz".format(result.value))
-            elif name == "screen_in_read":
+            elif "screen_in_read" in name:
                 if result.value:
                     self.ui.screen_state_label.setText("IN")
                 else:
                     self.ui.screen_state_label.setText("OUT")
-            elif name == "cam_cal_read":
+            elif "cam_cal_read" in name:
                 cal = result.value[1] / result.value[0]
                 root.debug("Camera calibration: {0} mm/pixel".format(cal))
                 self.camera_cal = [cal, cal]
