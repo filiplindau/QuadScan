@@ -243,7 +243,7 @@ class DummyBeamviewer(Device):
     def __init__(self, klass, name):
         self.cal = "{\"angle\": 0.0, \"pos\": [258.5, 48.57], \"size\": [688.13, 702.02]}"
         self.width = 20.0
-        logger.info("In DummeBeamViewer: {0} {1}".format(klass, name))
+        logger.info("In DummyBeamViewer: {0} {1}".format(klass, name))
         Device.__init__(self, klass, name)
 
     def init_device(self):
@@ -273,7 +273,7 @@ class DummyLimaccd(Device):
                            default_value=10.0)
 
     def __init__(self, klass, name):
-        logger.info("In DummeLimaccd: {0} {1}".format(klass, name))
+        logger.info("In DummyLimaccd: {0} {1}".format(klass, name))
         Device.__init__(self, klass, name)
 
     def init_device(self):
@@ -289,6 +289,9 @@ def run_class(cl_inst, args):
 
 
 if __name__ == "__main__":
+
+    # Start with: python .\QuadDummyServers.py test -nodb -v4
+
     args = sys.argv
     logger.info("Args: {0}".format(args))
     port0 = 10000
