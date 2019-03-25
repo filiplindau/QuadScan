@@ -214,7 +214,7 @@ class Task(object):
         self.result = None
 
     def emit(self):
-        self.logger.debug("{0} done. Emitting signal".format(self))
+        # self.logger.debug("{0} done. Emitting signal".format(self))
 
         self.event_done.set()
         self.logger.debug("{0}: Calling {1} callbacks".format(self, len(self.callback_list)))

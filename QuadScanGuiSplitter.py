@@ -827,7 +827,11 @@ class QuadScanGui(QtGui.QWidget):
             im_ind = self.ui.p_image_index_slider.value()
             if self.ui.p_raw_image_radio.isChecked():
                 # Raw image selected
-                image_struct = self.quad_scan_data_analysis.images[im_ind]
+                try:
+                    image_struct = self.quad_scan_data_analysis.images[im_ind]
+                except IndexError:
+                    root.error("Index out of range.")
+                    return
                 image = image_struct.image
                 try:
 

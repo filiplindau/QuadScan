@@ -78,10 +78,12 @@ class TangoReadAttributeTask(Task):
             self.logger.exception("{0}: Attribute error reading {1} on {2}: ".format(self,
                                                                                      self.attribute_name,
                                                                                      self.device_name))
+            attr = None
         except pt.DevFailed as e:
             self.logger.exception("{0}: Tango error reading {1} on {2}: ".format(self,
                                                                                  self.attribute_name,
                                                                                  self.device_name))
+            attr = None
         self.result = attr
 
 
