@@ -75,13 +75,13 @@ class TangoReadAttributeTask(Task):
         try:
             attr = dev.read_attribute(self.attribute_name)
         except AttributeError as e:
-            self.logger.exception("{0}: Attribute error reading {1} on {2}: {3}".format(self,
-                                                                                        self.attribute_name,
-                                                                                        self.device_name))
+            self.logger.exception("{0}: Attribute error reading {1} on {2}: ".format(self,
+                                                                                     self.attribute_name,
+                                                                                     self.device_name))
         except pt.DevFailed as e:
-            self.logger.exception("{0}: Tango error reading {1} on {2}: {3}".format(self,
-                                                                                    self.attribute_name,
-                                                                                    self.device_name))
+            self.logger.exception("{0}: Tango error reading {1} on {2}: ".format(self,
+                                                                                 self.attribute_name,
+                                                                                 self.device_name))
         self.result = attr
 
 
