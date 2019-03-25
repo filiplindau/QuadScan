@@ -42,7 +42,7 @@ pq.graphicsItems.GradientEditorItem.Gradients['thermalclip'] = {
               (1, (255, 255, 255, 255))], 'mode': 'rgb'}
 
 
-no_database = True
+no_database = False
 dummy_name_dict = {"mag": "192.168.1.101:10000/i-ms1/mag/qb-01#dbase=no",
                    "crq": "192.168.1.101:10000/i-ms1/mag/qb-01#dbase=no",
                    "screen": "192.168.1.101:10001/i-ms1/dia/scrn-01#dbase=no",
@@ -935,20 +935,20 @@ class QuadScanGui(QtGui.QWidget):
         root.info("Setting base save directory")
 
     def start_camera(self):
-        root.info("Starting camera {0}".format(self.current_screen))
-        task = TangoCommandTask("start", self.current_screen, self.device_handler)
+        root.info("Starting camera {0}".format(self.current_screen.liveviewer))
+        task = TangoCommandTask("start", self.current_screen.liveviewer, self.device_handler)
         task.start()
 
     def stop_camera(self):
-        root.info("Stopping camera {0}".format(self.current_screen))
-        task = TangoCommandTask("stop", self.current_screen, self.device_handler)
+        root.info("Stopping camera {0}".format(self.current_screen.liveviewer))
+        task = TangoCommandTask("stop", self.current_screen.liveviewer, self.device_handler)
         task.start()
 
     def insert_screen(self):
-        root.info("Inserting screen {0}".format(self.current_screen))
+        root.info("Inserting screen {0}".format(self.current_screen.screen))
 
     def remove_screen(self):
-        root.info("Removing screen {0}".format(self.current_screen))
+        root.info("Removing screen {0}".format(self.current_screen.screen))
 
     def start_scan(self):
         """
@@ -1301,7 +1301,7 @@ class QuadScanGui(QtGui.QWidget):
         try:
             result = task.get_result(wait=False)
             if "cam_image_read" in name:
-                self.ui.camera_widget.setImage(result.value)
+                self.ui.camera_widget.setImage(result.value, autoRange=False, autoLevels=False)
             elif "cam_state_read" in name:
                 self.ui.camera_state_label.setText("{0}".format(str(result.value)).upper())
             elif "cam_reprate_read" in name:
