@@ -606,9 +606,15 @@ class ProcessPoolTask(Task):
         self.finish_process_event.wait(self.timeout)
         if self.finish_process_event.is_set() is False:
             self.cancel()
+        t0 = time.time()
         while self.completed_work_items < self.next_process_id:
-            self.logger.debug("{0}: Waiting for {1} work items".format(self, self.next_process_id - self.completed_work_items))
+            # self.logger.debug("{0}: Waiting for {1} work items".format(self, self.next_process_id - self.completed_work_items))
             time.sleep(0.01)
+            if time.time() - t0 > 5.0:
+                self.logger.error("{0}: Timeout waiting for {1} work items to complete".format(self, self.next_process_id - self.completed_work_items))
+                self.stop_processes(terminate=True)
+                self.result = self.result_dict
+                return
         self.stop_processes(terminate=False)
         self.result = self.result_dict
 

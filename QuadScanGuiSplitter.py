@@ -830,7 +830,8 @@ class QuadScanGui(QtGui.QWidget):
                 try:
                     image_struct = self.quad_scan_data_analysis.images[im_ind]
                 except IndexError:
-                    root.error("Index out of range.")
+                    root.error("Index {0} out of range, len {1}.".format(im_ind,
+                                                                         len(self.quad_scan_data_analysis.proc_images)))
                     return
                 image = image_struct.image
                 try:
@@ -843,7 +844,12 @@ class QuadScanGui(QtGui.QWidget):
 
             else:
                 # Filtered image selected
-                image_struct = self.quad_scan_data_analysis.proc_images[im_ind]    # type: ProcessedImage
+                try:
+                    image_struct = self.quad_scan_data_analysis.proc_images[im_ind]    # type: ProcessedImage
+                except IndexError:
+                    root.error("Index {0} out of range, len {1}.".format(im_ind,
+                                                                         len(self.quad_scan_data_analysis.proc_images)))
+                    return
                 image = image_struct.pic_roi
                 try:
                     self.ui.process_image_widget.roi.hide()
