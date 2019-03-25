@@ -877,11 +877,14 @@ class QuadScanGui(QtGui.QWidget):
                 self.ui.result_axis_label.setText("x-axis")
             else:
                 self.ui.result_axis_label.setText("y-axis")
-            self.ui.eps_label.setText("{0:.2f} mm x mmrad".format(1e6 * fitresult.eps_n))
-            self.ui.beta_label.setText("{0:.2f} m".format(fitresult.beta))
-            self.ui.alpha_label.setText("{0:.2f}".format(fitresult.alpha))
-            self.fit_result = fitresult
-            self.update_fit_signal.emit()
+            if fitresult is not None:
+                self.ui.eps_label.setText("{0:.2f} mm x mmrad".format(1e6 * fitresult.eps_n))
+                self.ui.beta_label.setText("{0:.2f} m".format(fitresult.beta))
+                self.ui.alpha_label.setText("{0:.2f}".format(fitresult.alpha))
+                self.fit_result = fitresult
+                self.update_fit_signal.emit()
+            else:
+                root.error("Fit result NONE")
 
     def plot_sigma_data(self):
         root.info("Plotting sigma data")
@@ -917,8 +920,8 @@ class QuadScanGui(QtGui.QWidget):
         self.charge_plot.setData(x=k, y=q, symbol=q_symbol_list, brush=q_brush_list, size=10, pen=None)
         # self.charge_plot.setData(x=k, y=q, symbol=q_symbol_list, symbolBrush=q_brush_list,
         #                          symbolPen=None, pen=None)
-        y_range = [0, q.max()]
-        x_range = [k.min(), k.max()]
+        # y_range = [0, q.max()]
+        # x_range = [k.min(), k.max()]
         # self.ui.charge_widget.getViewBox().setRange(xRange=x_range, yRange=y_range, disableAutoRange=True)
 
         fit_data = self.fit_result.fit_data
