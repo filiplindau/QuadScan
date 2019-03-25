@@ -1297,7 +1297,7 @@ class QuadScanGui(QtGui.QWidget):
         :return:
         """
         name = task.get_name()
-        root.debug("Read image for task {0}".format(name))
+        root.debug("Task {0} returning data".format(name))
         try:
             result = task.get_result(wait=False)
             if "cam_image_read" in name:
