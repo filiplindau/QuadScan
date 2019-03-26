@@ -254,6 +254,7 @@ class LoadQuadScanDirTask(Task):
             self.result = e
             self.logger.error(e)
             self.cancel()
+            return
 
         # See if there is a file called daq_info.txt
         filename = "daq_info.txt"
@@ -262,6 +263,7 @@ class LoadQuadScanDirTask(Task):
             self.result = e
             self.logger.error(e)
             self.cancel()
+            return
 
         logger.info("{0}: Loading Jason format data".format(self))
         data_dict = dict()
@@ -378,7 +380,7 @@ def process_image_func(image, k_ind, k_value, image_ind, threshold, roi_cent, ro
     # and propagates them to the PoolTask via an output queue. It is therefore not needed to catch
     # exceptions here.
     logger.debug("Processing image {0}, {1} in pool, size {2}".format(k_ind, image_ind, image.shape))
-    print("Processing image {0}, {1} in pool, size {2}".format(k_ind, image_ind, image.shape))
+    # print("Processing image {0}, {1} in pool, size {2}".format(k_ind, image_ind, image.shape))
     t0 = time.time()
     # logger.debug("Threshold={0}, cal={1}, kernel={2}".format(threshold, cal, kernel))
     x = np.array([int(roi_cent[0] - roi_dim[0] / 2.0), int(roi_cent[0] + roi_dim[0] / 2.0)])
@@ -651,9 +653,9 @@ class TangoScanTask(Task):
             step_result = step_sequence_task.get_result(wait=True, timeout=self.timeout)
             if step_sequence_task.is_cancelled() is True:
                 self.cancel()
-                break
+                return
             if self.is_cancelled() is True:
-                break
+                return
             pos_list.append(step_result[1].value)
             timestamp_list.append(step_result[1].time)
             meas_list.append(step_result[2])

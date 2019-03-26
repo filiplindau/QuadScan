@@ -275,6 +275,7 @@ class Task(object):
             if isinstance(self.result, Exception):
                 # If we encounter an error, the task is cancelled. This can be checked by the callbacks.
                 self.cancel()
+                return
         with self.lock:
             self.completed = True
             self.started = False
@@ -623,6 +624,7 @@ class ProcessPoolTask(Task):
         self.finish_process_event.wait(self.timeout)
         if self.finish_process_event.is_set() is False:
             self.cancel()
+            return
         t0 = time.time()
         while self.completed_work_items < self.next_process_id:
             # self.logger.debug("{0}: Waiting for {1} work items".format(self, self.next_process_id - self.completed_work_items))
@@ -777,6 +779,7 @@ class ThreadPoolTask(Task):
         self.finish_threads_event.wait(self.timeout)
         if self.finish_threads_event.is_set() is False:
             self.cancel()
+            return
         while self.completed_work_items < self.next_thread_id:
             time.sleep(0.01)
         self.stop_threads()
