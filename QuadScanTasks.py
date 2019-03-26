@@ -378,6 +378,7 @@ def process_image_func(image, k_ind, k_value, image_ind, threshold, roi_cent, ro
     # and propagates them to the PoolTask via an output queue. It is therefore not needed to catch
     # exceptions here.
     logger.debug("Processing image {0}, {1} in pool, size {2}".format(k_ind, image_ind, image.shape))
+    print("Processing image {0}, {1} in pool, size {2}".format(k_ind, image_ind, image.shape))
     t0 = time.time()
     # logger.debug("Threshold={0}, cal={1}, kernel={2}".format(threshold, cal, kernel))
     x = np.array([int(roi_cent[0] - roi_dim[0] / 2.0), int(roi_cent[0] + roi_dim[0] / 2.0)])
@@ -742,10 +743,12 @@ class PopulateDeviceListTask(Task):
                     screen_list.append(scr)
                 # If name and/or position for the screen is not retrievable we cannot use it:
                 except IndexError as e:
-                    self.logger.exception("Index error when parsing screen {0}: ".format(mag_name))
+                    self.logger.exception("Index error when parsing screen {0}. "
+                                          "This screen will not be included in the populated list. ".format(mag_name))
                     pass
                 except KeyError as e:
-                    self.logger.exception("Key error when parsing screen {0}: ".format(mag_name))
+                    self.logger.exception("Key error when parsing screen {0}"
+                                          "This screen will not be included in the populated list. ".format(mag_name))
                     pass
 
             sect_quads[s] = quad_list
