@@ -115,8 +115,12 @@ class ThreadWithExc(threading.Thread):
 
 
 def p_action(task_obj, queue):
-    task_obj.action()
-    queue.put(task_obj.get_result(wait=True))
+    try:
+        task_obj.action()
+        res = task_obj.get_result(wait=True)
+    except Exception as e:
+        res = e
+    queue.put(res)
 
 
 class Task(object):
@@ -245,25 +249,32 @@ class Task(object):
             return
 
             self.logger.debug("{0} triggers ready".format(self))
-        try:
-            if self.action_exec_type == "thread":
+        # Thread or process?
+        if self.action_exec_type == "thread":
+            try:
                 self.action()
                 self.logger.debug("{0} action done".format(self))
-            else:
-                queue = multiprocessing.Queue(2)
-                process = multiprocessing.Process(target=p_action, args=(self, queue))
-                process.start()
+            except self.CancelException:
+                self.logger.info("{0} Cancelled".format(self))
+                return
+            except Exception as e:
+                self.logger.error("{0} exception: {1}".format(self, traceback.format_exc()))
+                self.result = e
+                # self.result = traceback.format_exc()
+                self.cancel()
+                return
+        else:
+            queue = multiprocessing.Queue(2)
+            process = multiprocessing.Process(target=p_action, args=(self, queue))
+            process.start()
+            try:
                 self.result = queue.get(block=True, timeout=self.timeout)
                 self.logger.debug("{0} action process done".format(self))
-        except self.CancelException:
-            self.logger.info("{0} Cancelled".format(self))
-            return
-        except Exception as e:
-            self.logger.error("{0} exception: {1}".format(self, traceback.format_exc()))
-            self.result = e
-            self.result = traceback.format_exc()
-            self.cancel()
-            return
+            except multiprocessing.TimeoutError as e:
+                self.result = e
+            if isinstance(self.result, Exception):
+                # If we encounter an error, the task is cancelled. This can be checked by the callbacks.
+                self.cancel()
         with self.lock:
             self.completed = True
             self.started = False
@@ -424,11 +435,15 @@ class RepeatTask(Task):
             # Check if cancelled or error..
             if self.task.is_cancelled() is True:
                 self.logger.info("Task was cancelled")
+                # This will happen if there was an error in the called task. Check if that was the case
+                # and copy the error to this result if it was.
+                if isinstance(res, Exception):
+                    self.result = res
                 self.cancel()
-                break
+                return
             if self.is_cancelled() is True:
                 self.logger.info("Repeat cancelled. Exiting.")
-                break
+                return
             if self.repetitions >= 0:
                 # Only store intermediate results in a list if there is not an infinite number of repetitions.
                 result_list.append(res)
@@ -463,10 +478,11 @@ class SequenceTask(Task):
             res.append(t.get_result(wait=True))
             # Check if cancelled or error..
             if t.is_cancelled() is True:
+                self.result = res
                 self.cancel()
-                break
+                return
             if self.is_cancelled() is True:
-                break
+                return
 
         self.result = res
 
@@ -493,10 +509,11 @@ class BagOfTasksTask(Task):
             res.append(t.get_result(wait=True))
             # Check if cancelled or error..
             if t.is_cancelled() is True:
+                self.result = res
                 self.cancel()
-                break
+                return
             if self.is_cancelled() is True:
-                break
+                return
 
         self.result = res
 
