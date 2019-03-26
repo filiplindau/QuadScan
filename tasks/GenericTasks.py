@@ -715,10 +715,12 @@ class ProcessPoolTask(Task):
             except KeyError as e:
                 self.logger.error("Work item id {0} not found.".format(proc_id))
                 raise e
-            if isinstance(retval, Exception):
-                raise retval
-            # self.logger.debug("{0}: result_dict {1}".format(self, pprint.pformat(self.result_dict)))
             self.result = retval
+            # The clearable_pool_worker will put any encountered exception as the result value in the output queue:
+            if isinstance(retval, Exception):
+                pass    # Pass through for now...
+                # raise retval
+            # self.logger.debug("{0}: result_dict {1}".format(self, pprint.pformat(self.result_dict)))
             for callback in self.callback_list:
                 callback(self)
 

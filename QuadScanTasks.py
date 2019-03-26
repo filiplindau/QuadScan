@@ -339,8 +339,11 @@ class LoadQuadScanDirTask(Task):
         # type: (ImageProcessorTask) -> None
         proc_image = image_processor_task.get_result(wait=False)    # type: ProcessedImage
         if image_processor_task.is_done() is False:
-            self.logger.debug("Adding processed image {0} {1} to list".format(proc_image.k_ind, proc_image.image_ind))
-            self.processed_image_list.append(proc_image)
+            if isinstance(proc_image, Exception):
+                self.logger.error("{0}: Found error in processed image: {1}".format(self, proc_image))
+            else:
+                self.logger.debug("Adding processed image {0} {1} to list".format(proc_image.k_ind, proc_image.image_ind))
+                self.processed_image_list.append(proc_image)
 
     def cancel(self):
         if self.task_seq is not None:
@@ -350,7 +353,31 @@ class LoadQuadScanDirTask(Task):
 
 def process_image_func(image, k_ind, k_value, image_ind, threshold, roi_cent, roi_dim, cal=[1.0, 1.0], kernel=3,
                        bpp=16, normalize=False, enabled=True):
-    logger.debug("Processing image {0}, {1} in pool".format(k_ind, image_ind))
+    """
+    Function for processing images. To be run in a process pool. ROI, thresholding, median filtering.
+    Centroid and second moment extraction. Horizontal and vertical lineouts. Normalize to image bit depth.
+    If the image is empty (after filtering), set enabled=False
+
+    :param image: Numpy 2d array with image data
+    :param k_ind: Index of the k value in the scan (used for creating ProcessedImage structure)
+    :param k_value: Actual k value (used for creating ProcessedImage structure)
+    :param image_ind: Index of the image in the scan (used for creating ProcessedImage structure)
+    :param threshold: Threshold value under which a pixel is set to 0. Done after normalization, cropping,
+                      and median filtering. If None automatic thresholding is done by taking average value of
+                      top left and bottom right corners *3.
+    :param roi_cent: Center pixel of the ROI, (x,y) tuple
+    :param roi_dim: ROI pixel dimensions (w,h) tuple
+    :param cal: Pixel calibration in m/pixel
+    :param kernel: Median filter kernel size
+    :param bpp: Bits per pixel (used for normalization)
+    :param normalize: True if normalization is to be performed
+    :param enabled: True if this image is enabled (can be overwritten if the image is empty)
+    :return: ProcessedImage structure
+    """
+    # The process function is called from a wrapper function "clearable_pool_worker" that catches exceptions
+    # and propagates them to the PoolTask via an output queue. It is therefore not needed to catch
+    # exceptions here.
+    logger.debug("Processing image {0}, {1} in pool, size {2}".format(k_ind, image_ind, image.shape))
     t0 = time.time()
     # logger.debug("Threshold={0}, cal={1}, kernel={2}".format(threshold, cal, kernel))
     x = np.array([int(roi_cent[0] - roi_dim[0] / 2.0), int(roi_cent[0] + roi_dim[0] / 2.0)])
@@ -465,7 +492,7 @@ class ImageProcessorTask(Task):
             roi_cent = self.roi_cent
         self.processor.add_work_item(image=quad_image.image, k_ind=quad_image.k_ind, k_value=quad_image.k_value,
                                      image_ind=quad_image.image_ind, threshold=self.threshold, roi_cent=roi_cent,
-                                     roi_dim=roi_dim, cal=self.cal, kernel=self.kernel, bpp=bpp, normalize= False,
+                                     roi_dim=roi_dim, cal=self.cal, kernel=self.kernel, bpp=bpp, normalize=False,
                                      enabled=enabled)
 
     def _image_done(self, processor_task):
@@ -498,6 +525,10 @@ class ImageProcessorTask(Task):
 
     def wait_for_queue_empty(self):
         self.queue_empty_event.wait(self.timeout)
+
+    def cancel(self):
+        self.stop_processing()
+        Task.cancel()
 
 
 class ProcessAllImagesTask(Task):
