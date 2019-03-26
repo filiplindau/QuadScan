@@ -379,7 +379,7 @@ def process_image_func(image, k_ind, k_value, image_ind, threshold, roi_cent, ro
     # The process function is called from a wrapper function "clearable_pool_worker" that catches exceptions
     # and propagates them to the PoolTask via an output queue. It is therefore not needed to catch
     # exceptions here.
-    logger.debug("Processing image {0}, {1} in pool, size {2}".format(k_ind, image_ind, image.shape))
+    # logger.debug("Processing image {0}, {1} in pool, size {2}".format(k_ind, image_ind, image.shape))
     # print("Processing image {0}, {1} in pool, size {2}".format(k_ind, image_ind, image.shape))
     t0 = time.time()
     # logger.debug("Threshold={0}, cal={1}, kernel={2}".format(threshold, cal, kernel))
@@ -398,7 +398,7 @@ def process_image_func(image, k_ind, k_value, image_ind, threshold, roi_cent, ro
     # else:
     #     n = 1
 
-    logger.debug("Before medfilt, pic roi {0}, kernel {1}".format(pic_roi.shape, kernel))
+    # logger.debug("Before medfilt, pic roi {0}, kernel {1}".format(pic_roi.shape, kernel))
     # Median filtering:
     try:
         if normalize is True:
@@ -406,7 +406,8 @@ def process_image_func(image, k_ind, k_value, image_ind, threshold, roi_cent, ro
         else:
             pic_roi = medfilt2d(pic_roi, kernel)
     except ValueError as e:
-        logger.warning("Medfilt kernel value error: {0}".format(e))
+        # logger.warning("Medfilt kernel value error: {0}".format(e))
+        print("Medfilt kernel value error: {0}".format(e))
 
     # Threshold image
     if threshold is None:
@@ -435,7 +436,7 @@ def process_image_func(image, k_ind, k_value, image_ind, threshold, roi_cent, ro
     result = ProcessedImage(k_ind=k_ind, k_value=k_value, image_ind=image_ind, pic_roi=pic_roi,
                             line_x=line_x, line_y=line_y, x_cent=x_cent, y_cent=y_cent,
                             sigma_x=sigma_x, sigma_y=sigma_y, q=q, enabled=enabled, threshold=threshold)
-    logger.debug("Image {0}, {1} processed in pool, time {2:.2f} ms".format(k_ind, image_ind, 1e3*(time.time()-t0)))
+    # logger.debug("Image {0}, {1} processed in pool, time {2:.2f} ms".format(k_ind, image_ind, 1e3*(time.time()-t0)))
     return result
 
 
