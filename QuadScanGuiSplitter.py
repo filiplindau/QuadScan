@@ -33,7 +33,7 @@ f = logging.Formatter("%(asctime)s - %(module)s.   %(funcName)s - %(levelname)s 
 fh = logging.StreamHandler()
 fh.setFormatter(f)
 root.addHandler(fh)
-root.setLevel(logging.INFO)
+root.setLevel(logging.DEBUG)
 
 pq.graphicsItems.GradientEditorItem.Gradients['greyclip2'] = {
     'ticks': [(0.0, (0, 0, 50, 255)), (0.0001, (0, 0, 0, 255)), (1.0, (255, 255, 255, 255))], 'mode': 'rgb'}
@@ -305,7 +305,6 @@ class QuadScanGui(QtGui.QWidget):
         self.ui.p_threshold_spinbox.editingFinished.connect(self.start_processing)
         self.ui.p_load_hist_button.clicked.connect(self.update_process_image_threshold)
         self.ui.p_median_kernel_spinbox.editingFinished.connect(self.start_processing)
-        self.ui.p_k_index_slider.valueChanged.connect(self.update_image_selection)
         self.ui.p_image_index_slider.valueChanged.connect(self.update_image_selection)
         self.ui.p_raw_image_radio.toggled.connect(self.change_raw_filtered_view)
         self.ui.p_x_radio.toggled.connect(self.change_analysis_axis)
@@ -380,14 +379,19 @@ class QuadScanGui(QtGui.QWidget):
         :param event:
         :return:
         """
+        self.image_processor.clear_callback_list()
+        root.debug("Stop image processor")
         self.image_processor.stop_processing()
+        root.debug("Command sent.")
         for t in self.screen_tasks:
             try:
+                root.debug("Cancelling {0}".format(t.get_name()))
                 t.cancel()
             except AttributeError:
                 pass
         for t in self.quad_tasks:
             try:
+                root.debug("Cancelling {0}".format(t.get_name()))
                 t.cancel()
             except AttributeError:
                 pass
@@ -422,6 +426,7 @@ class QuadScanGui(QtGui.QWidget):
         # self.settings.setValue("section", self.controller.get_parameter("scan", "section_name"))
         # self.settings.setValue("section_quad", self.controller.get_parameter("scan", "quad_name"))
         # self.settings.setValue("section_screen", self.controller.get_parameter("scan", "screen_name"))
+        root.debug("Settings done.")
 
     def set_roi(self):
         root.info("Set roi from spinboxes")
@@ -437,7 +442,8 @@ class QuadScanGui(QtGui.QWidget):
         root.info("Loading data from disk")
         # load_dir = QtGui.QFileDialog.getExistingDirectory(self, "Select directory", self.last_load_dir)
         filedialog = QtGui.QFileDialog(self, "Load data", directory=self.last_load_dir)
-        filedialog.setOption(QtGui.QFileDialog.DontUseNativeDialog, False)
+        filedialog.setOption(QtGui.QFileDialog.DontUseNativeDialog, True)
+        filedialog.setViewMode(QtGui.QFileDialog.Detail)
         filedialog.setFileMode(QtGui.QFileDialog.Directory)
         filedialog.directoryEntered.connect(self.load_dir_entered)
         filedialog.directoryEntered.emit(self.last_load_dir)
@@ -570,7 +576,6 @@ class QuadScanGui(QtGui.QWidget):
         self.ui.process_image_widget.roi.setSize(acc_params.roi_dim)
         self.ui.process_image_widget.roi.blockSignals(False)
 
-        self.ui.p_k_index_slider.setMaximum(acc_params.num_k-1)
         self.ui.p_image_index_slider.setMaximum(acc_params.num_images-1)
         self.ui.p_image_index_slider.setMaximum(len(self.quad_scan_data_analysis.proc_images) - 1)
         th_list = [i.threshold for i in self.quad_scan_data_analysis.proc_images]

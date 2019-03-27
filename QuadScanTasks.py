@@ -55,7 +55,12 @@ class TangoDeviceConnectTask(Task):
         self.logger.info("{0} entering action. ".format(self))
         # Exceptions are caught in the parent run thread.
         self.logger.debug("Connecting to {0}".format(self.device_name))
-        dev = pt.DeviceProxy(self.device_name)
+        try:
+            dev = pt.DeviceProxy(self.device_name)
+        except pt.DevFailed as e:
+            self.result = e
+            self.cancel()
+            return
         self.result = dev
 
 
@@ -71,7 +76,13 @@ class TangoReadAttributeTask(Task):
 
     def action(self):
         self.logger.info("{0} reading {1} on {2}. ".format(self, self.attribute_name, self.device_name))
-        dev = self.device_handler.get_device(self.device_name)
+        try:
+            dev = self.device_handler.get_device(self.device_name)
+        except pt.DevFailed as e:
+            self.logger.error("{0}: Could not connect. {1}".format(self, e))
+            self.result = e
+            self.cancel()
+            return
         try:
             attr = dev.read_attribute(self.attribute_name)
         except AttributeError as e:
@@ -79,11 +90,17 @@ class TangoReadAttributeTask(Task):
                                                                                      self.attribute_name,
                                                                                      self.device_name))
             attr = None
+            self.result = e
+            self.cancel()
+            return
         except pt.DevFailed as e:
             self.logger.exception("{0}: Tango error reading {1} on {2}: ".format(self,
                                                                                  self.attribute_name,
                                                                                  self.device_name))
             attr = None
+            self.result = e
+            self.cancel()
+            return
         self.result = attr
 
 
@@ -102,8 +119,21 @@ class TangoWriteAttributeTask(Task):
                                                                   self.value,
                                                                   self.attribute_name,
                                                                   self.device_name))
-        dev = self.device_handler.get_device(self.device_name)
-        res = dev.write_attribute(self.attribute_name, self.value)
+        try:
+            dev = self.device_handler.get_device(self.device_name)
+        except pt.DevFailed as e:
+            self.logger.error("{0}: Could not connect. {1}".format(self, e))
+            self.result = e
+            self.cancel()
+            return
+        try:
+            res = dev.write_attribute(self.attribute_name, self.value)
+        except pt.DevFailed as e:
+            self.logger.error("{0}: Could not write attribute {1} with {2}. {3}".format(self, self.attribute_name,
+                                                                                        self.value, e))
+            self.result = e
+            self.cancel()
+            return
         self.result = res
 
 
@@ -122,8 +152,21 @@ class TangoCommandTask(Task):
                                                                             self.command_name,
                                                                             self.value,
                                                                             self.device_name))
-        dev = self.device_handler.get_device(self.device_name)
-        res = dev.command_inout(self.command_name, self.value)
+        try:
+            dev = self.device_handler.get_device(self.device_name)
+        except pt.DevFailed as e:
+            self.logger.error("{0}: Could not connect. {1}".format(self, e))
+            self.result = e
+            self.cancel()
+            return
+        try:
+            res = dev.command_inout(self.command_name, self.value)
+        except pt.DevFailed as e:
+            self.logger.error("{0}: Could not write command {1} with {2}. {3}".format(self, self.command_name,
+                                                                                      self.value, e))
+            self.result = e
+            self.cancel()
+            return
         self.result = res
 
 
@@ -159,8 +202,9 @@ class TangoMonitorAttributeTask(Task):
             read_task.start()
             current_value = read_task.get_result(wait=True, timeout=self.timeout).value
             if read_task.is_cancelled() is True:
+                self.result = current_value
                 self.cancel()
-                break
+                return
             t1 = time.time()
             wait_time = self.interval - (t1 - t0)
 
@@ -309,7 +353,10 @@ class LoadQuadScanDirTask(Task):
         self.task_seq.start()
         # Wait for image sequence to be done reading:
         image_list = self.task_seq.get_result(wait=True)
+        if self.task_seq.is_cancelled():
+            self.logger.error("Load image error: {0}".format(image_list))
         # Now wait for images to be done processing:
+        # The processed images are already stored in the processed_image_list by the callback
         self.logger.debug("{0}: Waiting for image processing to finish".format(self))
         starttime = time.time()
         dt = 0
@@ -318,8 +365,6 @@ class LoadQuadScanDirTask(Task):
             time.sleep(0.01)
         # self.image_processor.wait_for_queue_empty()
         self.logger.debug("{0}: Image processing finished".format(self))
-        # self.image_processor.stop_processing()
-        self.image_processor.get_result(wait=False)
 
         acc_params = AcceleratorParameters(electron_energy=float(data_dict["beam_energy"]),
                                            quad_length=float(data_dict["quad_length"]),
@@ -340,6 +385,10 @@ class LoadQuadScanDirTask(Task):
     def processed_image_done(self, image_processor_task):
         # type: (ImageProcessorTask) -> None
         proc_image = image_processor_task.get_result(wait=False)    # type: ProcessedImage
+        if image_processor_task.is_cancelled():
+            self.result = proc_image
+            self.cancel()
+            return
         if image_processor_task.is_done() is False:
             if isinstance(proc_image, Exception):
                 self.logger.error("{0}: Found error in processed image: {1}".format(self, proc_image))
@@ -473,7 +522,11 @@ class ImageProcessorTask(Task):
             return
         self.logger.info("{0} exit processing".format(self))
         self.processor.finish_processing()
+        self.logger.debug("{0}: wait for processpool".format(self))
         self.processor.get_result(wait=True, timeout=self.timeout)
+        self.logger.debug("{0}: processpool done".format(self))
+        self.processor.clear_callback_list()
+        self.processor.stop_processes(terminate=True)
         self.result = True
 
     def process_image(self, data, bpp=16, enabled=True):
@@ -502,7 +555,7 @@ class ImageProcessorTask(Task):
     def _image_done(self, processor_task):
         # type: (ProcessPoolTask) -> None
         if self.is_done() is False:
-            self.logger.debug("{0}: Image processing done. {1} images in queue".format(self, self.pending_images_in_queue))
+            self.logger.debug("{0}: Image processed. {1} images in queue".format(self, self.pending_images_in_queue))
             self.result = processor_task.get_result(wait=False)
             self.pending_images_in_queue -= 1
             if self.pending_images_in_queue <= 0:
@@ -512,9 +565,11 @@ class ImageProcessorTask(Task):
                 for callback in self.callback_list:
                     callback(self)
             else:
+                self.logger.debug("{0}: ProcessPoolTask done. Stop processing.".format(self))
                 self.stop_processing()
 
     def stop_processing(self):
+        self.logger.debug("{0}: Setting STOP_PROCESSING flag".format(self))
         self.stop_processing_event.set()
 
     def set_roi(self, roi_cent, roi_dim):
@@ -996,6 +1051,8 @@ class DeviceHandler(object):
             # Maybe this should just raise an exception instead of auto-adding:
             task = self.add_device(device_name)
             dev = task.get_result(wait=True, timeout=self.timeout)
+            if task.is_cancelled():
+                raise pt.DevFailed(dev)
 
         return dev
 

@@ -725,6 +725,7 @@ class ProcessPoolTask(Task):
             # self.logger.debug("{0}: result_dict {1}".format(self, pprint.pformat(self.result_dict)))
             for callback in self.callback_list:
                 callback(self)
+        self.logger.debug("{0}: Exiting result_thread_func")
 
 
 class ThreadPoolTask(Task):
