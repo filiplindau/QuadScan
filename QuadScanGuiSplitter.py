@@ -661,6 +661,7 @@ class QuadScanGui(QtGui.QWidget):
                     root.debug("New device selected.")
                     self.set_section(quad_sel, screen_sel)
             self.ui.quad_screen_dist_label.setText("{0:2f}".format(quad_pos - screen_pos))
+            self.ui.quad_screen_dist_label.setText("Quad pos {0}, Screen pos {1}".format(quad_pos, screen_pos))
 
     def set_section(self, new_quad, new_screen):
         """
@@ -1081,7 +1082,7 @@ class QuadScanGui(QtGui.QWidget):
         try:
             save_dict["main_dir"] = self.ui.save_path_linedit.text()
             save_dict["daq_dir"] = self.ui.save_path_linedit.text()
-            save_dict["quad"] = self.current_quad.magself.controller.get_parameter("scan", "quad_name")
+            save_dict["quad"] = self.current_quad.mag
             save_dict["quad_length"] = "{0}".format(self.ui.quad_length_label.text())
             save_dict["quad_2_screen"] = "{0}".format(self.ui.quad_screen_dist_label.text())
             save_dict["screen"] = self.current_screen.screen
