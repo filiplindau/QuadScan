@@ -1323,11 +1323,16 @@ class QuadScanGui(QtGui.QWidget):
                     root.info("Image task cancelled.")
 
                     for t in self.screen_tasks:
+                        root.info("{0}: cancel state: {1}".format(t.get_name(), t.is_cancelled()))
                         if t.is_cancelled():
                             root.info("{0} cancelled.".format(t.name))
                             t.cancelled = False
                             t.start()
-                self.ui.camera_widget.setImage(result.value, autoRange=False, autoLevels=False)
+                if self.screen_init_flag:
+                    self.ui.camera_widget.setImage(result.value, autoRange=True, autoLevels=True)
+                    self.screen_init_flag = False
+                else:
+                    self.ui.camera_widget.setImage(result.value, autoRange=False, autoLevels=False)
             elif "cam_state_read" in name:
                 self.ui.camera_state_label.setText("{0}".format(str(result.value)).upper())
             elif "cam_reprate_read" in name:
