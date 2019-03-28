@@ -1319,6 +1319,14 @@ class QuadScanGui(QtGui.QWidget):
         try:
             result = task.get_result(wait=False)
             if "cam_image_read" in name:
+                if task.is_cancelled():
+                    root.info("Image task cancelled.")
+
+                    for t in self.screen_tasks:
+                        if t.is_cancelled():
+                            root.info("{0} cancelled.".format(t.name))
+                            t.cancelled = False
+                            t.start()
                 self.ui.camera_widget.setImage(result.value, autoRange=False, autoLevels=False)
             elif "cam_state_read" in name:
                 self.ui.camera_state_label.setText("{0}".format(str(result.value)).upper())
