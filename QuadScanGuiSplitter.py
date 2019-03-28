@@ -86,7 +86,7 @@ class QuadScanGui(QtGui.QWidget):
 
     load_done_signal = QtCore.Signal(object)
     update_fit_signal = QtCore.Signal()
-    update_camera_signal = QtCore.Signal()
+    update_camera_signal = QtCore.Signal(object)
 
     def __init__(self, parent=None):
         root.debug("Init")
@@ -323,6 +323,7 @@ class QuadScanGui(QtGui.QWidget):
         self.ui.p_roi_size_h_spinbox.editingFinished.connect(self.set_roi)
 
         self.update_fit_signal.connect(self.plot_sigma_data)
+        self.update_camera_signal.connect(self.update_camera_image)
 
         # self.controller.image_done_signal.connect(self.update_fit_data)
 
@@ -651,9 +652,11 @@ class QuadScanGui(QtGui.QWidget):
             if self.current_screen is None:
                 self.set_section(quads[0], screens[0])
             else:
-                if self.current_screen.name != screen_name:
+                if self.current_screen.name != screen_name or sect != self.current_section:
                     self.screen_init_flag = True
-                if self.current_quad.name != quad_name or self.current_screen.name != screen_name:
+                # if self.current_quad.name != quad_name or self.current_screen.name != screen_name:
+                if self.current_quad.name != quad_name or self.current_screen.name != screen_name \
+                        or sect != self.current_section:
                     root.debug("New device selected.")
                     self.set_section(quad_sel, screen_sel)
             self.ui.quad_screen_dist_label.setText("{0:2f}".format(quad_pos - screen_pos))
@@ -894,9 +897,8 @@ class QuadScanGui(QtGui.QWidget):
             else:
                 root.error("Fit result NONE")
 
-    def update_camera_image(self, new_image=None):
-        if new_image is None:
-            image = self.current_screen
+    def update_camera_image(self, new_image):
+        root.debug("Updating camera image")
         if self.screen_init_flag:
             self.ui.camera_widget.setImage(new_image, autoRange=True, autoLevels=True)
             self.screen_init_flag = False
@@ -1347,6 +1349,8 @@ class QuadScanGui(QtGui.QWidget):
                             root.info("{0} cancelled.".format(t.name))
                             t.cancelled = False
                             t.start()
+                else:
+                    self.update_camera_signal.emit(result.value)
             elif "cam_state_read" in name:
                 self.ui.camera_state_label.setText("{0}".format(str(result.value)).upper())
             elif "cam_reprate_read" in name:
