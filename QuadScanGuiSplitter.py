@@ -128,7 +128,7 @@ class QuadScanGui(QtGui.QWidget):
         self.current_section = "MS1"
         self.current_quad = None        # type: SectionQuad
         self.current_screen = None      # type: SectionScreen
-        self.camera_cal = None          # type: list
+        self.camera_cal = [1, 1]          # type: list
         self.quad_tasks = list()        # Repeat tasks for selected quad
         self.screen_tasks = list()      # Repeat tasks for selected screen
         self.processing_tasks = list()
@@ -1367,7 +1367,7 @@ class QuadScanGui(QtGui.QWidget):
                 else:
                     self.ui.screen_state_label.setText("OUT")
             elif "cam_cal_read" in name:
-                cal = result.value[1] / result.value[0]
+                cal = result[1].value / result[0].value
                 root.debug("Camera calibration: {0} mm/pixel".format(cal))
                 self.camera_cal = [cal, cal]
             else:
