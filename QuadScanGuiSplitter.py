@@ -1043,7 +1043,7 @@ class QuadScanGui(QtGui.QWidget):
             root.warning("Camera not running. Can't start scan")
             self.ui.status_textedit.append("\nCamera not running. Can't start scan. \n---------------------------\n")
             return False
-        if str(self.ui.screen_state_label.text().upper() not in ["IN", "OUT"]):
+        if str(self.ui.screen_state_label.text()).upper() not in ["IN", "OUT"]:
             root.warning("Screen not inserted. Can't start scan")
             self.ui.status_textedit.append("\nScreen not inserted. Can't start scan. \n---------------------------\n")
             return False
