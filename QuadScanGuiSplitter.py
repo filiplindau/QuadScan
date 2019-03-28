@@ -279,9 +279,9 @@ class QuadScanGui(QtGui.QWidget):
         root.debug("Section {1} index: {0}".format(ind, val))
         self.ui.section_combobox.setCurrentIndex(ind)
 
-        val = self.settings.value("num_k_values", "10", type=int)
+        val = self.settings.value("num_k", "10", type=int)
         self.ui.num_k_spinbox.setValue(val)
-        val = self.settings.value("num_shots", "2", type=int)
+        val = self.settings.value("num_images", "2", type=int)
         self.ui.num_images_spinbox.setValue(val)
 
         # Signal connections
@@ -421,10 +421,11 @@ class QuadScanGui(QtGui.QWidget):
         else:
             algo = "thin lens"
         self.settings.setValue("fit_algo", algo)
-        # self.settings.setValue("k_start", self.ui.k_start_spinbox.value())
-        # self.settings.setValue("k_end", self.ui.k_end_spinbox.value())
-        # self.settings.setValue("num_shots", self.controller.get_parameter("scan", "num_shots"))
-        # self.settings.setValue("num_k_values", self.controller.get_parameter("scan", "num_k_values"))
+        self.settings.setValue("k_start", self.ui.k_start_spinbox.value())
+        self.settings.setValue("k_end", self.ui.k_end_spinbox.value())
+        self.settings.setValue("num_images", self.ui.num_images_spinbox.value())
+        self.settings.setValue("num_k", self.ui.num_k_spinbox.value())
+        self.settings.setValue("save_dir", self.ui.save_path_linedit.text())
 
         # self.settings.setValue("section", self.controller.get_parameter("scan", "section_name"))
         # self.settings.setValue("section_quad", self.controller.get_parameter("scan", "quad_name"))
@@ -954,11 +955,11 @@ class QuadScanGui(QtGui.QWidget):
         self.start_fit()
 
     def set_start_k(self):
-        root.info("Setting start k value to {0}".format(self.ui.k_start_spinbox.value()))
+        root.info("Setting start k value to {0}".format(self.ui.k_current_spinbox.value()))
         self.ui.k_start_spinbox.setValue(self.ui.k_current_spinbox.value())
 
     def set_end_k(self):
-        root.info("Setting end k value to {0}".format(self.ui.k_end_spinbox.value()))
+        root.info("Setting end k value to {0}".format(self.ui.k_current_spinbox.value()))
         self.ui.k_end_spinbox.setValue(self.ui.k_current_spinbox.value())
 
     def set_current_k(self):
@@ -1066,6 +1067,8 @@ class QuadScanGui(QtGui.QWidget):
                                            quad_length=float(self.ui.quad_length_label.text()),
                                            quad_screen_dist=float(self.ui.quad_screen_dist_label.text()),
                                            k_max=k1, k_min=k0, cal=self.camera_cal,
+                                           num_k=self.ui.num_k_spinbox.value(),
+                                           num_images=self.ui.num_images_spinbox.value(),
                                            quad_name=self.current_quad.mag,
                                            screen_name=self.current_screen.screen,
                                            roi_center=roi_center,
