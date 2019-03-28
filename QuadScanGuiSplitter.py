@@ -898,7 +898,7 @@ class QuadScanGui(QtGui.QWidget):
                 root.error("Fit result NONE")
 
     def update_camera_image(self, new_image):
-        root.debug("Updating camera image")
+        # root.debug("Updating camera image")
         if self.screen_init_flag:
             self.ui.camera_widget.setImage(new_image, autoRange=True, autoLevels=True)
             self.screen_init_flag = False
@@ -955,9 +955,11 @@ class QuadScanGui(QtGui.QWidget):
 
     def set_start_k(self):
         root.info("Setting start k value to {0}".format(self.ui.k_start_spinbox.value()))
+        self.ui.k_start_spinbox.setValue(self.ui.k_current_spinbox.value())
 
     def set_end_k(self):
         root.info("Setting end k value to {0}".format(self.ui.k_end_spinbox.value()))
+        self.ui.k_end_spinbox.setValue(self.ui.k_current_spinbox.value())
 
     def set_current_k(self):
         root.info("Setting current k to {0}".format(self.ui.k_current_spinbox))
@@ -1037,11 +1039,11 @@ class QuadScanGui(QtGui.QWidget):
         root.info("Checking start conditions (camera running, screen in, quad on")
         if self.scan_task is not None:
             self.scan_task.cancel()
-        if str(self.ui.camera_state_label.text()).upper() != "RUNNING":
+        if str(self.ui.camera_state_label.text()).upper() not in ["RUNNING", "ON"]:
             root.warning("Camera not running. Can't start scan")
             self.ui.status_textedit.append("\nCamera not running. Can't start scan. \n---------------------------\n")
             return False
-        if str(self.ui.screen_state_label.text().upper() != "IN"):
+        if str(self.ui.screen_state_label.text().upper() not in ["IN", "OUT"]):
             root.warning("Screen not inserted. Can't start scan")
             self.ui.status_textedit.append("\nScreen not inserted. Can't start scan. \n---------------------------\n")
             return False
