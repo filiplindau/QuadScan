@@ -643,7 +643,7 @@ class QuadScanGui(QtGui.QWidget):
             screen_name = str(self.ui.screen_combobox.currentText()).upper()
             screen_sel = screens[self.ui.screen_combobox.currentIndex()]    # type: SectionScreen
             screen_pos = screen_sel.position
-            screen_pos = 0
+            # screen_pos = 0
             self.ui.screen_combobox.blockSignals(False)
         else:
             screen_name = None
@@ -661,7 +661,7 @@ class QuadScanGui(QtGui.QWidget):
                     root.debug("New device selected.")
                     self.set_section(quad_sel, screen_sel)
             self.ui.quad_screen_dist_label.setText("{0:2f}".format(quad_pos - screen_pos))
-            self.ui.quad_screen_dist_label.setText("Quad pos {0}, Screen pos {1}".format(quad_pos, screen_pos))
+            # self.ui.quad_screen_dist_label.setText("Quad pos {0}, Screen pos {1}".format(quad_pos, screen_pos))
 
     def set_section(self, new_quad, new_screen):
         """
