@@ -660,7 +660,7 @@ class QuadScanGui(QtGui.QWidget):
                         or sect != self.current_section:
                     root.debug("New device selected.")
                     self.set_section(quad_sel, screen_sel)
-            self.ui.quad_screen_dist_label.setText("{0:2f}".format(quad_pos - screen_pos))
+            self.ui.quad_screen_dist_label.setText("{0:2f}".format(screen_pos - quad_pos))
             # self.ui.quad_screen_dist_label.setText("Quad pos {0}, Screen pos {1}".format(quad_pos, screen_pos))
 
     def set_section(self, new_quad, new_screen):
@@ -1107,7 +1107,7 @@ class QuadScanGui(QtGui.QWidget):
             return False
         save_path = str(self.ui.save_path_linedit.text())
         full_name = os.path.join(save_path, "daq_info.txt")
-        with open(full_name, "w") as f:
+        with open(full_name, "w+") as f:
             for key, value in save_dict.iteritems():
                 s = "{0} : {1}\n".format(key.ljust(13, " "), value)
                 f.write(s)
