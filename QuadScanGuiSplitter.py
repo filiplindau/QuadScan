@@ -86,6 +86,7 @@ class QuadScanGui(QtGui.QWidget):
 
     load_done_signal = QtCore.Signal(object)
     update_fit_signal = QtCore.Signal()
+    update_camera_signal = QtCore.Signal()
 
     def __init__(self, parent=None):
         root.debug("Init")
@@ -97,6 +98,7 @@ class QuadScanGui(QtGui.QWidget):
         self.data_base_dir = "."
         self.section_init_flag = True
         self.screen_init_flag = True
+        self.quad_init_flag = True
 
         self.line_x_plot = None
         self.line_y_plot = None
@@ -654,7 +656,7 @@ class QuadScanGui(QtGui.QWidget):
                 if self.current_quad.name != quad_name or self.current_screen.name != screen_name:
                     root.debug("New device selected.")
                     self.set_section(quad_sel, screen_sel)
-            self.ui.quad_screen_dist_label.setText("{0:2f}".format(screen_pos - quad_pos))
+            self.ui.quad_screen_dist_label.setText("{0:2f}".format(quad_pos - screen_pos))
 
     def set_section(self, new_quad, new_screen):
         """
@@ -686,9 +688,10 @@ class QuadScanGui(QtGui.QWidget):
             # k_task.start()
             k_rep_task = RepeatTask(k_task, -1, 0.3, name="k_repeat")
             k_rep_task.start()
+            self.quad_init_flag = True
             self.quad_tasks.append(k_rep_task)
             self.current_quad = new_quad
-            self.ui.current_quad_sel_label.setText("{0}".format(new_quad.name))
+            self.ui.current_quad_sel_label.setText("{0}".format(new_quad.mag.upper()))
             # Add more device connections here
 
         try:
@@ -891,6 +894,15 @@ class QuadScanGui(QtGui.QWidget):
             else:
                 root.error("Fit result NONE")
 
+    def update_camera_image(self, new_image=None):
+        if new_image is None:
+            image = self.current_screen
+        if self.screen_init_flag:
+            self.ui.camera_widget.setImage(new_image, autoRange=True, autoLevels=True)
+            self.screen_init_flag = False
+        else:
+            self.ui.camera_widget.setImage(new_image, autoRange=False, autoLevels=False)
+
     def plot_sigma_data(self):
         root.info("Plotting sigma data")
         use_x_axis = self.ui.p_x_radio.isChecked()
@@ -964,9 +976,13 @@ class QuadScanGui(QtGui.QWidget):
 
     def insert_screen(self):
         root.info("Inserting screen {0}".format(self.current_screen.screen))
+        task = TangoCommandTask("movein", self.current_screen.screen, self.device_handler)
+        task.start()
 
     def remove_screen(self):
         root.info("Removing screen {0}".format(self.current_screen.screen))
+        task = TangoCommandTask("moveout", self.current_screen.screen, self.device_handler)
+        task.start()
 
     def start_scan(self):
         """
@@ -1304,6 +1320,9 @@ class QuadScanGui(QtGui.QWidget):
         try:
             k = task.get_result(wait=False)
             self.ui.current_k_label.setText(u"k={0:.2f} 1/m\u00B2".format(k.value))
+            if self.quad_init_flag:
+                self.ui.k_current_spinbox.setValue(k.value)
+                self.quad_init_flag = False
         except AttributeError:
             root.warning("Not valid task")
 
@@ -1315,7 +1334,7 @@ class QuadScanGui(QtGui.QWidget):
         :return:
         """
         name = task.get_name()
-        root.debug("Task {0} returning data".format(name))
+        # root.debug("Task {0} returning data".format(name))
         try:
             result = task.get_result(wait=False)
             if "cam_image_read" in name:
@@ -1328,11 +1347,6 @@ class QuadScanGui(QtGui.QWidget):
                             root.info("{0} cancelled.".format(t.name))
                             t.cancelled = False
                             t.start()
-                if self.screen_init_flag:
-                    self.ui.camera_widget.setImage(result.value, autoRange=True, autoLevels=True)
-                    self.screen_init_flag = False
-                else:
-                    self.ui.camera_widget.setImage(result.value, autoRange=False, autoLevels=False)
             elif "cam_state_read" in name:
                 self.ui.camera_state_label.setText("{0}".format(str(result.value)).upper())
             elif "cam_reprate_read" in name:
