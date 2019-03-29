@@ -1378,46 +1378,50 @@ class QuadScanGui(QtGui.QWidget):
         :param task: Task instance sending the callback
         :return:
         """
-        name = task.get_name()
         # root.debug("Task {0} returning data".format(name))
         try:
+            name = task.get_name()
             result = task.get_result(wait=False)
-            if "cam_image_read" in name:
-                if task.is_cancelled():
-                    root.info("Image task cancelled.")
-
-                    for t in self.screen_tasks:
-                        root.info("{0}: cancel state: {1}".format(t.get_name(), t.is_cancelled()))
-                        if t.is_cancelled():
-                            root.info("{0} cancelled.".format(t.name))
-                            t.cancelled = False
-                            t.start()
-                else:
-                    self.update_camera_signal.emit(result.value)
-            elif "cam_state_read" in name:
-                self.ui.camera_state_label.setText("{0}".format(str(result.value)).upper())
-            elif "cam_reprate_read" in name:
-                self.ui.reprate_label.setText("{0:.1f} Hz".format(result.value))
-            elif "screen_in_read" in name:
-                if result.value:
-                    self.ui.screen_state_label.setText("IN")
-                else:
-                    self.ui.screen_state_label.setText("OUT")
-            elif "cam_cal_read" in name:
-                try:
-                    cal = result[1].value / result[0].value
-                except TypeError as e:
-                    s = "Could not read calibration. Got {0}".format(result)
-                    root.exception(s)
-                    time_str = time.strftime("%Y-%m-%d_%H-%M-%S", time.localtime(time.time()))
-                    self.ui.status_textedit.append("{0}: {1}".format(time_str, s))
-                    return
-                root.debug("Camera calibration: {0} mm/pixel".format(cal))
-                self.camera_cal = [cal, cal]
-            else:
-                root.error("Task {0} not useful for camera updating".format(name))
         except AttributeError as e:
             root.warning("{0}: Not valid task... {1}".format(name, e))
+            return
+
+        if "cam_image_read" in name:
+            if task.is_cancelled():
+                root.info("Image task cancelled.")
+
+                for t in self.screen_tasks:
+                    root.info("{0}: cancel state: {1}".format(t.get_name(), t.is_cancelled()))
+                    if t.is_cancelled():
+                        root.info("{0} cancelled.".format(t.name))
+                        t.cancelled = False
+                        t.start()
+            else:
+                self.update_camera_signal.emit(result.value)
+        elif "cam_state_read" in name:
+            self.ui.camera_state_label.setText("{0}".format(str(result.value)).upper())
+        elif "cam_reprate_read" in name:
+            self.ui.reprate_label.setText("{0:.1f} Hz".format(result.value))
+        elif "screen_in_read" in name:
+            if result.value:
+                self.ui.screen_state_label.setText("IN")
+            else:
+                self.ui.screen_state_label.setText("OUT")
+        elif "cam_cal_read" in name:
+            try:
+                meas_rul = eval(result[0].value)
+                meas_w = result[1].value
+                cal = meas_w / meas_rul["size"][0] 
+            except TypeError as e:
+                s = "Could not read calibration. Got {0}".format(result)
+                root.exception(s)
+                time_str = time.strftime("%Y-%m-%d_%H-%M-%S", time.localtime(time.time()))
+                self.ui.status_textedit.append("{0}: {1}".format(time_str, s))
+                return
+            root.debug("Camera calibration: {0} mm/pixel".format(cal))
+            self.camera_cal = [cal, cal]
+        else:
+            root.error("Task {0} not useful for camera updating".format(name))
 
 
 if __name__ == "__main__":
