@@ -1219,11 +1219,11 @@ class QuadScanGui(QtGui.QWidget):
             quadimage = QuadImage(k_ind=k_ind, k_value=k_value, image_ind=im_ind, image=image)
             # Appending image to images list in "immutable" named tuple....... :)
             self.quad_scan_data_scan.images.append(quadimage)
-            self.image_processor.set_roi(self.quad_scan_data.acc_params.roi_center,
-                                         self.quad_scan_data.acc_params.roi_dim)
+            self.image_processor.set_roi(self.quad_scan_data_scan.acc_params.roi_center,
+                                         self.quad_scan_data_scan.acc_params.roi_dim)
             threshold = self.ui.p_threshold_spinbox.value()
             kernel = self.ui.p_median_kernel_spinbox.value()
-            self.image_processor.set_processing_parameters(threshold, self.quad_scan_data.acc_params.cal, kernel)
+            self.image_processor.set_processing_parameters(threshold, self.quad_scan_data_scan.acc_params.cal, kernel)
             self.image_processor.process_image(quadimage, enabled=True)
 
             s = "RUNNING: k {0}/{1} image {2}/{3}".format(k_ind, k_ind/float(num_k), im_ind, im_ind/float(num_images))
