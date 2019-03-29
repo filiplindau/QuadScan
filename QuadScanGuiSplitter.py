@@ -734,22 +734,22 @@ class QuadScanGui(QtGui.QWidget):
             image_task = TangoReadAttributeTask("image", new_screen.liveviewer, self.device_handler,
                                                 name="cam_image_read", callback_list=[self.read_image])
             rep_task = RepeatTask(image_task, -1, 0.3, name="cam_image_repeat")
-            #rep_task.start()
+            rep_task.start()
             self.screen_tasks.append(rep_task)
             cam_state_task = TangoReadAttributeTask("state", new_screen.liveviewer, self.device_handler,
                                                     name="cam_state_read", callback_list=[self.read_image])
             rep_task = RepeatTask(cam_state_task, -1, 0.5, name="cam_state_repeat")
-            #rep_task.start()
+            rep_task.start()
             self.screen_tasks.append(rep_task)
             cam_state_task = TangoReadAttributeTask("framerate", new_screen.liveviewer, self.device_handler,
                                                     name="cam_reprate_read", callback_list=[self.read_image])
             rep_task = RepeatTask(cam_state_task, -1, 0.5, name="cam_reprate_repeat")
-            #rep_task.start()
+            rep_task.start()
             self.screen_tasks.append(rep_task)
             screen_in_task = TangoReadAttributeTask("statusin", new_screen.screen, self.device_handler,
                                                     name="screen_in_read", callback_list=[self.read_image])
             rep_task = RepeatTask(screen_in_task, -1, 0.5, name="screen_in_repeat")
-            #rep_task.start()
+            rep_task.start()
             self.screen_tasks.append(rep_task)
             cam_cal_task = BagOfTasksTask([TangoReadAttributeTask("measurementruler", new_screen.beamviewer,
                                                                   self.device_handler, name="cam_cal_ruler"),
