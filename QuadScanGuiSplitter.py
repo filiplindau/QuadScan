@@ -1208,11 +1208,11 @@ class QuadScanGui(QtGui.QWidget):
             root.error("Scan image not valid task. {0}".format(e))
             return
         try:
-            im_ind = name_elements[4]
+            im_ind = int(name_elements[4])
             num_images = self.quad_scan_data_scan.acc_params.num_images
-            k_ind = name_elements[2]
+            k_ind = int(name_elements[2])
             num_k = self.quad_scan_data_scan.acc_params.num_k
-            k_value = name_elements[3]
+            k_value = float(name_elements[3])
             root.info("Scan image {0} {1}, sending for processing".format(k_ind, im_ind))
             self.update_camera_signal.emit(image)
             # self.ui.camera_widget.setImage(image, autoLevels=False, autoRange=False)
@@ -1234,6 +1234,12 @@ class QuadScanGui(QtGui.QWidget):
             root.exception("Error for returned image in scan")
             time_str = time.strftime("%Y-%m-%d_%H-%M-%S", time.localtime(time.time()))
             self.ui.status_textedit.append("\n{0}: Error for returned image in scan\n".format(time_str))
+            return
+        except ValueError as e:
+            root.exception("Error for returned image name in scan")
+            time_str = time.strftime("%Y-%m-%d_%H-%M-%S", time.localtime(time.time()))
+            self.ui.status_textedit.append("\n{0}: Error for returned image name in scan\n{1}\n".format(time_str,
+                                                                                                        name_elements))
             return
         task = SaveQuadImageTask(quadimage, save_path=str(self.ui.save_path_linedit.text()),
                                  name=str(self.ui.save_name_lineedit))
