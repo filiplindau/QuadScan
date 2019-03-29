@@ -671,6 +671,7 @@ class ProcessPoolTask(Task):
         except AttributeError:
             pass
         self.result_thread = None
+        self.logger.info("{0}: Processes stopped".format(self))
 
     def finish_processing(self):
         self.finish_process_event.set()

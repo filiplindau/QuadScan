@@ -733,6 +733,7 @@ class TangoScanTask(Task):
                 for callback in self.callback_list:
                     callback(self)
             next_pos += self.scan_param.scan_step
+            pos_ind += 1
             if next_pos > self.scan_param.scan_end_pos:
                 self.event_done.set()
 
