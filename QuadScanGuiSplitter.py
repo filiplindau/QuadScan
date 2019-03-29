@@ -1028,7 +1028,7 @@ class QuadScanGui(QtGui.QWidget):
                 scan_param = ScanParam(scan_attr_name="mainfieldcomponent", scan_device_name=self.current_quad.crq,
                                        scan_start_pos=k0, scan_end_pos=k1, scan_step=dk,
                                        scan_pos_tol=np.maximum(dk*0.01, 0.001), scan_pos_check_interval=0.1,
-                                       measure_attr_name_list=["image"], measure_device_list=self.current_screen.liveviewer,
+                                       measure_attr_name_list=["image"], measure_device_list=[self.current_screen.liveviewer],
                                        measure_number=self.ui.num_images_spinbox.value(),
                                        measure_interval=self.ui.reprate_spinbox.value())
                 # callback_list=[self.scan_callback] is called for each completed step.

@@ -695,6 +695,9 @@ class TangoScanTask(Task):
             for meas_ind, meas_attr in enumerate(self.scan_param.measure_attr_name_list):
                 # m_name = "read_{0}_{1}_{2}".format(meas_attr, pos_ind, self.last_step_result)
                 m_name = "read_{0}_{1}_{2}_{3}".format(meas_attr, pos_ind, next_pos, meas_ind)
+                self.logger.info("Measuring {0} on {1} using device handler {2}".format(meas_attr,
+                                                                                        self.scan_param.measure_device_list[meas_ind],
+                                                                                        self.device_handler))
                 if self.read_callback is None:
                     read_task = TangoReadAttributeTask(meas_attr, self.scan_param.measure_device_list[meas_ind],
                                                        self.device_handler, name=m_name,
