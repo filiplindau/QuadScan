@@ -1107,7 +1107,8 @@ class QuadScanGui(QtGui.QWidget):
             return False
         base_path = str(self.ui.save_path_linedit.text())
         time_str = time.strftime("%Y-%m-%d_%H-%M-%S", time.localtime(time.time()))
-        save_path = "{0}/{1}_{2}_{3}".format(base_path, time_str, self.current_quad.mag, self.current_screen.screen)
+        dev_str = "{0}_{1}".format(self.current_quad.mag, self.current_screen.screen)
+        save_path = "{0}/{1}_{2}".format(base_path, time_str, dev_str.replace("/", "-"))
         os.mkdir(save_path)
         full_name = os.path.join(save_path, "daq_info.txt")
         with open(full_name, "w+") as f:
