@@ -258,6 +258,9 @@ class SaveQuadImageTask(Task):
             except Exception as e:
                 self.logger.error("Image error: {0}".format(e))
                 self.logger.error("Image type: {0}".format(type(self.quad_image.image)))
+                self.result = e
+                self.cancel()
+                return
         self.result = True
 
 

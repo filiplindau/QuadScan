@@ -96,6 +96,7 @@ class QuadScanGui(QtGui.QWidget):
         self.current_state = "unknown"
         self.last_load_dir = "."
         self.data_base_dir = "."
+        self.scan_save_path = "."
         self.section_init_flag = True
         self.screen_init_flag = True
         self.quad_init_flag = True
@@ -1146,6 +1147,7 @@ class QuadScanGui(QtGui.QWidget):
         save_path = "{0}/{1}_{2}".format(base_path, time_str, dev_str.replace("/", "-"))
         try:
             os.makedirs(save_path)
+            self.scan_save_path = save_path
         except OSError as e:
             time_str = time.strftime("%Y-%m-%d_%H-%M-%S", time.localtime(time.time()))
             self.ui.status_textedit.append("\n{0}: Error creating directory: {1}\n"
@@ -1241,8 +1243,8 @@ class QuadScanGui(QtGui.QWidget):
             self.ui.status_textedit.append("\n{0}: Error for returned image name in scan\n{1}\n".format(time_str,
                                                                                                         name_elements))
             return
-        task = SaveQuadImageTask(quadimage, save_path=str(self.ui.save_path_linedit.text()),
-                                 name=str(self.ui.save_name_lineedit))
+        task = SaveQuadImageTask(quadimage, save_path=str(self.scan_save_path),
+                                 name=str(self.ui.save_name_lineedit), callback_list=[self.save_image_callback])
         task.start()
 
     def scan_image_processed_callback(self, task):
@@ -1250,6 +1252,16 @@ class QuadScanGui(QtGui.QWidget):
         proc_image = task.get_result(wait=False)    # type: ProcessedImage
         ind = proc_image.k_ind * self.quad_scan_data_scan.acc_params.num_k + proc_image.image_ind
         self.quad_scan_data_scan.proc_images.append(proc_image)
+
+    def save_image_callback(self, task):
+        result = task.get_result(wait=False)
+        root.debug("Save image task {0} returned {1}".format(task.get_name(), result))
+        if task.is_cancelled():
+            root.exception("Error for save image in scan")
+            time_str = time.strftime("%Y-%m-%d_%H-%M-%S", time.localtime(time.time()))
+            self.ui.status_textedit.append("\n{0}: Error for save image in scan\n{1}\n".format(time_str,
+                                                                                               result))
+            return
 
     def start_processing(self):
         if len(self.processing_tasks) > 0:

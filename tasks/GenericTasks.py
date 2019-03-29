@@ -156,7 +156,7 @@ class Task(object):
         self.callback_list = callback_list
 
         self.logger = logging.getLogger("Task.{0}".format(self.name.upper()))
-        self.logger.setLevel(logging.DEBUG)
+        self.logger.setLevel(logging.WARNING)
 
         for e in trigger_dict.values():
             self.add_trigger(e)
@@ -600,7 +600,7 @@ class ProcessPoolTask(Task):
         self.stop_result_thread_flag = False
         self.result_dict = dict()
 
-        self.logger.setLevel(logging.DEBUG)
+        self.logger.setLevel(logging.INFO)
 
     def run(self):
         self.create_processes()
