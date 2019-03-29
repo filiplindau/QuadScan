@@ -1039,7 +1039,8 @@ class QuadScanGui(QtGui.QWidget):
                 self.scan_task.start()
                 if self.ui.update_analysis_radiobutton.isChecked():
                     # Should also update roi from camera roi
-                    self.update_analysis_parameters()
+                    # self.quad_scan_data_analysis = self.quad_scan_data_scan
+                    # self.update_analysis_parameters()
                     self.image_processor.clear_callback_list()
                     self.image_processor.add_callback(self.scan_image_processed_callback)
                 root.info("Scan started. Parameters: {0}".format(scan_param))
@@ -1183,7 +1184,7 @@ class QuadScanGui(QtGui.QWidget):
             # images = self.quad_scan_data_scan.images + quad_image_list
             # self.quad_scan_data_scan._replace(images=images)
         else:
-            self.ui.scan_status_label("DONE")
+            self.ui.scan_status_label.setText("DONE")
         if self.ui.update_analysis_radiobutton.isChecked():
             self.quad_scan_data_analysis = self.quad_scan_data_scan
             self.update_analysis_parameters()
@@ -1193,20 +1194,28 @@ class QuadScanGui(QtGui.QWidget):
 
     def scan_image_callback(self, task):
         """
-        Callabck for a new image that had been read. This image is saved and shown in the GUI.
-        :param task:
+        Callback for a new image that had been read. This image is saved and shown in the GUI.
+        The name of the task contains the index of k and image, and k value.
+
+        :param task: TangoReadAttributeTask returning an image.
         :return:
         """
         root.debug("Scan image callback")
         name_elements = task.get_name().split("_")
-        image = task.get_result(wait=False).value
+        try:
+            image = task.get_result(wait=False).value
+        except AttributeError as e:
+            root.error("Scan image not valid task. {0}".format(e))
+            return
         try:
             im_ind = name_elements[4]
             num_images = self.quad_scan_data_scan.acc_params.num_images
             k_ind = name_elements[2]
             num_k = self.quad_scan_data_scan.acc_params.num_k
             k_value = name_elements[3]
-            self.ui.camera_widget.setImage(image, autoLevels=False, autoRange=False)
+            root.info("Scan image {0} {1}, sending for processing".format(k_ind, im_ind))
+            self.update_camera_signal.emit(image)
+            # self.ui.camera_widget.setImage(image, autoLevels=False, autoRange=False)
             quadimage = QuadImage(k_ind=k_ind, k_value=k_value, image_ind=im_ind, image=image)
             # Appending image to images list in "immutable" named tuple....... :)
             self.quad_scan_data_scan.images.append(quadimage)

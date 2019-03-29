@@ -663,6 +663,11 @@ class TangoScanTask(Task):
         self.scan_result = None
         self.last_step_result = None
         self.read_callback = read_callback
+        self.logger.debug("{0}: Scan parameters: {1}".format(self, scan_param))
+        try:
+            self.logger.debug("{0}: read_callback {1}".format(self, read_callback.get_name()))
+        except AttributeError:
+            pass
 
     def action(self):
         self.logger.info("{0} starting scan of {1} from {2} to {3}. ".format(self, self.scan_param.scan_attr_name,
