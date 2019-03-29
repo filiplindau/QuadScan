@@ -72,7 +72,7 @@ class TangoReadAttributeTask(Task):
         self.attribute_name = attribute_name
         self.device_handler = device_handler
 
-        self.logger.setLevel(logging.DEBUG)
+        self.logger.setLevel(logging.INFO)
 
     def action(self):
         self.logger.info("{0} reading {1} on {2}. ".format(self, self.attribute_name, self.device_name))

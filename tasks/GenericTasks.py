@@ -421,7 +421,7 @@ class RepeatTask(Task):
             repetitions = -1
         self.repetitions = repetitions
         self.delay = delay
-        self.logger.setLevel(logging.INFO)
+        self.logger.setLevel(logging.DEBUG)
 
     def action(self):
         self.logger.info("{0} repeating task {1} {2} times.".format(self, self.task, self.repetitions))
