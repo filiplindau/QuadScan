@@ -421,13 +421,13 @@ class RepeatTask(Task):
             repetitions = -1
         self.repetitions = repetitions
         self.delay = delay
-        self.logger.setLevel(logging.DEBUG)
+        self.logger.setLevel(logging.INFO)
 
     def action(self):
         self.logger.info("{0} repeating task {1} {2} times.".format(self, self.task, self.repetitions))
         current_rep = 0
         result_list = list()
-        while self.repetitions < current_rep or self.repetitions == -1:
+        while current_rep < self.repetitions  or self.repetitions == -1:
             self.logger.debug("{0}: Starting task".format(self))
             self.task.set_name("{0}_{1}".format(self.base_name, current_rep))
             self.task.start()
