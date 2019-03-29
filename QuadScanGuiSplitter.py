@@ -298,6 +298,8 @@ class QuadScanGui(QtGui.QWidget):
         self.ui.camera_start_button.clicked.connect(self.start_camera)
         self.ui.camera_stop_button.clicked.connect(self.stop_camera)
         self.ui.camera_widget.roi.sigRegionChangeFinished.connect(self.update_camera_roi)
+        self.ui.screen_in_button.clicked.connect(self.insert_screen)
+        self.ui.screen_out_button.clicked.connect(self.remove_screen)
         self.ui.scan_start_button.clicked.connect(self.start_scan)
         self.ui.scan_stop_button.clicked.connect(self.stop_scan)
 
@@ -755,7 +757,9 @@ class QuadScanGui(QtGui.QWidget):
             cam_cal_task = BagOfTasksTask([TangoReadAttributeTask("measurementruler", new_screen.beamviewer,
                                                                   self.device_handler, name="cam_cal_ruler"),
                                            TangoReadAttributeTask("measurementrulerwidth", new_screen.beamviewer,
-                                                                  self.device_handler, name="cam_cal_width")
+                                                                  self.device_handler, name="cam_cal_width"),
+                                           TangoReadAttributeTask("roi", new_screen.beamviewer,
+                                                                  self.device_handler, name="cam_cal_roi")
                                            ],
                                           name="cam_cal_read", callback_list=[self.read_image])
             cam_cal_task.start()
@@ -1228,9 +1232,10 @@ class QuadScanGui(QtGui.QWidget):
             self.image_processor.set_processing_parameters(threshold, self.quad_scan_data_scan.acc_params.cal, kernel)
             self.image_processor.process_image(quadimage, enabled=True)
 
-            s = "RUNNING: k {0}/{1} image {2}/{3}".format(k_ind, float(num_k), im_ind, float(num_images))
+            s = "RUNNING: k {0}/{1} image {2}/{3}".format(k_ind+1, float(num_k), im_ind+1, float(num_images))
             self.ui.scan_status_label.setText(s)
             p = int((k_ind + (im_ind + 1) / float(num_images)) / float(num_k) * 10)
+            root.debug("p={0}".format(p))
             self.ui.scan_progress_label.setText("[{0}{1}]".format("="*p, "-"*(10-p)))
         except IndexError as e:
             root.exception("Error for returned image in scan")
@@ -1456,6 +1461,9 @@ class QuadScanGui(QtGui.QWidget):
                 meas_rul = eval(result[0].value)
                 meas_w = result[1].value
                 cal = meas_w / meas_rul["size"][0]
+                roi = eval(result[2].value)
+                self.ui.camera_widget.roi.setPos(roi[0], roi[2])
+                self.ui.camera_widget.roi.setSize(roi[1]-roi[0], roi[3]-roi[2])
             except TypeError as e:
                 s = "Could not read calibration. Got {0}".format(result)
                 root.exception(s)
