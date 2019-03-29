@@ -665,7 +665,7 @@ class TangoScanTask(Task):
         self.read_callback = read_callback
         self.logger.debug("{0}: Scan parameters: {1}".format(self, scan_param))
         try:
-            self.logger.debug("{0}: read_callback {1}".format(self, read_callback.get_name()))
+            self.logger.debug("{0}: read_callback {1}".format(self, read_callback))
         except AttributeError:
             pass
 
@@ -696,12 +696,14 @@ class TangoScanTask(Task):
                                                          timeout=self.timeout)
             measure_task_list = list()
             for meas_ind, meas_attr in enumerate(self.scan_param.measure_attr_name_list):
-                m_name = "read_{0}_{1}_{2}".format(meas_attr, pos_ind, self.last_step_result)
+                # m_name = "read_{0}_{1}_{2}".format(meas_attr, pos_ind, self.last_step_result)
+                m_name = "read_{0}_{1}_{2}_{3}".format(meas_attr, pos_ind, next_pos, meas_ind)
                 if self.read_callback is None:
                     read_task = TangoReadAttributeTask(meas_attr, self.scan_param.measure_device_list[meas_ind],
                                                        self.device_handler, name=m_name,
                                                        timeout=self.timeout)
                 else:
+                    self.logger.info("{0}: Reading {1}".format(self, m_name))
                     read_task = TangoReadAttributeTask(meas_attr, self.scan_param.measure_device_list[meas_ind],
                                                        self.device_handler, name=m_name,
                                                        timeout=self.timeout, callback_list=[self.read_callback])
