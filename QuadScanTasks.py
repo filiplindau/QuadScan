@@ -72,7 +72,7 @@ class TangoReadAttributeTask(Task):
         self.attribute_name = attribute_name
         self.device_handler = device_handler
 
-        self.logger.setLevel(logging.WARNING)
+        self.logger.setLevel(logging.DEBUG)
 
     def action(self):
         self.logger.info("{0} reading {1} on {2}. ".format(self, self.attribute_name, self.device_name))
@@ -664,10 +664,7 @@ class TangoScanTask(Task):
         self.last_step_result = None
         self.read_callback = read_callback
         self.logger.debug("{0}: Scan parameters: {1}".format(self, scan_param))
-        try:
-            self.logger.debug("{0}: read_callback {1}".format(self, read_callback))
-        except AttributeError:
-            pass
+        self.logger.debug("{0}: read_callback {1}".format(self, read_callback))
 
     def action(self):
         self.logger.info("{0} starting scan of {1} from {2} to {3}. ".format(self, self.scan_param.scan_attr_name,
@@ -723,6 +720,7 @@ class TangoScanTask(Task):
             timestamp_list.append(step_result[1].time)
             meas_list.append(step_result[2])
             self.last_step_result = step_result
+            self.result = step_result
             # Step done, notify callbacks:
             if self.is_done() is False:
                 self.logger.debug("{0} Calling {1} callbacks".format(self, len(self.callback_list)))
