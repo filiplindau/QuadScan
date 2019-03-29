@@ -1105,7 +1105,10 @@ class QuadScanGui(QtGui.QWidget):
             msg = "Could not generate daq_info: {0}".format(e)
             root.exception(e)
             return False
-        save_path = str(self.ui.save_path_linedit.text())
+        base_path = str(self.ui.save_path_linedit.text())
+        time_str = time.strftime("%Y-%m-%d_%H-%M-%S", time.localtime(time.time()))
+        save_path = "{0}/{1}_{2}_{3}".format(base_path, time_str, self.current_quad.mag, self.current_screen.screen)
+        os.mkdir(save_path)
         full_name = os.path.join(save_path, "daq_info.txt")
         with open(full_name, "w+") as f:
             for key, value in save_dict.iteritems():
