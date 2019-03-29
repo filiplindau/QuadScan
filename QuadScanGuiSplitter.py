@@ -1037,7 +1037,7 @@ class QuadScanGui(QtGui.QWidget):
                                                timeout=5.0, callback_list=[self.scan_callback],
                                                read_callback=self.scan_image_callback)
                 self.scan_task.start()
-                if self.ui.update_analysis_radiobutton.is_checked():
+                if self.ui.update_analysis_radiobutton.isChecked():
                     # Should also update roi from camera roi
                     self.update_analysis_parameters()
                     self.image_processor.clear_callback_list()
@@ -1067,11 +1067,15 @@ class QuadScanGui(QtGui.QWidget):
             self.scan_task.cancel()
         if str(self.ui.camera_state_label.text()).upper() not in ["RUNNING", "ON"]:
             root.warning("Camera not running. Can't start scan")
-            self.ui.status_textedit.append("\nCamera not running. Can't start scan. \n---------------------------\n")
+            time_str = time.strftime("%Y-%m-%d_%H-%M-%S", time.localtime(time.time()))
+            self.ui.status_textedit.append("\n{0}: Camera not running. Can't start scan. "
+                                           "\n---------------------------\n".format(time_str))
             return False
         if str(self.ui.screen_state_label.text()).upper() not in ["IN", "OUT"]:
             root.warning("Screen not inserted. Can't start scan")
-            self.ui.status_textedit.append("\nScreen not inserted. Can't start scan. \n---------------------------\n")
+            time_str = time.strftime("%Y-%m-%d_%H-%M-%S", time.localtime(time.time()))
+            self.ui.status_textedit.append("\n{0}: Screen not inserted. Can't start scan. "
+                                           "\n---------------------------\n".format(time_str))
             return False
         return True
 
@@ -1125,12 +1129,14 @@ class QuadScanGui(QtGui.QWidget):
             msg = "Could not generate daq_info: {0}".format(e)
             root.exception(e)
             time_str = time.strftime("%Y-%m-%d_%H-%M-%S", time.localtime(time.time()))
-            self.ui.status_textedit.append("{0}: Could not generate daq_info: {1}".format(time_str, e))
+            self.ui.status_textedit.append("\n{0}: Could not generate daq_info: {1}\n"
+                                           "=============================\n".format(time_str, e))
             return False
         except IndexError as e:
             msg = "Could not generate daq_info: {0}".format(e)
             time_str = time.strftime("%Y-%m-%d_%H-%M-%S", time.localtime(time.time()))
-            self.ui.status_textedit.append("{0}: Could not generate daq_info: {1}".format(time_str, e))
+            self.ui.status_textedit.append("\n{0}: Could not generate daq_info: {1}\n"
+                                           "=============================\n".format(time_str, e))
             root.exception(e)
             return False
         base_path = str(self.ui.save_path_linedit.text())
@@ -1141,7 +1147,8 @@ class QuadScanGui(QtGui.QWidget):
             os.makedirs(save_path)
         except OSError as e:
             time_str = time.strftime("%Y-%m-%d_%H-%M-%S", time.localtime(time.time()))
-            self.ui.status_textedit.append("{0}: Error creating directory: {1}".format(time_str, e))
+            self.ui.status_textedit.append("\n{0}: Error creating directory: {1}\n"
+                                           "==============================\n".format(time_str, e))
             return False
         full_name = os.path.join(save_path, "daq_info.txt")
         with open(full_name, "w+") as f:
@@ -1165,8 +1172,11 @@ class QuadScanGui(QtGui.QWidget):
         root.debug("Scan callback")
         if not task.is_done():
             res = task.get_result(wait=False)       # Result contains: [write_pos_res, read_pos_res, measure_list]
-            pos = res[1].value
-            timestamp = res[1].time
+            try:
+                pos = res[1].value
+                timestamp = res[1].time
+            except TypeError as e:
+                root.exception("Scan callback result error: ")
             # measure_list = res[2]
             # quad_image_list = [QuadImage(k_ind=0, k_value=pos, image_ind=ind, image=im)
             #                    for ind, im in enumerate(measure_list)]
@@ -1174,7 +1184,7 @@ class QuadScanGui(QtGui.QWidget):
             # self.quad_scan_data_scan._replace(images=images)
         else:
             self.ui.scan_status_label("DONE")
-        if self.ui.update_analysis_radiobutton.is_checked():
+        if self.ui.update_analysis_radiobutton.isChecked():
             self.quad_scan_data_analysis = self.quad_scan_data_scan
             self.update_analysis_parameters()
             self.update_image_selection()
@@ -1213,7 +1223,8 @@ class QuadScanGui(QtGui.QWidget):
             self.ui.scan_progress_label.setText("[{0}{1}]".format("="*p, "-"*(10-p)))
         except IndexError as e:
             root.exception("Error for returned image in scan")
-            self.ui.status_textedit.append("Error for returned image in scan\n")
+            time_str = time.strftime("%Y-%m-%d_%H-%M-%S", time.localtime(time.time()))
+            self.ui.status_textedit.append("\n{0}: Error for returned image in scan\n".format(time_str))
             return
         task = SaveQuadImageTask(quadimage, save_path=str(self.ui.save_path_linedit.text()),
                                  name=str(self.ui.save_name_lineedit))
@@ -1411,7 +1422,7 @@ class QuadScanGui(QtGui.QWidget):
             try:
                 meas_rul = eval(result[0].value)
                 meas_w = result[1].value
-                cal = meas_w / meas_rul["size"][0] 
+                cal = meas_w / meas_rul["size"][0]
             except TypeError as e:
                 s = "Could not read calibration. Got {0}".format(result)
                 root.exception(s)
