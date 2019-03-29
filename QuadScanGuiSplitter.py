@@ -1022,7 +1022,7 @@ class QuadScanGui(QtGui.QWidget):
                 k0 = self.ui.k_start_spinbox.value()
                 k1 = self.ui.k_end_spinbox.value()
                 dk = (k1 - k0) / np.maximum(1, self.ui.num_k_spinbox.value() - 1)
-                scan_param = ScanParam(scan_attr_name="mainfieldcomponent", scan_device_name=self.current_quad.cqr,
+                scan_param = ScanParam(scan_attr_name="mainfieldcomponent", scan_device_name=self.current_quad.crq,
                                        scan_start_pos=k0, scan_end_pos=k1, scan_step=dk,
                                        scan_pos_tol=np.maximum(dk*0.01, 0.001), scan_pos_check_interval=0.1,
                                        measure_attr_name_list=["image"], measure_device_list=self.current_screen.liveviewer,
@@ -1401,7 +1401,14 @@ class QuadScanGui(QtGui.QWidget):
                 else:
                     self.ui.screen_state_label.setText("OUT")
             elif "cam_cal_read" in name:
-                cal = result[1].value / result[0].value
+                try:
+                    cal = result[1].value / result[0].value
+                except TypeError as e:
+                    s = "Could not read calibration. Got {0}".format(result)
+                    root.exception(s)
+                    time_str = time.strftime("%Y-%m-%d_%H-%M-%S", time.localtime(time.time()))
+                    self.ui.status_textedit.append("{0}: {1}".format(time_str, s))
+                    return
                 root.debug("Camera calibration: {0} mm/pixel".format(cal))
                 self.camera_cal = [cal, cal]
             else:
