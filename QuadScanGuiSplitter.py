@@ -286,6 +286,8 @@ class QuadScanGui(QtGui.QWidget):
 
         val = self.settings.value("electron_energy", "200", type=float)
         self.ui.electron_energy_spinbox.setValue(val)
+        val = self.settings.value("rep_ate", "2", type=float)
+        self.ui.reprate_spinbox.setValue(val)
 
         # Signal connections
         self.ui.set_start_k_button.clicked.connect(self.set_start_k)
@@ -429,6 +431,7 @@ class QuadScanGui(QtGui.QWidget):
         self.settings.setValue("num_images", self.ui.num_images_spinbox.value())
         self.settings.setValue("num_k", self.ui.num_k_spinbox.value())
         self.settings.setValue("electron_energy", self.ui.electron_energy_spinbox.value())
+        self.settings.setValue("rep_rate", self.ui.reprate_spinbox.value())
 
         self.settings.setValue("section", self.ui.section_combobox.currentText())
         self.settings.setValue("section_quad", self.ui.quad_combobox.currentText())
