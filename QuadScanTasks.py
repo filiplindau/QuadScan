@@ -512,6 +512,7 @@ class ImageProcessorTask(Task):
 
         self.queue_empty_event = threading.Event()
         self.pending_images_in_queue = 0
+        self.logger.setLevel(logging.DEBUG)
 
     def action(self):
         self.logger.info("{0} entering action. ".format(self))

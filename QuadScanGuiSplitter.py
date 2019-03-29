@@ -1228,9 +1228,9 @@ class QuadScanGui(QtGui.QWidget):
             self.image_processor.set_processing_parameters(threshold, self.quad_scan_data_scan.acc_params.cal, kernel)
             self.image_processor.process_image(quadimage, enabled=True)
 
-            s = "RUNNING: k {0}/{1} image {2}/{3}".format(k_ind, k_ind/float(num_k), im_ind, im_ind/float(num_images))
+            s = "RUNNING: k {0}/{1} image {2}/{3}".format(k_ind, float(num_k), im_ind, float(num_images))
             self.ui.scan_status_label.setText(s)
-            p = int((k_ind/float(num_k) * num_images + im_ind/float(num_images)) / (num_k * num_images) * 10)
+            p = int((k_ind + (im_ind + 1) / float(num_images)) / float(num_k) * 10)
             self.ui.scan_progress_label.setText("[{0}{1}]".format("="*p, "-"*(10-p)))
         except IndexError as e:
             root.exception("Error for returned image in scan")
@@ -1244,14 +1244,20 @@ class QuadScanGui(QtGui.QWidget):
                                                                                                         name_elements))
             return
         task = SaveQuadImageTask(quadimage, save_path=str(self.scan_save_path),
-                                 name=str(self.ui.save_name_lineedit), callback_list=[self.save_image_callback])
+                                 name="scan_save_{0}".format(str(self.ui.save_name_lineedit.text())),
+                                 callback_list=[self.save_image_callback])
         task.start()
 
     def scan_image_processed_callback(self, task):
         root.debug("Scan image processed.")
         proc_image = task.get_result(wait=False)    # type: ProcessedImage
         ind = proc_image.k_ind * self.quad_scan_data_scan.acc_params.num_k + proc_image.image_ind
+        self.ui.p_image_index_slider.blockSignals(True)
+        self.ui.p_image_index_slider.setMaximum(ind)
+        self.ui.p_image_index_slider.setValue(ind)
+        self.ui.p_image_index_slider.blockSignals(False)
         self.quad_scan_data_scan.proc_images.append(proc_image)
+        self.ui.process_image_widget.setImage(proc_image.pic_roi)
 
     def save_image_callback(self, task):
         result = task.get_result(wait=False)

@@ -132,7 +132,7 @@ QuadScanData = namedtuple("QuadScanData", "acc_params images proc_images")
 QuadScanData stores data from a quadscan. Scan parameters in acc_params, raw images, and processed images.
 
 :param acc_params: Named tuple AcceleratorParameters
-:param images: List of images for the scan.
+:param images: List of images for the scan. Type: QaudImage
 :param proc_images: List of process images (roi crop, thresholding, median filtering).  
 """
 

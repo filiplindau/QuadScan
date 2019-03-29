@@ -600,7 +600,7 @@ class ProcessPoolTask(Task):
         self.stop_result_thread_flag = False
         self.result_dict = dict()
 
-        self.logger.setLevel(logging.INFO)
+        self.logger.setLevel(logging.DEBUG)
 
     def run(self):
         self.create_processes()
