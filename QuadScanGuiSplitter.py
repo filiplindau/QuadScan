@@ -284,6 +284,9 @@ class QuadScanGui(QtGui.QWidget):
         val = self.settings.value("num_images", "2", type=int)
         self.ui.num_images_spinbox.setValue(val)
 
+        val = self.settings.value("electron_energy", "200", type=float)
+        self.ui.electron_energy_spinbox.setValue(val)
+
         # Signal connections
         self.ui.set_start_k_button.clicked.connect(self.set_start_k)
         self.ui.set_end_k_button.clicked.connect(self.set_end_k)
@@ -399,7 +402,7 @@ class QuadScanGui(QtGui.QWidget):
             except AttributeError:
                 pass
         self.settings.setValue("load_path", self.last_load_dir)
-        self.settings.setValue("base_path", self.data_base_dir)
+        self.settings.setValue("base_path", self.ui.save_path_linedit.text())
 
         self.settings.setValue('window_size_w', np.int(self.size().width()))
         self.settings.setValue('window_size_h', np.int(self.size().height()))
@@ -425,11 +428,11 @@ class QuadScanGui(QtGui.QWidget):
         self.settings.setValue("k_end", self.ui.k_end_spinbox.value())
         self.settings.setValue("num_images", self.ui.num_images_spinbox.value())
         self.settings.setValue("num_k", self.ui.num_k_spinbox.value())
-        self.settings.setValue("save_dir", self.ui.save_path_linedit.text())
+        self.settings.setValue("electron_energy", self.ui.electron_energy_spinbox.value())
 
-        # self.settings.setValue("section", self.controller.get_parameter("scan", "section_name"))
-        # self.settings.setValue("section_quad", self.controller.get_parameter("scan", "quad_name"))
-        # self.settings.setValue("section_screen", self.controller.get_parameter("scan", "screen_name"))
+        self.settings.setValue("section", self.ui.section_combobox.currentText())
+        self.settings.setValue("section_quad", self.ui.quad_combobox.currentText())
+        self.settings.setValue("section_screen", self.ui.screen_combobox.currentText())
         root.debug("Settings done.")
 
     def set_roi(self):
@@ -626,6 +629,24 @@ class QuadScanGui(QtGui.QWidget):
             except IndexError:
                 # Quad, screen lists not populated. Cannot select device yet
                 return
+            if self.section_init_flag:
+                # If this is the initial call to update_section we set the selection to previous values:
+                val = str(self.settings.value("section_quad", "NA", type=str)).upper()
+                if val == "NA":
+                    ind = 0
+                else:
+                    ind = self.ui.quad_combobox.findText(val)
+                root.debug("Quad {1} index: {0}".format(ind, val))
+                self.ui.quad_combobox.setCurrentIndex(ind)
+
+                val = str(self.settings.value("section_screen", "NA", type=str)).upper()
+                if val == "NA":
+                    ind = 0
+                else:
+                    ind = self.ui.screen_combobox.findText(val)
+                root.debug("Screen {1} index: {0}".format(ind, val))
+                self.ui.screen_combobox.setCurrentIndex(ind)
+
             self.section_init_flag = False
             self.current_section = sect
         if len(quads) > 0:
@@ -1100,16 +1121,25 @@ class QuadScanGui(QtGui.QWidget):
         except KeyError as e:
             msg = "Could not generate daq_info: {0}".format(e)
             root.exception(e)
+            time_str = time.strftime("%Y-%m-%d_%H-%M-%S", time.localtime(time.time()))
+            self.ui.status_textedit.append("{0}: Could not generate daq_info: {1}".format(time_str, e))
             return False
         except IndexError as e:
             msg = "Could not generate daq_info: {0}".format(e)
+            time_str = time.strftime("%Y-%m-%d_%H-%M-%S", time.localtime(time.time()))
+            self.ui.status_textedit.append("{0}: Could not generate daq_info: {1}".format(time_str, e))
             root.exception(e)
             return False
         base_path = str(self.ui.save_path_linedit.text())
         time_str = time.strftime("%Y-%m-%d_%H-%M-%S", time.localtime(time.time()))
         dev_str = "{0}_{1}".format(self.current_quad.mag, self.current_screen.screen)
         save_path = "{0}/{1}_{2}".format(base_path, time_str, dev_str.replace("/", "-"))
-        os.mkdir(save_path)
+        try:
+            os.makedirs(save_path)
+        except OSError as e:
+            time_str = time.strftime("%Y-%m-%d_%H-%M-%S", time.localtime(time.time()))
+            self.ui.status_textedit.append("{0}: Error creating directory: {1}".format(time_str, e))
+            return False
         full_name = os.path.join(save_path, "daq_info.txt")
         with open(full_name, "w+") as f:
             for key, value in save_dict.iteritems():
