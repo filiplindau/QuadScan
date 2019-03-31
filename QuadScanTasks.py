@@ -432,7 +432,7 @@ def process_image_func(image, k_ind, k_value, image_ind, threshold, roi_cent, ro
     # and propagates them to the PoolTask via an output queue. It is therefore not needed to catch
     # exceptions here.
     # logger.debug("Processing image {0}, {1} in pool, size {2}".format(k_ind, image_ind, image.shape))
-    # print("Processing image {0}, {1} in pool, size {2}".format(k_ind, image_ind, image.shape))
+    print("Processing image {0}, {1} in pool, size {2}".format(k_ind, image_ind, image.shape))
     t0 = time.time()
     # logger.debug("Threshold={0}, cal={1}, kernel={2}".format(threshold, cal, kernel))
     x = np.array([int(roi_cent[0] - roi_dim[0] / 2.0), int(roi_cent[0] + roi_dim[0] / 2.0)])
@@ -461,6 +461,7 @@ def process_image_func(image, k_ind, k_value, image_ind, threshold, roi_cent, ro
         # logger.warning("Medfilt kernel value error: {0}".format(e))
         print("Medfilt kernel value error: {0}".format(e))
 
+    print("Medfilt done")
     # Threshold image
     if threshold is None:
         threshold = pic_roi[0:20, 0:20].mean()*3 + pic_roi[-20:, -20:].mean()*3
@@ -483,6 +484,8 @@ def process_image_func(image, k_ind, k_value, image_ind, threshold, roi_cent, ro
     sigma_x = np.sqrt(np.sum((x_v - x_cent) ** 2 * line_x) / l_x_n)
     y_cent = np.sum(y_v * line_y) / l_y_n
     sigma_y = np.sqrt(np.sum((y_v - y_cent) ** 2 * line_y) / l_y_n)
+
+    print("Sigma calculated")
 
     # Store processed data
     result = ProcessedImage(k_ind=k_ind, k_value=k_value, image_ind=image_ind, pic_roi=pic_roi,
