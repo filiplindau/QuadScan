@@ -583,6 +583,8 @@ class QuadScanGui(QtGui.QWidget):
                     else:
                         self.quad_scan_data_analysis = quad_scan_data
                         self.ui.p_image_index_slider.setMaximum(len(self.quad_scan_data_analysis.images) - 1)
+                        self.ui.p_image_index_slider.setValue(0)
+                        self.ui.p_image_index_slider.update()
                         root.debug("Proc images len: {0}".format(len(quad_scan_data.proc_images)))
                         root.debug("Images len: {0}".format(len(quad_scan_data.images)))
                         self.update_analysis_parameters()
