@@ -110,6 +110,7 @@ class QuadScanGui(QtGui.QWidget):
         self.fit_plot_vb = None
         self.process_image_view = None       # ROI for when viewing raw process image
         self.load_image_max = 0.0
+        self.scan_image_max = 0.0
 
         self.camera_proxy = None    # Signal proxy to track mouse position over image
         self.process_image_proxy = None  # Signal proxy to track mouse position over image
@@ -487,9 +488,12 @@ class QuadScanGui(QtGui.QWidget):
         root.info("Loading data from scan")
         if self.quad_scan_data_scan.acc_params is not None:
             root.debug("Load data complete. Storing quad scan data.")
+            source_name = "Scan data {0}-{1}".format(self.current_quad.mag, self.current_screen.screen)
+            self.ui.data_source_label.setText(source_name)
+
             hw = self.ui.process_image_widget.getHistogramWidget()
             hl = hw.getLevels()
-            hw.setLevels(self.ui.p_threshold_spinbox.value(), self.load_image_max)
+            hw.setLevels(self.ui.p_threshold_spinbox.value(), self.scan_image_max)
             root.debug("Proc images len: {0}".format(len(self.quad_scan_data_scan.proc_images)))
             self.update_analysis_parameters()
             self.update_image_selection()
@@ -1053,6 +1057,7 @@ class QuadScanGui(QtGui.QWidget):
         root.info("Start scan pressed")
         if self.assert_scan_start_conditions():
             if self.generate_daq_info():
+                self.scan_image_max = 0.0
                 k0 = self.ui.k_start_spinbox.value()
                 k1 = self.ui.k_end_spinbox.value()
                 dk = (k1 - k0) / np.maximum(1, self.ui.num_k_spinbox.value() - 1)
@@ -1070,6 +1075,9 @@ class QuadScanGui(QtGui.QWidget):
                 self.scan_task.start()
                 if self.ui.update_analysis_radiobutton.isChecked():
                     # Should also update roi from camera roi
+                    source_name = "Scan data {0}-{1}".format(self.current_quad.mag, self.current_screen.screen)
+                    self.ui.data_source_label.setText(source_name)
+                    
                     self.quad_scan_data_analysis = self.quad_scan_data_scan
                     self.update_analysis_parameters()
                     self.image_processor.clear_callback_list()
@@ -1274,6 +1282,8 @@ class QuadScanGui(QtGui.QWidget):
             p = int((k_ind + (im_ind + 1) / float(num_images)) / float(num_k) * 10)
             # root.debug("p={0}".format(p))
             self.ui.scan_progress_label.setText("[{0}{1}]".format("="*p, "-"*(10-p)))
+
+            self.scan_image_max = np.maximum(self.scan_image_max, np.max(image))
 
             # Put image for processing is update while scan is selected:
             if self.ui.update_analysis_radiobutton.isChecked():
