@@ -1262,7 +1262,7 @@ class QuadScanGui(QtGui.QWidget):
             s = "RUNNING: k {0}/{1} image {2}/{3}".format(k_ind+1, float(num_k), im_ind+1, float(num_images))
             self.ui.scan_status_label.setText(s)
             p = int((k_ind + (im_ind + 1) / float(num_images)) / float(num_k) * 10)
-            root.debug("p={0}".format(p))
+            # root.debug("p={0}".format(p))
             self.ui.scan_progress_label.setText("[{0}{1}]".format("="*p, "-"*(10-p)))
 
             # Put image for processing is update while scan is selected:
@@ -1281,7 +1281,7 @@ class QuadScanGui(QtGui.QWidget):
                 self.ui.p_image_index_slider.setMaximum(ind)
                 self.ui.p_image_index_slider.setValue(ind)
                 self.ui.p_image_index_slider.blockSignals(False)
-                self.update_image_selection()
+                self.update_image_selection(auto_levels=True)
 
         except IndexError as e:
             root.exception("Error for returned image in scan")

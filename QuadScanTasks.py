@@ -588,6 +588,7 @@ class ImageProcessorTask(Task):
         self.stop_processing_event.set()
 
     def set_roi(self, roi_cent, roi_dim):
+        self.logger.debug("{0}: Setting ROI center {1}, ROI dim {2}".format(self, roi_cent, roi_dim))
         self.roi_cent = roi_cent
         self.roi_dim = roi_dim
 
