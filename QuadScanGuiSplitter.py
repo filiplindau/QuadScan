@@ -1283,7 +1283,10 @@ class QuadScanGui(QtGui.QWidget):
             # root.debug("p={0}".format(p))
             self.ui.scan_progress_label.setText("[{0}{1}]".format("="*p, "-"*(10-p)))
 
-            self.scan_image_max = np.maximum(self.scan_image_max, np.max(image))
+            try:
+                self.scan_image_max = np.maximum(self.scan_image_max, np.max(image))
+            except Exception as e:
+                root.exception("Error when np.maximum")
 
             # Put image for processing is update while scan is selected:
             if self.ui.update_analysis_radiobutton.isChecked():
