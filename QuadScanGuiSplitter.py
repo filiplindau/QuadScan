@@ -573,13 +573,22 @@ class QuadScanGui(QtGui.QWidget):
                 task.remove_callback(self.update_load_data)
                 if isinstance(task, LoadQuadScanDirTask):
                     quad_scan_data = task.get_result(wait=False)   # type: QuadScanData
-                    self.quad_scan_data_analysis = quad_scan_data
-                    self.ui.p_image_index_slider.setMaximum(len(self.quad_scan_data_analysis.images) - 1)
-                    root.debug("Proc images len: {0}".format(len(quad_scan_data.proc_images)))
-                    self.update_analysis_parameters()
-                    self.update_image_selection()
-                    self.update_fit_signal.emit()
-                    self.start_fit()
+                    if task.is_cancelled():
+                        time_str = time.strftime("%Y-%m-%d_%H-%M-%S", time.localtime(time.time()))
+                        msg = "Load dir error: {0}".format(quad_scan_data)
+                        self.ui.status_textedit.append("\n{0}: {1}"
+                                                       "\n---------------------------\n".format(time_str, msg))
+
+                        root.error(msg)
+                    else:
+                        self.quad_scan_data_analysis = quad_scan_data
+                        self.ui.p_image_index_slider.setMaximum(len(self.quad_scan_data_analysis.images) - 1)
+                        root.debug("Proc images len: {0}".format(len(quad_scan_data.proc_images)))
+                        root.debug("Images len: {0}".format(len(quad_scan_data.images)))
+                        self.update_analysis_parameters()
+                        self.update_image_selection()
+                        self.update_fit_signal.emit()
+                        self.start_fit()
 
     def update_analysis_parameters(self):
         root.debug("Acc params {0}".format(self.quad_scan_data_analysis.acc_params))
