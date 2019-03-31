@@ -1295,6 +1295,7 @@ class QuadScanGui(QtGui.QWidget):
                 threshold = self.ui.p_threshold_spinbox.value()
                 kernel = self.ui.p_median_kernel_spinbox.value()
                 self.image_processor.set_processing_parameters(threshold, self.quad_scan_data_scan.acc_params.cal, kernel)
+                root.debug("Starting processing quadimage {0}".format(quadimage))
                 self.image_processor.process_image(quadimage, enabled=True)
 
                 # Show image if raw radio is selected:
