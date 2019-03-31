@@ -622,8 +622,8 @@ class QuadScanGui(QtGui.QWidget):
         self.ui.process_image_widget.roi.setSize(acc_params.roi_dim)
         self.ui.process_image_widget.roi.blockSignals(False)
 
-        self.ui.p_image_index_slider.setMaximum(acc_params.num_images-1)
-        # self.ui.p_image_index_slider.setMaximum(len(self.quad_scan_data_analysis.proc_images) - 1)
+        # self.ui.p_image_index_slider.setMaximum(acc_params.num_images-1)
+        self.ui.p_image_index_slider.setMaximum(len(self.quad_scan_data_analysis.proc_images) - 1)
         th_list = [i.threshold for i in self.quad_scan_data_analysis.proc_images]
         try:
             threshold = sum(th_list) * 1.0 / len(self.quad_scan_data_analysis.proc_images)
