@@ -1109,6 +1109,7 @@ class QuadScanGui(QtGui.QWidget):
         roi_size = self.ui.camera_widget.roi.size()
         roi_pos = self.ui.camera_widget.roi.pos()
         roi_center = [roi_pos[0] + roi_size[0] / 2.0, roi_pos[1] + roi_size[1] / 2.0]
+        roi_dim = [roi_size[0], roi_size[1]]
         root.info("ROI: pos {0}, size {1}, center {2}".format(roi_pos, roi_size, roi_center))
         acc_params = AcceleratorParameters(electron_energy=self.ui.electron_energy_spinbox.value(),
                                            quad_length=float(self.ui.quad_length_label.text()),
@@ -1119,7 +1120,7 @@ class QuadScanGui(QtGui.QWidget):
                                            quad_name=self.current_quad.mag,
                                            screen_name=self.current_screen.screen,
                                            roi_center=roi_center,
-                                           roi_dim=roi_size)
+                                           roi_dim=roi_dim)
         self.quad_scan_data_scan = QuadScanData(acc_params=acc_params, images=[], proc_images=[])
 
         # Save daq_info.txt:
@@ -1139,7 +1140,7 @@ class QuadScanGui(QtGui.QWidget):
             save_dict["k_max"] = "{0}".format(k1)
             val = roi_center
             save_dict["roi_center"] = "{0} {1}".format(val[0], val[1])
-            val = roi_size
+            val = roi_dim
             save_dict["roi_dim"] = "{0} {1}".format(val[0], val[1])
             save_dict["beam_energy"] = "{0}".format(self.ui.electron_energy_spinbox.value())
             save_dict["camera_bpp"] = 16
