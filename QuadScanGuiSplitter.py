@@ -1077,7 +1077,7 @@ class QuadScanGui(QtGui.QWidget):
                     # Should also update roi from camera roi
                     source_name = "Scan data {0}-{1}".format(self.current_quad.mag, self.current_screen.screen)
                     self.ui.data_source_label.setText(source_name)
-                    
+
                     self.quad_scan_data_analysis = self.quad_scan_data_scan
                     self.update_analysis_parameters()
                     self.image_processor.clear_callback_list()
