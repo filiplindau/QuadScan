@@ -489,7 +489,7 @@ class QuadScanGui(QtGui.QWidget):
             self.quad_scan_data_analysis = self.quad_scan_data_scan
             self.update_analysis_parameters()
             self.update_image_selection()
-            self.update_fit_signal.emit()
+            # self.update_fit_signal.emit()
             self.start_fit()
 
     def load_dir_entered(self, load_dir):
@@ -1066,6 +1066,14 @@ class QuadScanGui(QtGui.QWidget):
         Check pre-conditions necessary to start a scan. Return True if ok.
         Will also cancel an existing running scan task.
 
+        - Is the camera running
+        - Is the screen in
+
+        TODO:
+        - Is the quad on
+        - Are the quads between screen and quad off
+        - Is the screen after the quad
+
         :return: True if scan can be started, False otherwise.
         """
         root.info("Checking start conditions (camera running, screen in, quad on")
@@ -1087,7 +1095,8 @@ class QuadScanGui(QtGui.QWidget):
 
     def generate_daq_info(self):
         """
-        Generate daq_info.txt file and AcceleratorParameters. Init quad_scan_data_scan with these parameters.
+        Generate daq_info.txt file and AcceleratorParameters.
+        Init quad_scan_data_scan with these parameters.
         :return: True is success
         """
         root.info("Generating daq_info")
@@ -1098,6 +1107,7 @@ class QuadScanGui(QtGui.QWidget):
         roi_size = self.ui.camera_widget.roi.size()
         roi_pos = self.ui.camera_widget.roi.pos()
         roi_center = [roi_pos[0] + roi_size[0] / 2.0, roi_pos[1] + roi_size[1] / 2.0]
+        root.info("ROI: pos{0}, size {1}, center {2}".format(roi_pos, roi_size, roi_center))
         acc_params = AcceleratorParameters(electron_energy=self.ui.electron_energy_spinbox.value(),
                                            quad_length=float(self.ui.quad_length_label.text()),
                                            quad_screen_dist=float(self.ui.quad_screen_dist_label.text()),
@@ -1179,23 +1189,24 @@ class QuadScanGui(QtGui.QWidget):
         root.debug("Scan callback")
         if not task.is_done():
             res = task.get_result(wait=False)       # Result contains: [write_pos_res, read_pos_res, measure_list]
-            try:
-                pos = res[1].value
-                timestamp = res[1].time
-            except TypeError as e:
-                root.exception("Scan callback result error: ")
-            # measure_list = res[2]
-            # quad_image_list = [QuadImage(k_ind=0, k_value=pos, image_ind=ind, image=im)
-            #                    for ind, im in enumerate(measure_list)]
-            # images = self.quad_scan_data_scan.images + quad_image_list
-            # self.quad_scan_data_scan._replace(images=images)
+            if not task.is_cancelled():
+                try:
+                    pos = res[1].value
+                    timestamp = res[1].time
+                except TypeError as e:
+                    root.exception("Scan callback result error: ")
+                # measure_list = res[2]
+                # quad_image_list = [QuadImage(k_ind=0, k_value=pos, image_ind=ind, image=im)
+                #                    for ind, im in enumerate(measure_list)]
+                # images = self.quad_scan_data_scan.images + quad_image_list
+                # self.quad_scan_data_scan._replace(images=images)
         else:
             self.ui.scan_status_label.setText("DONE")
         if self.ui.update_analysis_radiobutton.isChecked():
             self.quad_scan_data_analysis = self.quad_scan_data_scan
-            self.update_analysis_parameters()
-            self.update_image_selection()
-            self.update_fit_signal.emit()
+            # self.update_analysis_parameters()
+            # self.update_image_selection()
+            # self.update_fit_signal.emit()
             self.start_fit()
 
     def scan_image_callback(self, task):
@@ -1219,7 +1230,7 @@ class QuadScanGui(QtGui.QWidget):
             k_ind = int(name_elements[2])
             num_k = self.quad_scan_data_scan.acc_params.num_k
             k_value = float(name_elements[3])
-            root.info("Scan image {0} {1}, sending for processing".format(k_ind, im_ind))
+            root.info("Scan image {0} {1} (size {2}), sending for processing".format(k_ind, im_ind, image.shape))
             self.update_camera_signal.emit(image)
             # self.ui.camera_widget.setImage(image, autoLevels=False, autoRange=False)
             quadimage = QuadImage(k_ind=k_ind, k_value=k_value, image_ind=im_ind, image=image)
@@ -1257,6 +1268,7 @@ class QuadScanGui(QtGui.QWidget):
         root.debug("Scan image processed.")
         proc_image = task.get_result(wait=False)    # type: ProcessedImage
         ind = proc_image.k_ind * self.quad_scan_data_scan.acc_params.num_k + proc_image.image_ind
+        root.debug("Image {0} {1}, index {2}".format(proc_image.k_ind, proc_image.image_ind, ind))
         self.ui.p_image_index_slider.blockSignals(True)
         self.ui.p_image_index_slider.setMaximum(ind)
         self.ui.p_image_index_slider.setValue(ind)
@@ -1462,8 +1474,9 @@ class QuadScanGui(QtGui.QWidget):
                 meas_w = result[1].value
                 cal = meas_w / meas_rul["size"][0]
                 roi = eval(result[2].value)
-                self.ui.camera_widget.roi.setPos(roi[0], roi[2])
-                self.ui.camera_widget.roi.setSize(roi[1]-roi[0], roi[3]-roi[2])
+                root.debug("Camera ROI: {0}".format(roi))
+                self.ui.camera_widget.roi.setPos([roi[0], roi[2]])
+                self.ui.camera_widget.roi.setSize([roi[1]-roi[0], roi[3]-roi[2]])
             except TypeError as e:
                 s = "Could not read calibration. Got {0}".format(result)
                 root.exception(s)

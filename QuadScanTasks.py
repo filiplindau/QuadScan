@@ -534,6 +534,14 @@ class ImageProcessorTask(Task):
         self.result = True
 
     def process_image(self, data, bpp=16, enabled=True):
+        """
+        Send an image for processing. The image can be a QuadImage or a task with a QuadImage as result.
+
+        :param data: QuadImage or task with QuadImage as result
+        :param bpp: Bits per pixel in the image
+        :param enabled: Should this image be tagged as enabled in the analysis
+        :return:
+        """
         self.queue_empty_event.clear()
         self.pending_images_in_queue += 1
         if isinstance(data, Task):
