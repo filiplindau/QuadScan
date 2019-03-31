@@ -1265,6 +1265,7 @@ class QuadScanGui(QtGui.QWidget):
             root.debug("p={0}".format(p))
             self.ui.scan_progress_label.setText("[{0}{1}]".format("="*p, "-"*(10-p)))
 
+            # Put image for processing is update while scan is selected:
             if self.ui.update_analysis_radiobutton.isChecked():
                 self.image_processor.set_roi(self.quad_scan_data_scan.acc_params.roi_center,
                                              self.quad_scan_data_scan.acc_params.roi_dim)
@@ -1272,6 +1273,15 @@ class QuadScanGui(QtGui.QWidget):
                 kernel = self.ui.p_median_kernel_spinbox.value()
                 self.image_processor.set_processing_parameters(threshold, self.quad_scan_data_scan.acc_params.cal, kernel)
                 self.image_processor.process_image(quadimage, enabled=True)
+
+            # Show image if raw radio is selected:
+            ind = self.quad_scan_data_scan.acc_params.num_k + k_ind * im_ind
+            if self.ui.p_raw_image_radio.isChecked():
+                self.ui.p_image_index_slider.blockSignals(True)
+                self.ui.p_image_index_slider.setMaximum(ind)
+                self.ui.p_image_index_slider.setValue(ind)
+                self.ui.p_image_index_slider.blockSignals(False)
+                self.update_image_selection()
 
         except IndexError as e:
             root.exception("Error for returned image in scan")
@@ -1286,13 +1296,6 @@ class QuadScanGui(QtGui.QWidget):
             return
 
         self.quad_scan_data_analysis = self.quad_scan_data_scan
-        ind = self.quad_scan_data_scan.acc_params.num_k + image.k_ind * image.image_ind
-        if self.ui.p_raw_image_radio.isChecked():
-            self.ui.p_image_index_slider.blockSignals(True)
-            self.ui.p_image_index_slider.setMaximum(ind)
-            self.ui.p_image_index_slider.setValue(ind)
-            self.ui.p_image_index_slider.blockSignals(False)
-            self.update_image_selection()
 
     def scan_image_processed_callback(self, task):
         root.debug("Scan image processed.")
