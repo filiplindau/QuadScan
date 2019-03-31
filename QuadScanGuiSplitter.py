@@ -491,6 +491,9 @@ class QuadScanGui(QtGui.QWidget):
             self.update_image_selection()
             # self.update_fit_signal.emit()
             self.start_fit()
+            root.debug("Quad_scan_data_analysis {0}, "
+                       "quad_scan_data_scan {1}".format(len(self.quad_scan_data_analysis.proc_images),
+                                                        len(self.quad_scan_data_scan.proc_images)))
 
     def load_dir_entered(self, load_dir):
         s_dir = str(load_dir)
@@ -590,14 +593,15 @@ class QuadScanGui(QtGui.QWidget):
         self.ui.process_image_widget.roi.blockSignals(False)
 
         self.ui.p_image_index_slider.setMaximum(acc_params.num_images-1)
-        self.ui.p_image_index_slider.setMaximum(len(self.quad_scan_data_analysis.proc_images) - 1)
+        # self.ui.p_image_index_slider.setMaximum(len(self.quad_scan_data_analysis.proc_images) - 1)
         th_list = [i.threshold for i in self.quad_scan_data_analysis.proc_images]
         try:
             threshold = sum(th_list) * 1.0 / len(self.quad_scan_data_analysis.proc_images)
+            self.ui.p_threshold_spinbox.setValue(threshold)
         except ZeroDivisionError:
             threshold = 0.0
         root.debug("Setting threshold to {0}".format(threshold))
-        self.ui.p_threshold_spinbox.setValue(threshold)
+
 
     def update_section(self):
         """
@@ -872,8 +876,13 @@ class QuadScanGui(QtGui.QWidget):
                 try:
                     image_struct = self.quad_scan_data_analysis.images[im_ind]
                 except IndexError:
-                    root.error("Index {0} out of range, len {1}.".format(im_ind,
-                                                                         len(self.quad_scan_data_analysis.proc_images)))
+                    time_str = time.strftime("%Y-%m-%d_%H-%M-%S", time.localtime(time.time()))
+                    msg = "Index {0} out of range, len {1}.".format(im_ind,
+                                                                    len(self.quad_scan_data_analysis.images))
+                    self.ui.status_textedit.append("\n{0}: {1}"
+                                                   "\n---------------------------\n".format(time_str, msg))
+                    root.error(msg)
+
                     return
                 image = image_struct.image
                 try:
@@ -889,8 +898,12 @@ class QuadScanGui(QtGui.QWidget):
                 try:
                     image_struct = self.quad_scan_data_analysis.proc_images[im_ind]    # type: ProcessedImage
                 except IndexError:
-                    root.error("Index {0} out of range, len {1}.".format(im_ind,
-                                                                         len(self.quad_scan_data_analysis.proc_images)))
+                    time_str = time.strftime("%Y-%m-%d_%H-%M-%S", time.localtime(time.time()))
+                    msg = "Index {0} out of range, len {1}.".format(im_ind,
+                                                                    len(self.quad_scan_data_analysis.proc_images))
+                    self.ui.status_textedit.append("\n{0}: {1}"
+                                                   "\n---------------------------\n".format(time_str, msg))
+                    root.error(msg)
                     return
                 image = image_struct.pic_roi
                 try:
@@ -1047,7 +1060,7 @@ class QuadScanGui(QtGui.QWidget):
                 if self.ui.update_analysis_radiobutton.isChecked():
                     # Should also update roi from camera roi
                     # self.quad_scan_data_analysis = self.quad_scan_data_scan
-                    # self.update_analysis_parameters()
+                    self.update_analysis_parameters()
                     self.image_processor.clear_callback_list()
                     self.image_processor.add_callback(self.scan_image_processed_callback)
                 root.info("Scan started. Parameters: {0}".format(scan_param))
@@ -1227,57 +1240,72 @@ class QuadScanGui(QtGui.QWidget):
         except AttributeError as e:
             root.error("Scan image not valid task. {0}".format(e))
             return
-        try:
-            im_ind = int(name_elements[4])
-            num_images = self.quad_scan_data_scan.acc_params.num_images
-            k_ind = int(name_elements[2])
-            num_k = self.quad_scan_data_scan.acc_params.num_k
-            k_value = float(name_elements[3])
-            root.info("Scan image {0} {1} (size {2}), sending for processing".format(k_ind, im_ind, image.shape))
-            self.update_camera_signal.emit(image)
-            # self.ui.camera_widget.setImage(image, autoLevels=False, autoRange=False)
-            quadimage = QuadImage(k_ind=k_ind, k_value=k_value, image_ind=im_ind, image=image)
-            # Appending image to images list in "immutable" named tuple....... :)
-            self.quad_scan_data_scan.images.append(quadimage)
-            self.image_processor.set_roi(self.quad_scan_data_scan.acc_params.roi_center,
-                                         self.quad_scan_data_scan.acc_params.roi_dim)
-            threshold = self.ui.p_threshold_spinbox.value()
-            kernel = self.ui.p_median_kernel_spinbox.value()
-            self.image_processor.set_processing_parameters(threshold, self.quad_scan_data_scan.acc_params.cal, kernel)
-            self.image_processor.process_image(quadimage, enabled=True)
-
-            s = "RUNNING: k {0}/{1} image {2}/{3}".format(k_ind+1, float(num_k), im_ind+1, float(num_images))
-            self.ui.scan_status_label.setText(s)
-            p = int((k_ind + (im_ind + 1) / float(num_images)) / float(num_k) * 10)
-            root.debug("p={0}".format(p))
-            self.ui.scan_progress_label.setText("[{0}{1}]".format("="*p, "-"*(10-p)))
-        except IndexError as e:
-            root.exception("Error for returned image in scan")
-            time_str = time.strftime("%Y-%m-%d_%H-%M-%S", time.localtime(time.time()))
-            self.ui.status_textedit.append("\n{0}: Error for returned image in scan\n".format(time_str))
-            return
-        except ValueError as e:
-            root.exception("Error for returned image name in scan")
-            time_str = time.strftime("%Y-%m-%d_%H-%M-%S", time.localtime(time.time()))
-            self.ui.status_textedit.append("\n{0}: Error for returned image name in scan\n{1}\n".format(time_str,
-                                                                                                        name_elements))
-            return
         task = SaveQuadImageTask(quadimage, save_path=str(self.scan_save_path),
                                  name="scan_save_{0}".format(str(self.ui.save_name_lineedit.text())),
                                  callback_list=[self.save_image_callback])
         task.start()
 
+        if self.ui.update_analysis_radiobutton.isChecked():
+            try:
+                im_ind = int(name_elements[4])
+                num_images = self.quad_scan_data_scan.acc_params.num_images
+                k_ind = int(name_elements[2])
+                num_k = self.quad_scan_data_scan.acc_params.num_k
+                k_value = float(name_elements[3])
+                root.info("Scan image {0} {1} (size {2}), sending for processing".format(k_ind, im_ind, image.shape))
+                self.update_camera_signal.emit(image)
+                # self.ui.camera_widget.setImage(image, autoLevels=False, autoRange=False)
+                quadimage = QuadImage(k_ind=k_ind, k_value=k_value, image_ind=im_ind, image=image)
+                # Appending image to images list in "immutable" named tuple....... :)
+                self.quad_scan_data_scan.images.append(quadimage)
+                self.image_processor.set_roi(self.quad_scan_data_scan.acc_params.roi_center,
+                                             self.quad_scan_data_scan.acc_params.roi_dim)
+                threshold = self.ui.p_threshold_spinbox.value()
+                kernel = self.ui.p_median_kernel_spinbox.value()
+                self.image_processor.set_processing_parameters(threshold, self.quad_scan_data_scan.acc_params.cal, kernel)
+                self.image_processor.process_image(quadimage, enabled=True)
+
+                s = "RUNNING: k {0}/{1} image {2}/{3}".format(k_ind+1, float(num_k), im_ind+1, float(num_images))
+                self.ui.scan_status_label.setText(s)
+                p = int((k_ind + (im_ind + 1) / float(num_images)) / float(num_k) * 10)
+                root.debug("p={0}".format(p))
+                self.ui.scan_progress_label.setText("[{0}{1}]".format("="*p, "-"*(10-p)))
+            except IndexError as e:
+                root.exception("Error for returned image in scan")
+                time_str = time.strftime("%Y-%m-%d_%H-%M-%S", time.localtime(time.time()))
+                self.ui.status_textedit.append("\n{0}: Error for returned image in scan\n".format(time_str))
+                return
+            except ValueError as e:
+                root.exception("Error for returned image name in scan")
+                time_str = time.strftime("%Y-%m-%d_%H-%M-%S", time.localtime(time.time()))
+                self.ui.status_textedit.append("\n{0}: Error for returned image name in scan\n{1}\n".format(time_str,
+                                                                                                            name_elements))
+                return
+
+            self.quad_scan_data_analysis = self.quad_scan_data_scan
+            ind = self.quad_scan_data_scan.acc_params.num_k + image.k_ind * image.image_ind
+            if self.ui.p_raw_image_radio.isChecked():
+                self.ui.p_image_index_slider.blockSignals(True)
+                self.ui.p_image_index_slider.setMaximum(ind)
+                self.ui.p_image_index_slider.setValue(ind)
+                self.ui.p_image_index_slider.blockSignals(False)
+                self.update_image_selection()
+
     def scan_image_processed_callback(self, task):
         root.debug("Scan image processed.")
         proc_image = task.get_result(wait=False)    # type: ProcessedImage
         ind = self.quad_scan_data_scan.acc_params.num_k + proc_image.k_ind * proc_image.image_ind
-        root.debug("Image {0} {1}, index {2}".format(proc_image.k_ind, proc_image.image_ind, ind))
-        self.ui.p_image_index_slider.blockSignals(True)
-        self.ui.p_image_index_slider.setMaximum(ind)
-        self.ui.p_image_index_slider.setValue(ind)
-        self.ui.p_image_index_slider.blockSignals(False)
         self.quad_scan_data_scan.proc_images.append(proc_image)
-        self.ui.process_image_widget.setImage(proc_image.pic_roi)
+        self.quad_scan_data_analysis = self.quad_scan_data_scan
+
+        if not self.ui.p_raw_image_radio.isChecked():
+            root.debug("Image {0} {1}, index {2}".format(proc_image.k_ind, proc_image.image_ind, ind))
+            self.ui.p_image_index_slider.blockSignals(True)
+            self.ui.p_image_index_slider.setValue(ind)
+            self.ui.p_image_index_slider.blockSignals(False)
+            self.update_image_selection()
+
+        # self.ui.process_image_widget.setImage(proc_image.pic_roi)
 
     def save_image_callback(self, task):
         result = task.get_result(wait=False)
