@@ -1060,7 +1060,7 @@ class QuadScanGui(QtGui.QWidget):
                 self.scan_task.start()
                 if self.ui.update_analysis_radiobutton.isChecked():
                     # Should also update roi from camera roi
-                    # self.quad_scan_data_analysis = self.quad_scan_data_scan
+                    self.quad_scan_data_analysis = self.quad_scan_data_scan
                     self.update_analysis_parameters()
                     self.image_processor.clear_callback_list()
                     self.image_processor.add_callback(self.scan_image_processed_callback)
