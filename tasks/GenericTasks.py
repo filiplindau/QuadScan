@@ -565,7 +565,7 @@ def clearable_pool_worker(in_queue, out_queue):
         logger.debug("Pool worker executing {0} ".format(f))
         try:
             retval = f(*args, **kwargs)
-            # logger.debug("Putting {0} on out_queue".format(retval))
+            logger.debug("Putting {0} on out_queue".format(retval))
             # logger.debug("Putting {0} result on out_queue".format(f))
         except Exception as e:
             retval = e

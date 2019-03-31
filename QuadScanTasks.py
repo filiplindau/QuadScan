@@ -435,11 +435,14 @@ def process_image_func(image, k_ind, k_value, image_ind, threshold, roi_cent, ro
     print("Processing image {0}, {1} in pool, size {2}".format(k_ind, image_ind, image.shape))
     t0 = time.time()
     # logger.debug("Threshold={0}, cal={1}, kernel={2}".format(threshold, cal, kernel))
-    x = np.array([int(roi_cent[0] - roi_dim[0] / 2.0), int(roi_cent[0] + roi_dim[0] / 2.0)])
-    y = np.array([int(roi_cent[1] - roi_dim[1] / 2.0), int(roi_cent[1] + roi_dim[1] / 2.0)])
+    try:
+        x = np.array([int(roi_cent[0] - roi_dim[0] / 2.0), int(roi_cent[0] + roi_dim[0] / 2.0)])
+        y = np.array([int(roi_cent[1] - roi_dim[1] / 2.0), int(roi_cent[1] + roi_dim[1] / 2.0)])
 
-    # Extract ROI and convert to double:
-    pic_roi = np.double(image[x[0]:x[1], y[0]:y[1]])
+        # Extract ROI and convert to double:
+        pic_roi = np.double(image[x[0]:x[1], y[0]:y[1]])
+    except IndexError:
+        pic_roi = np.double(image)
     # logger.debug("pic_roi size: {0}".format(pic_roi.shape))
     # Normalize pic to 0-1 range, where 1 is saturation:
     n = 2 ** bpp
@@ -463,9 +466,12 @@ def process_image_func(image, k_ind, k_value, image_ind, threshold, roi_cent, ro
 
     print("Medfilt done")
     # Threshold image
-    if threshold is None:
-        threshold = pic_roi[0:20, 0:20].mean()*3 + pic_roi[-20:, -20:].mean()*3
-    pic_roi[pic_roi < threshold] = 0.0
+    try:
+        if threshold is None:
+            threshold = pic_roi[0:20, 0:20].mean()*3 + pic_roi[-20:, -20:].mean()*3
+        pic_roi[pic_roi < threshold] = 0.0
+    except Exception:
+        pic_roi = pic_roi
 
     line_x = pic_roi.sum(0)
     line_y = pic_roi.sum(1)
@@ -478,12 +484,20 @@ def process_image_func(image, k_ind, k_value, image_ind, threshold, roi_cent, ro
     # Enable point only if there is data:
     if l_x_n <= 0.0:
         enabled = False
-    x_v = cal[0] * np.arange(line_x.shape[0])
-    y_v = cal[1] * np.arange(line_y.shape[0])
-    x_cent = np.sum(x_v * line_x) / l_x_n
-    sigma_x = np.sqrt(np.sum((x_v - x_cent) ** 2 * line_x) / l_x_n)
-    y_cent = np.sum(y_v * line_y) / l_y_n
-    sigma_y = np.sqrt(np.sum((y_v - y_cent) ** 2 * line_y) / l_y_n)
+
+    try:
+        x_v = cal[0] * np.arange(line_x.shape[0])
+        y_v = cal[1] * np.arange(line_y.shape[0])
+        x_cent = np.sum(x_v * line_x) / l_x_n
+        sigma_x = np.sqrt(np.sum((x_v - x_cent) ** 2 * line_x) / l_x_n)
+        y_cent = np.sum(y_v * line_y) / l_y_n
+        sigma_y = np.sqrt(np.sum((y_v - y_cent) ** 2 * line_y) / l_y_n)
+    except Exception as e:
+        print(e)
+        sigma_x = None
+        sigma_y = None
+        x_cent = 0
+        y_cent = 0
 
     print("Sigma calculated")
 
