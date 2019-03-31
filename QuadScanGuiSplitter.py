@@ -1536,9 +1536,9 @@ class QuadScanGui(QtGui.QWidget):
             self.ui.reprate_label.setText("{0:.1f} Hz".format(result.value))
         elif "screen_in_read" in name:
             if result.value:
-                self.ui.screen_state_label.setText("IN")
+                self.ui.screen_state_label.setText("{0} IN".format(str(self.ui.screen_combobox.currentText())))
             else:
-                self.ui.screen_state_label.setText("OUT")
+                self.ui.screen_state_label.setText("{0} OUT".format(str(self.ui.screen_combobox.currentText())))
         elif "cam_cal_read" in name:
             try:
                 meas_rul = eval(result[0].value)
