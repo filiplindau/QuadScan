@@ -935,6 +935,8 @@ class QuadScanGui(QtGui.QWidget):
             self.screen_init_flag = False
         else:
             self.ui.camera_widget.setImage(new_image, autoRange=False, autoLevels=False)
+        self.ui.camera_widget.roi.show()
+        self.ui.camera_widget.update()
 
     def plot_sigma_data(self):
         root.info("Plotting sigma data")

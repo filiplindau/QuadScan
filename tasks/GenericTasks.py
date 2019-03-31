@@ -709,6 +709,7 @@ class ProcessPoolTask(Task):
             except multiprocessing.queues.Empty:
                 continue
             # Get result and which process it was that sent the result:
+            self.logger.debug("Got result from process. {0}".format(type(result)))
             retval = result[0]
             proc_id = result[1]
             self.completed_work_items += 1
