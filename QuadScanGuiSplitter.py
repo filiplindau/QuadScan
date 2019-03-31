@@ -1107,7 +1107,7 @@ class QuadScanGui(QtGui.QWidget):
         roi_size = self.ui.camera_widget.roi.size()
         roi_pos = self.ui.camera_widget.roi.pos()
         roi_center = [roi_pos[0] + roi_size[0] / 2.0, roi_pos[1] + roi_size[1] / 2.0]
-        root.info("ROI: pos{0}, size {1}, center {2}".format(roi_pos, roi_size, roi_center))
+        root.info("ROI: pos {0}, size {1}, center {2}".format(roi_pos, roi_size, roi_center))
         acc_params = AcceleratorParameters(electron_energy=self.ui.electron_energy_spinbox.value(),
                                            quad_length=float(self.ui.quad_length_label.text()),
                                            quad_screen_dist=float(self.ui.quad_screen_dist_label.text()),
@@ -1267,7 +1267,7 @@ class QuadScanGui(QtGui.QWidget):
     def scan_image_processed_callback(self, task):
         root.debug("Scan image processed.")
         proc_image = task.get_result(wait=False)    # type: ProcessedImage
-        ind = proc_image.k_ind * self.quad_scan_data_scan.acc_params.num_k + proc_image.image_ind
+        ind = self.quad_scan_data_scan.acc_params.num_k + proc_image.k_ind * proc_image.image_ind
         root.debug("Image {0} {1}, index {2}".format(proc_image.k_ind, proc_image.image_ind, ind))
         self.ui.p_image_index_slider.blockSignals(True)
         self.ui.p_image_index_slider.setMaximum(ind)
