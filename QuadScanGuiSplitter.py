@@ -1119,7 +1119,7 @@ class QuadScanGui(QtGui.QWidget):
             self.ui.status_textedit.append("\n{0}: Camera not running. Can't start scan. "
                                            "\n---------------------------\n".format(time_str))
             return False
-        if str(self.ui.screen_state_label.text()).upper() not in ["IN", "OUT"]:
+        if "IN" not in str(self.ui.screen_state_label.text()).upper():
             root.warning("Screen not inserted. Can't start scan")
             time_str = time.strftime("%Y-%m-%d_%H-%M-%S", time.localtime(time.time()))
             self.ui.status_textedit.append("\n{0}: Screen not inserted. Can't start scan. "
