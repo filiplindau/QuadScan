@@ -490,7 +490,7 @@ class QuadScanGui(QtGui.QWidget):
             hw = self.ui.process_image_widget.getHistogramWidget()
             hl = hw.getLevels()
             hw.setLevels(self.ui.p_threshold_spinbox.value(), self.load_image_max)
-            root.debug("Proc images len: {0}".format(len(quad_scan_data.proc_images)))
+            root.debug("Proc images len: {0}".format(len(self.quad_scan_data_scan.proc_images)))
             self.update_analysis_parameters()
             self.update_image_selection()
 
@@ -610,7 +610,6 @@ class QuadScanGui(QtGui.QWidget):
         except ZeroDivisionError:
             threshold = 0.0
         root.debug("Setting threshold to {0}".format(threshold))
-
 
     def update_section(self):
         """
@@ -738,6 +737,9 @@ class QuadScanGui(QtGui.QWidget):
             self.current_quad = new_quad
             self.ui.current_quad_sel_label.setText("{0}".format(new_quad.mag.upper()))
             # Add more device connections here
+            e_task = TangoReadAttributeTask("energy", new_quad.crq, self.device_handler,
+                                            name="e_read", callback_list=[self.read_k])
+            e_task.start()
 
         try:
             load_screen = new_screen.name != self.current_screen.name
@@ -1318,7 +1320,7 @@ class QuadScanGui(QtGui.QWidget):
             self.ui.p_image_index_slider.blockSignals(True)
             self.ui.p_image_index_slider.setValue(ind)
             self.ui.p_image_index_slider.blockSignals(False)
-            self.update_image_selection()
+            self.update_image_selection(auto_levels=True)
 
         # self.ui.process_image_widget.setImage(proc_image.pic_roi)
         self.start_fit()
@@ -1471,13 +1473,21 @@ class QuadScanGui(QtGui.QWidget):
 
     def read_k(self, task):
         try:
+            name = task.get_name()
+            result = task.get_result(wait=False)
+        except AttributeError as e:
+            root.warning("{0}: Not valid task... {1}".format(name, e))
+            return
+
+        if "k_read" in name:
             k = task.get_result(wait=False)
             self.ui.current_k_label.setText(u"k={0:.2f} 1/m\u00B2".format(k.value))
             if self.quad_init_flag:
                 self.ui.k_current_spinbox.setValue(k.value)
                 self.quad_init_flag = False
-        except AttributeError:
-            root.warning("Not valid task")
+        elif "e_read" in name:
+            e = task.get_result(wait=False)
+            self.ui.electron_energy_spinbox.setValue(e.value * 1e-6)
 
     def read_image(self, task):
         """
