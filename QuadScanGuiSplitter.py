@@ -499,6 +499,7 @@ class QuadScanGui(QtGui.QWidget):
             self.update_image_selection()
 
             self.quad_scan_data_analysis = self.quad_scan_data_scan
+            self.ui.p_image_index_slider.setMaximum(len(self.quad_scan_data_scan.images)-1)
             self.start_processing()
             # self.update_analysis_parameters()
             # self.update_image_selection()
@@ -569,6 +570,7 @@ class QuadScanGui(QtGui.QWidget):
                 if isinstance(task, LoadQuadScanDirTask):
                     quad_scan_data = task.get_result(wait=False)   # type: QuadScanData
                     self.quad_scan_data_analysis = quad_scan_data
+                    self.ui.p_image_index_slider.setMaximum(len(self.quad_scan_data_analysis.images) - 1)
                     root.debug("Proc images len: {0}".format(len(quad_scan_data.proc_images)))
                     self.update_analysis_parameters()
                     self.update_image_selection()
@@ -1023,8 +1025,12 @@ class QuadScanGui(QtGui.QWidget):
         self.ui.k_end_spinbox.setValue(self.ui.k_current_spinbox.value())
 
     def set_current_k(self):
-        root.info("Setting current k to {0}".format(self.ui.k_current_spinbox))
-        self.ui.current_k_label.setText("k = {0:.3f} 1/m²".format(self.ui.k_current_spinbox.value()))
+        value = self.ui.k_current_spinbox.value()
+        root.info("Setting current k to {0}".format(value))
+        self.ui.current_k_label.setText("k = {0:.3f} 1/m²".format(value))
+        task = TangoWriteAttributeTask("mainfieldcomponent", self.current_quad.crq, self.device_handler, value,
+                                       "write_k")
+        task.start()
 
     def set_base_dir(self):
         root.info("Setting base save directory")
