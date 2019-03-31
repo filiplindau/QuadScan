@@ -1275,7 +1275,7 @@ class QuadScanGui(QtGui.QWidget):
                 self.image_processor.process_image(quadimage, enabled=True)
 
             # Show image if raw radio is selected:
-            ind = self.quad_scan_data_scan.acc_params.num_k + k_ind * im_ind
+            ind = k_ind + self.quad_scan_data_scan.acc_params.num_k * im_ind
             if self.ui.p_raw_image_radio.isChecked():
                 self.ui.p_image_index_slider.blockSignals(True)
                 self.ui.p_image_index_slider.setMaximum(ind)
@@ -1300,7 +1300,7 @@ class QuadScanGui(QtGui.QWidget):
     def scan_image_processed_callback(self, task):
         root.debug("Scan image processed.")
         proc_image = task.get_result(wait=False)    # type: ProcessedImage
-        ind = self.quad_scan_data_scan.acc_params.num_k + proc_image.k_ind * proc_image.image_ind
+        ind = proc_image.k_ind + self.quad_scan_data_scan.acc_params.num_k * proc_image.image_ind
         self.quad_scan_data_scan.proc_images.append(proc_image)
         self.quad_scan_data_analysis = self.quad_scan_data_scan
 
