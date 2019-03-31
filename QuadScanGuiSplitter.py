@@ -486,6 +486,14 @@ class QuadScanGui(QtGui.QWidget):
         """
         root.info("Loading data from scan")
         if self.quad_scan_data_scan.acc_params is not None:
+            root.debug("Load data complete. Storing quad scan data.")
+            hw = self.ui.process_image_widget.getHistogramWidget()
+            hl = hw.getLevels()
+            hw.setLevels(self.ui.p_threshold_spinbox.value(), self.load_image_max)
+            root.debug("Proc images len: {0}".format(len(quad_scan_data.proc_images)))
+            self.update_analysis_parameters()
+            self.update_image_selection()
+
             self.quad_scan_data_analysis = self.quad_scan_data_scan
             self.start_processing()
             # self.update_analysis_parameters()
@@ -1274,14 +1282,15 @@ class QuadScanGui(QtGui.QWidget):
                 self.image_processor.set_processing_parameters(threshold, self.quad_scan_data_scan.acc_params.cal, kernel)
                 self.image_processor.process_image(quadimage, enabled=True)
 
-            # Show image if raw radio is selected:
-            ind = k_ind + self.quad_scan_data_scan.acc_params.num_k * im_ind
-            if self.ui.p_raw_image_radio.isChecked():
+                # Show image if raw radio is selected:
+                ind = k_ind + self.quad_scan_data_scan.acc_params.num_k * im_ind
                 self.ui.p_image_index_slider.blockSignals(True)
                 self.ui.p_image_index_slider.setMaximum(ind)
                 self.ui.p_image_index_slider.setValue(ind)
                 self.ui.p_image_index_slider.blockSignals(False)
-                self.update_image_selection(auto_levels=True)
+                if self.ui.p_raw_image_radio.isChecked():
+
+                    self.update_image_selection(auto_levels=True)
 
         except IndexError as e:
             root.exception("Error for returned image in scan")
