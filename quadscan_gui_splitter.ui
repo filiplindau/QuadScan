@@ -609,9 +609,23 @@
             </widget>
            </item>
            <item>
-            <widget class="QLabel" name="camera_state_label">
+            <widget class="QLabel" name="current_k_label">
              <property name="text">
-              <string>RUNNING</string>
+              <string>k=-.-- 1/m²</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="Line" name="line_6">
+             <property name="orientation">
+              <enum>Qt::Vertical</enum>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QLabel" name="screen_state_label">
+             <property name="text">
+              <string>IN</string>
              </property>
             </widget>
            </item>
@@ -623,9 +637,9 @@
             </widget>
            </item>
            <item>
-            <widget class="QLabel" name="screen_state_label">
+            <widget class="QLabel" name="camera_state_label">
              <property name="text">
-              <string>IN</string>
+              <string>RUNNING</string>
              </property>
             </widget>
            </item>
@@ -640,20 +654,6 @@
             <widget class="QLabel" name="reprate_label">
              <property name="text">
               <string>-- Hz</string>
-             </property>
-            </widget>
-           </item>
-           <item>
-            <widget class="Line" name="line_6">
-             <property name="orientation">
-              <enum>Qt::Vertical</enum>
-             </property>
-            </widget>
-           </item>
-           <item>
-            <widget class="QLabel" name="current_k_label">
-             <property name="text">
-              <string>k=-.-- 1/m²</string>
              </property>
             </widget>
            </item>
