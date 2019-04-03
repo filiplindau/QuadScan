@@ -308,45 +308,48 @@ def process_image_func(image, k_ind, k_value, image_ind, threshold, roi_cent, ro
 
 
 if __name__ == "__main__":
-    # t = ProcessPoolTask(f, name="test")
-    # t.start()
-    #
-    # im = np.random.random((1000, 1000))
-    # t.add_work_item(im, enabled=True)
-    #
-    # t.add_work_item(im, enabled=False)
-    #
-    # time.sleep(1.0)
-    #
-    # res = t.get_result(wait=False)
-    # logger.info("Result: {0}, {1}".format(res, type(res)))
-    #
-    # t.stop_processes()
-    # t.cancel()
-    #
-    t = ProcessPoolTask(process_image_func, name="test")
+
+    t = ProcessPoolTask(f, name="test")
     t.start()
 
     im = np.random.random((1000, 1000))
+    t.add_work_item(im, enabled=True)
+
+    # t.add_work_item(im, enabled=False)
+
+    time.sleep(2.0)
+
+    res = t.get_result(wait=False)
+    logger.info("RESULT from task: {0}, {1}".format(res, type(res)))
+
+    t.stop_processes()
+    t.cancel()
+    time.sleep(1.0)
+
+    # Process image func
+    t = ProcessPoolTask(process_image_func, name="test")
+    t.start()
+
+#    im = np.random.random((1000, 1000))
     k_ind = 0
     k_val = 0
     im_ind = 0
     th = 0
     roi_c = [0, 0]
-    roi_d = [10, 10]
+    roi_d = [100, 100]
     cal = [1, 1]
     kern = 3
     norm = False
     en = True
-    process_image_func(image=im, k_ind=k_ind, k_value=k_val, image_ind=im_ind, threshold=th, roi_cent=roi_c,
-                       roi_dim=roi_d, cal=cal, kernel=kern, bpp=16, normalize=norm, enabled=en)
+#    process_image_func(image=im, k_ind=k_ind, k_value=k_val, image_ind=im_ind, threshold=th, roi_cent=roi_c,
+#                       roi_dim=roi_d, cal=cal, kernel=kern, bpp=16, normalize=norm, enabled=en)
     t.add_work_item(image=im, k_ind=k_ind, k_value=k_val, image_ind=im_ind, threshold=th, roi_cent=roi_c,
                     roi_dim=roi_d, cal=cal, kernel=kern, bpp=16, normalize=norm, enabled=en)
 
     time.sleep(1.0)
 
     res = t.get_result(wait=False)
-    logger.info("Result: {0}, {1}".format(res, type(res)))
+    logger.info("RESULT from task: {0}, {1}".format(res, type(res)))
 
     t.stop_processes()
     t.cancel()

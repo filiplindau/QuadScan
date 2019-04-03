@@ -148,8 +148,8 @@ class Task(object):
         self.event_done = threading.Event()
         self.trigger_event = threading.Event()
         self.started = False
-        self.completed = False
-        self.cancelled = False
+        self.completed = False          # Set when exiting action method and not cancelled
+        self.cancelled = False          # Set when cancelling task. Also set when an exception occurs
         self.result = None
         self.timeout = timeout
         self.run_thread = None
