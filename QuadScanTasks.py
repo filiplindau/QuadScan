@@ -539,6 +539,7 @@ class ImageProcessorTask(Task):
             self.processor.start()
         self.stop_processing_event.wait(self.timeout)
         if self.stop_processing_event.is_set() is False:
+            # Timeout occured
             self.cancel()
             return
         self.logger.info("{0} exit processing".format(self))

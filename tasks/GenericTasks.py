@@ -188,9 +188,6 @@ class Task(object):
     def get_done_event(self):
         return self.event_done
 
-    def get_signal_event(self):
-        return self.signal_event
-
     def get_result(self, wait, timeout=-1):
         if self.completed is not True:
             if wait is True:
@@ -249,6 +246,8 @@ class Task(object):
             return
 
             self.logger.debug("{0} triggers ready".format(self))
+
+        # Now start self.action...
         # Thread or process?
         if self.action_exec_type == "thread":
             try:
