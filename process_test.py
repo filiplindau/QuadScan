@@ -330,7 +330,7 @@ class ProcessPoolTaskShared(Task):
     The results of the tasks are stored in a list.
     """
 
-    def __init__(self, work_func, number_processes=multiprocessing.cpu_count(), name=None, timeout=None,
+    def __init__(self, work_func, number_processes=multiprocessing.cpu_count(), image_shape, name=None, timeout=None,
                  trigger_dict=dict(), callback_list=list()):
         Task.__init__(self, name, timeout=timeout, trigger_dict=trigger_dict, callback_list=callback_list)
         self.work_func = work_func
@@ -338,6 +338,14 @@ class ProcessPoolTaskShared(Task):
         self.finish_process_event = threading.Event()
         self.result_ready_event = threading.Event()
         self.pending_work_items = list()
+
+        self.sh_mem_lock_list = list()      # List of locks that handle access to shared memory arrays
+        self.job_launcher_thread = None     # Thread that waits for shared memory to be available and
+                                            # copies image data for a new job to that location and
+                                            # submits to the process pool
+        self.sh_mem_rawarray = None         # Shared memory array
+        self.sh_np_array = None             # Numpy array from the shared buffer. Shape [im_x, im_y, n_proc]
+        self.image_shape = image_shape
 
         self.num_processes = number_processes
         self.pool = None
@@ -385,12 +393,11 @@ class ProcessPoolTaskShared(Task):
         self.result = self.result_dict
 
     def add_work_item(self, image, k_ind, k_value, image_ind, threshold, roi_cent, roi_dim, cal=[1.0, 1.0], kernel=3,
-                       bpp=16, normalize=False, enabled=True, proc_id):
+                       bpp=16, normalize=False, enabled=True):
         self.logger.debug("{0}: Adding work item".format(self))
         # self.logger.debug("{0}: Args: {1}, kwArgs: {2}".format(self, args, kwargs))
         proc_id = self.next_process_id
         self.next_process_id += 1
-        multiprocessing.RawArray("i", image.shape[0] * image.shape[1])
         self.pool.apply_async(self.work_func, args, kwargs, self.pool_callback)
         self.result_dict[proc_id] = None
         # self.logger.debug("{0}: Work item added to queue. Process id: {1}".format(self, proc_id))
@@ -408,10 +415,22 @@ class ProcessPoolTaskShared(Task):
         for callback in self.callback_list:
             callback(self)
 
+    def job_launcher(self):
+        while not self.stop_result_thread_flag:
+            # wait for memory to be available:
+            pass
+            # lock memory and set index:
+            mem_index = 0
+            # copy image data to shared memory:
+
     def create_processes(self):
         if self.pool is not None:
             self.pool.terminate()
         self.logger.info("{1}: Creating {0} processes".format(self.num_processes, self))
+        self.sh_mem_rawarray = multiprocessing.RayArray("i", self.image_shape[0]*self.image_shape[1]*self.num_processes)
+        self.sh_np_array = np.frombuffer(self.sh_mem_rawarray, dtype="i").reshape((self.image_shape[0],
+                                                                             self.image_shape[1],
+                                                                             self.num_processes))
         self.pool = multiprocessing.Pool(self.num_processes)
 
     def stop_processes(self, terminate=True):
