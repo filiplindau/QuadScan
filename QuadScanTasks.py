@@ -621,6 +621,118 @@ class ImageProcessorTask(Task):
         Task.cancel()
 
 
+class ImageProcessorTask2(Task):
+    def __init__(self, roi_cent=None, roi_dim=None, threshold=None, cal=[1.0, 1.0], kernel=3, process_exec="process",
+                 name=None, timeout=None, trigger_dict=dict(), callback_list=list()):
+        Task.__init__(self,  name, timeout=timeout, trigger_dict=trigger_dict, callback_list=callback_list)
+        self.logger.setLevel(logging.DEBUG)
+
+        self.kernel = kernel
+        self.cal = cal
+        self.threshold = threshold
+        self.roi_cent = roi_cent
+        self.roi_dim = roi_dim
+        if process_exec == "process":
+            self.processor = ProcessPoolTask(process_image_func, name="process_pool", callback_list=[self._image_done])
+        else:
+            self.processor = ThreadPoolTask(process_image_func, name="thread_pool", callback_list=[self._image_done])
+        # self.processor = ProcessPoolTask(test_f, name="process_pool")
+        self.stop_processing_event = threading.Event()
+
+        self.queue_empty_event = threading.Event()
+        self.pending_images_in_queue = 0
+        self.logger.setLevel(logging.DEBUG)
+
+    def action(self):
+        self.logger.info("{0} entering action. ".format(self))
+        self.pending_images_in_queue = 0
+        self.stop_processing_event.clear()
+        if self.processor.is_started() is False:
+            self.processor.start()
+        self.stop_processing_event.wait(self.timeout)
+        if self.stop_processing_event.is_set() is False:
+            # Timeout occured
+            self.cancel()
+            return
+        self.logger.info("{0} exit processing".format(self))
+        self.processor.finish_processing()
+        self.logger.debug("{0}: wait for processpool".format(self))
+        self.processor.get_result(wait=True, timeout=self.timeout)
+        self.logger.debug("{0}: processpool done".format(self))
+        self.processor.clear_callback_list()
+        self.processor.stop_processes(terminate=True)
+        self.result = True
+
+    def process_image(self, data, bpp=16, enabled=True):
+        """
+        Send an image for processing. The image can be a QuadImage or a task with a QuadImage as result.
+
+        :param data: QuadImage or task with QuadImage as result
+        :param bpp: Bits per pixel in the image
+        :param enabled: Should this image be tagged as enabled in the analysis
+        :return:
+        """
+        self.queue_empty_event.clear()
+        self.pending_images_in_queue += 1
+        if isinstance(data, Task):
+            # The task is from a callback
+            quad_image = data.get_result(wait=False)    # type: QuadImage
+        else:
+            quad_image = data                           # type: QuadImage
+        self.logger.debug("{0}: Adding image {1} {2} to processing queue".format(self, quad_image.k_ind,
+                                                                                 quad_image.image_ind))
+        if self.roi_dim is None:
+            roi_dim = quad_image.image.shape
+        else:
+            roi_dim = self.roi_dim
+        if self.roi_cent is None:
+            roi_cent = [roi_dim[0]/2, roi_dim[1]/2]
+        else:
+            roi_cent = self.roi_cent
+        self.processor.add_work_item(image=quad_image.image, k_ind=quad_image.k_ind, k_value=quad_image.k_value,
+                                     image_ind=quad_image.image_ind, threshold=self.threshold, roi_cent=roi_cent,
+                                     roi_dim=roi_dim, cal=self.cal, kernel=self.kernel, bpp=bpp, normalize=False,
+                                     enabled=enabled)
+
+    def _image_done(self, processor_task):
+        # type: (ProcessPoolTask) -> None
+        if self.is_done() is False:
+            self.logger.debug("{0}: Image processed. {1} images in queue".format(self, self.pending_images_in_queue))
+            self.result = processor_task.get_result(wait=False)
+            self.pending_images_in_queue -= 1
+            if self.pending_images_in_queue <= 0:
+                self.queue_empty_event.set()
+            if processor_task.is_done() is False:
+                self.logger.debug("Calling {0} callbacks".format(len(self.callback_list)))
+                for callback in self.callback_list:
+                    callback(self)
+            else:
+                self.logger.debug("{0}: ProcessPoolTask done. Stop processing.".format(self))
+                self.stop_processing()
+
+    def stop_processing(self):
+        self.logger.debug("{0}: Setting STOP_PROCESSING flag".format(self))
+        self.stop_processing_event.set()
+
+    def set_roi(self, roi_cent, roi_dim):
+        self.logger.debug("{0}: Setting ROI center {1}, ROI dim {2}".format(self, roi_cent, roi_dim))
+        self.roi_cent = roi_cent
+        self.roi_dim = roi_dim
+
+    def set_processing_parameters(self, threshold, cal, kernel):
+        self.logger.info("{0} Setting threshold={1}, cal={2}, kernel={3}".format(self, threshold, cal, kernel))
+        self.threshold = threshold
+        self.kernel = kernel
+        self.cal = cal
+
+    def wait_for_queue_empty(self):
+        self.queue_empty_event.wait(self.timeout)
+
+    def cancel(self):
+        self.stop_processing()
+        Task.cancel()
+
+
 class ProcessAllImagesTask(Task):
     def __init__(self, quad_scan_data, threshold=None, kernel_size=3,
                  image_processor_task=None, process_exec_type="process",

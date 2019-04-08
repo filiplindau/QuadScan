@@ -330,7 +330,7 @@ class ProcessPoolTaskShared(Task):
     The results of the tasks are stored in a list.
     """
 
-    def __init__(self, work_func, number_processes=multiprocessing.cpu_count(), image_shape, name=None, timeout=None,
+    def __init__(self, work_func, image_shape, number_processes=multiprocessing.cpu_count(), name=None, timeout=None,
                  trigger_dict=dict(), callback_list=list()):
         Task.__init__(self, name, timeout=timeout, trigger_dict=trigger_dict, callback_list=callback_list)
         self.work_func = work_func
@@ -346,6 +346,7 @@ class ProcessPoolTaskShared(Task):
         self.sh_mem_rawarray = None         # Shared memory array
         self.sh_np_array = None             # Numpy array from the shared buffer. Shape [im_x, im_y, n_proc]
         self.image_shape = image_shape
+        self.job_queue = Queue.Queue()
 
         self.num_processes = number_processes
         self.pool = None
@@ -398,7 +399,8 @@ class ProcessPoolTaskShared(Task):
         # self.logger.debug("{0}: Args: {1}, kwArgs: {2}".format(self, args, kwargs))
         proc_id = self.next_process_id
         self.next_process_id += 1
-        self.pool.apply_async(self.work_func, args, kwargs, self.pool_callback)
+        ind = self.sh_mem_lock_list     # Should be index to next
+        self.pool.apply_async(self.work_func, ind, self.pool_callback)
         self.result_dict[proc_id] = None
         # self.logger.debug("{0}: Work item added to queue. Process id: {1}".format(self, proc_id))
 
@@ -599,7 +601,7 @@ def process_image_func2(image, k_ind, k_value, image_ind, threshold, roi_cent, r
         # logger.warning("Medfilt kernel value error: {0}".format(e))
         print("Medfilt kernel value error: {0}".format(e))
 
-    # print("Medfilt done")
+    print("Medfilt done")
     # Threshold image
     try:
         if threshold is None:
