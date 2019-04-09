@@ -34,7 +34,7 @@ ProcessedImage stores one processed image from a quad scan:
 
 
 JobStruct = namedtuple("JobStruct", "image k_ind k_value image_ind threshold roi_cent roi_dim "
-                                    "cal kernel bpp normalize enabled")
+                                    "cal kernel bpp normalize enabled job_proc_id")
 """
 JobStruct stores information about a job sent for image processing in ImageProcessorTask.
 :param image: image data in the form of a 2d numpy array
@@ -48,7 +48,8 @@ JobStruct stores information about a job sent for image processing in ImageProce
 :param kernel: Median filter kernel size, an odd integer number
 :param bpp: Bits per pixel in the image
 :param normalize: Whether the image should be normalized true/false
-:param enabled: Whether the image is enabled or not (true/false) before starting processing   
+:param enabled: Whether the image is enabled or not (true/false) before starting processing
+:param job_proc_id: Process id for this job   
 """
 
 
