@@ -147,7 +147,7 @@ class QuadScanGui(QtGui.QWidget):
         #                                           kernel=self.ui.p_median_kernel_spinbox.value(),
         #                                           process_exec="process",
         #                                           name="gui_image_proc")
-        self.image_processor = ImageProcessorTask2(image_shape=(1280, 1024), threshold=self.ui.p_threshold_spinbox.value(),
+        self.image_processor = ImageProcessorTask2(image_size=(1280, 1024), threshold=self.ui.p_threshold_spinbox.value(),
                                                    kernel=self.ui.p_median_kernel_spinbox.value(),
                                                    name="gui_image_proc")
         self.image_processor.start()
