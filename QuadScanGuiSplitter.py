@@ -143,13 +143,15 @@ class QuadScanGui(QtGui.QWidget):
 
         self.setup_layout()
 
-        self.image_processor = ImageProcessorTask(threshold=self.ui.p_threshold_spinbox.value(),
-                                                  kernel=self.ui.p_median_kernel_spinbox.value(),
-                                                  process_exec="process",
-                                                  name="gui_image_proc")
+        # self.image_processor = ImageProcessorTask(threshold=self.ui.p_threshold_spinbox.value(),
+        #                                           kernel=self.ui.p_median_kernel_spinbox.value(),
+        #                                           process_exec="process",
+        #                                           name="gui_image_proc")
+        self.image_processor = ImageProcessorTask2(image_shape=(1280, 1024), threshold=self.ui.p_threshold_spinbox.value(),
+                                                   kernel=self.ui.p_median_kernel_spinbox.value(),
+                                                   name="gui_image_proc")
         self.image_processor.start()
-        # self.state_dispatcher = StateDispatcher(self.controller)
-        # self.state_dispatcher.start()
+
         if no_database:
             t1 = PopulateDummyDeviceList(sections=self.section_list, dummy_name_dict=dummy_name_dict,
                                          name="pop_sections")
@@ -393,7 +395,7 @@ class QuadScanGui(QtGui.QWidget):
         """
         self.image_processor.clear_callback_list()
         root.debug("Stop image processor")
-        self.image_processor.stop_processing()
+        self.image_processor.finish_processing()
         root.debug("Command sent.")
         for t in self.screen_tasks:
             try:

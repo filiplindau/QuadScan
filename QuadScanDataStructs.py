@@ -33,6 +33,25 @@ ProcessedImage stores one processed image from a quad scan:
 """
 
 
+JobStruct = namedtuple("JobStruct", "image k_ind k_value image_ind threshold roi_cent roi_dim "
+                                    "cal kernel bpp normalize enabled")
+"""
+JobStruct stores information about a job sent for image processing in ImageProcessorTask.
+:param image: image data in the form of a 2d numpy array
+:param k_ind: index for the k value list for this image
+:param k_value: k value for this image
+:param image_ind: index for the image list for this image
+:param threshold: Image level below which the processed image is threholded to 0
+:param roi_cent: Pixel coordinates for the roi center
+:param roi_dim: Size tuple in pixels for the roi (w, h)
+:param cal: Pixel calibration tuple in m/pixel (w, h)
+:param kernel: Median filter kernel size, an odd integer number
+:param bpp: Bits per pixel in the image
+:param normalize: Whether the image should be normalized true/false
+:param enabled: Whether the image is enabled or not (true/false) before starting processing   
+"""
+
+
 ScanParam = namedtuple("ScanParam", "scan_attr_name scan_device_name scan_start_pos scan_end_pos scan_step "
                                     "scan_pos_tol scan_pos_check_interval "
                                     "measure_attr_name_list measure_device_list measure_number measure_interval")
