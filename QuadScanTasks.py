@@ -278,6 +278,7 @@ class LoadQuadScanDirTask(Task):
         self.threshold = threshold
         self.kernel_size = kernel_size
         self.processed_image_list = list()
+        self.acc_params = None
         self.task_seq = None
         # The images are processed as they are loaded:
         self.image_processor = None         # type: ImageProcessorTask2
@@ -339,6 +340,23 @@ class LoadQuadScanDirTask(Task):
             data_dict["bpp"] = 16
             self.logger.debug("{1} Loaded data_dict: \n{0}".format(pprint.pformat(data_dict), self))
 
+        self.acc_params = AcceleratorParameters(electron_energy=float(data_dict["beam_energy"]),
+                                                quad_length=float(data_dict["quad_length"]),
+                                                quad_screen_dist=float(data_dict["quad_2_screen"]),
+                                                k_max=float(data_dict["k_max"]),
+                                                k_min=float(data_dict["k_min"]),
+                                                num_k=int(data_dict["num_k_values"]),
+                                                num_images=int(data_dict["num_shots"]),
+                                                cal=data_dict["pixel_size"],
+                                                quad_name=data_dict["quad"],
+                                                screen_name=data_dict["screen"],
+                                                roi_center=data_dict["roi_center"],
+                                                roi_dim=data_dict["roi_dim"])
+
+        n_images = self.acc_params.num_k * self.acc_params.num_images
+        pic_roi = np.zeros((int(self.acc_params.roi_dim[0]), int(self.acc_params.roi_dim[1])), dtype=np.float32)
+        [self.processed_image_list.append(pic_roi) for x in range(n_images)]
+
         self.image_processor.set_roi(data_dict["roi_center"], data_dict["roi_dim"])
         self.image_processor.set_processing_parameters(self.threshold, data_dict["pixel_size"], self.kernel_size)
         file_list = os.listdir(load_dir)
@@ -376,20 +394,7 @@ class LoadQuadScanDirTask(Task):
         # self.image_processor.wait_for_queue_empty()
         self.logger.debug("{0}: Image processing finished".format(self))
 
-        acc_params = AcceleratorParameters(electron_energy=float(data_dict["beam_energy"]),
-                                           quad_length=float(data_dict["quad_length"]),
-                                           quad_screen_dist=float(data_dict["quad_2_screen"]),
-                                           k_max=float(data_dict["k_max"]),
-                                           k_min=float(data_dict["k_min"]),
-                                           num_k=int(data_dict["num_k_values"]),
-                                           num_images=int(data_dict["num_shots"]),
-                                           cal=data_dict["pixel_size"],
-                                           quad_name=data_dict["quad"],
-                                           screen_name=data_dict["screen"],
-                                           roi_center=data_dict["roi_center"],
-                                           roi_dim=data_dict["roi_dim"])
-
-        self.result = QuadScanData(acc_params, image_list, self.processed_image_list)
+        self.result = QuadScanData(self.acc_params, image_list, self.processed_image_list)
         self.image_processor.clear_callback_list()
 
     def processed_image_done(self, image_processor_task):
@@ -403,8 +408,14 @@ class LoadQuadScanDirTask(Task):
             if isinstance(proc_image, Exception):
                 self.logger.error("{0}: Found error in processed image: {1}".format(self, proc_image))
             else:
-                self.logger.debug("Adding processed image {0} {1} to list".format(proc_image.k_ind, proc_image.image_ind))
-                self.processed_image_list.append(proc_image)
+                # self.processed_image_list.append(proc_image)
+                ind = proc_image.k_ind * self.acc_params.num_images + proc_image.image_ind
+                self.logger.debug("{0}: Adding processed image {1} {2} to list at index {3}".format(self,
+                                                                                                    proc_image.k_ind,
+                                                                                                    proc_image.image_ind,
+                                                                                                    ind))
+
+                self.processed_image_list[ind] = proc_image
                 # self.result = proc_image
                 # for callback in self.callback_list:
                 #     callback(self)
@@ -640,16 +651,16 @@ def init_worker(sh_mem_image, sh_mem_roi, image_shape):
     var_dict["roi"] = sh_mem_roi
 
 
-def work_func_shared(image_ind, threshold, roi_cent, roi_dim, cal=[1.0, 1.0], kernel=3, bpp=16, normalize=False):
+def work_func_shared(mem_ind, im_size, threshold, roi_cent, roi_dim, cal=[1.0, 1.0], kernel=3, bpp=16, normalize=False):
     t0 = time.time()
     try:
         shape = var_dict["image_shape"]
-        # logger.debug("Processing image {0} in pool".format(image_ind))
-        image = np.frombuffer(var_dict["image"], "i", shape[1]*shape[2],
-                              shape[1] * shape[2] * image_ind * np.dtype("i").itemsize).reshape((shape[1], shape[2]))
+        # logger.debug("Processing image {0} in pool".format(mem_ind))
+        image = np.frombuffer(var_dict["image"], "i", shape[1] * shape[2],
+                              shape[1] * shape[2] * mem_ind * np.dtype("i").itemsize).reshape((shape[1], shape[2]))
         roi = np.frombuffer(var_dict["roi"], "f", roi_dim[0] * roi_dim[1],
-                            shape[1] * shape[2] * image_ind * np.dtype("f").itemsize).reshape(roi_dim)
-
+                            shape[1] * shape[2] * mem_ind * np.dtype("f").itemsize).reshape(roi_dim)
+        # logger.debug("{0}: Mem copy time {1:.2f} ms".format(mem_ind, (time.time() - t0) * 1e3))
         try:
             x = np.array([int(roi_cent[0] - roi_dim[0] / 2.0), int(roi_cent[0] + roi_dim[0] / 2.0)])
             y = np.array([int(roi_cent[1] - roi_dim[1] / 2.0), int(roi_cent[1] + roi_dim[1] / 2.0)])
@@ -667,7 +678,8 @@ def work_func_shared(image_ind, threshold, roi_cent, roi_dim, cal=[1.0, 1.0], ke
             else:
                 pic_roi = medfilt2d(pic_roi, kernel)
         except ValueError as e:
-            logger.warning("Medfilt kernel value error: {0}".format(e))
+            logger.warning("{0}======================================".format(mem_ind))
+            logger.warning("{1}: Medfilt kernel value error: {0}".format(e, mem_ind))
             # print("Medfilt kernel value error: {0}".format(e))
         # logger.debug("Medfilt {0}".format(image_ind))
 
@@ -677,6 +689,8 @@ def work_func_shared(image_ind, threshold, roi_cent, roi_dim, cal=[1.0, 1.0], ke
                 threshold = pic_roi[0:20, 0:20].mean() * 3 + pic_roi[-20:, -20:].mean() * 3
             pic_roi[pic_roi < threshold] = 0.0
         except Exception:
+            logger.warning("{0}======================================".format(mem_ind))
+            logger.exception("{0}: Could not threshold.".format(mem_ind))
             pic_roi = pic_roi
 
         # Centroid and sigma calculations:
@@ -705,14 +719,16 @@ def work_func_shared(image_ind, threshold, roi_cent, roi_dim, cal=[1.0, 1.0], ke
             y_cent = 0
         np.copyto(roi, pic_roi)
     except Exception as e:
-        return e
-    # print("Process time {0:.2f} ms".format((time.time()-t0)*1e3))
-    return image_ind, x_cent, sigma_x, y_cent, sigma_y, q, enabled
+        logger.warning("{0}======================================".format(mem_ind))
+        logger.exception("{0} Work function error".format(mem_ind))
+        return mem_ind, e
+    # logger.debug("{1}: Process time {0:.2f} ms".format((time.time()-t0) * 1e3, mem_ind))
+    return mem_ind, x_cent, sigma_x, y_cent, sigma_y, q, enabled
 
 
 class ImageProcessorTask2(Task):
     def __init__(self, roi_cent=None, roi_dim=None, threshold=None, cal=[1.0, 1.0], kernel=3,
-                 image_size=[1280, 1024], number_processes=None,
+                 image_size=[2000, 2000], number_processes=None,
                  name=None, timeout=None, trigger_dict=dict(), callback_list=list()):
         Task.__init__(self,  name, timeout=timeout, trigger_dict=trigger_dict, callback_list=callback_list)
         self.kernel = kernel
@@ -764,16 +780,13 @@ class ImageProcessorTask2(Task):
     def action(self):
         self.logger.info("{0} entering action. ".format(self))
 
-        self.logger.info("{0}: starting processing pool for "
-                         "executing function {1} across {2} processes.".format(self, self.work_func, self.num_processes))
-        self.logger.info("{1}: Starting {0} processes".format(self.num_processes, self))
         self.completed_work_items = 0
 
         self.finish_process_event.wait(self.timeout)
         if self.finish_process_event.is_set() is False:
             self.cancel()
             return
-        self.logger.debug("Finish process event set")
+        self.logger.debug("{0} Finish process event set".format(self))
 
         t0 = time.time()
         while self.completed_work_items < self.next_process_id:
@@ -814,7 +827,10 @@ class ImageProcessorTask2(Task):
             roi_cent = self.roi_cent
 
         # Check if image resize is needed:
-        if quad_image.image.shape[0] != self.image_size[0] or quad_image.image.shape[1] != self.image_size[1]:
+        if (quad_image.image.shape[0] * quad_image.image.shape[1]) > (self.image_size[0] * self.image_size[1]):
+            self.logger.debug("{0}: Got image size {1}, shared memory size {2}. "
+                              "Resize needed.".format(self, quad_image.image.shape, self.image_size))
+            # Launch in thread?
             self.set_image_size(quad_image.image.shape)
 
         self._add_work_item(image=quad_image.image, k_ind=quad_image.k_ind, k_value=quad_image.k_value,
@@ -834,10 +850,10 @@ class ImageProcessorTask2(Task):
         self.cal = cal
 
     def set_image_size(self, image_size):
-        self.logger.info("{0} Setting image size {1}".format(self, image_size))
         if image_size == self.pending_image_size:
-            self.logger.debug("{0} duplicate, exiting".format(self))
+            self.logger.debug("{0} size change pending".format(self))
             return
+        self.logger.info("{0} Setting image size {1}".format(self, image_size))
         with self.lock:
             if self.update_image_size_proc_id is None:
                 self.update_image_size_proc_id = self.next_process_id - 1
@@ -889,27 +905,27 @@ class ImageProcessorTask2(Task):
         self.logger.info("Process creation complete")
         self._job_launch()
 
-    def _init_shared_memory(self):
-        n_mem = self.num_processes
-        with self.lock:
-            if self.pending_image_size is not None:
-                self.image_size = self.pending_image_size
-                self.update_image_size_proc_id = False
-
-        self.logger.info("{0} Init shared memory of size {1}x{2}".format(self, n_mem, self.image_size))
-        self.sh_mem_rawarray = multiprocessing.RawArray("i", self.image_size[0] * self.image_size[1] * n_mem)
-        self.sh_np_array = np.frombuffer(self.sh_mem_rawarray, dtype="i").reshape((self.image_size[0],
-                                                                                   self.image_size[1],
-                                                                                   n_mem))
-        self.sh_mem_roi_rawarray = multiprocessing.RawArray("f", self.image_size[0] * self.image_size[1] * n_mem)
-        while not self.mem_ind_queue.empty():
-            self.mem_ind_queue.get_nowait()
-        [self.mem_ind_queue.put(x) for x in range(n_mem)]  # Fill queue with available memory indices
-        self.current_job_list = [None for x in range(n_mem)]
+    # def _init_shared_memory(self):
+    #     n_mem = self.num_processes
+    #     with self.lock:
+    #         if self.pending_image_size is not None:
+    #             self.image_size = self.pending_image_size
+    #             self.update_image_size_proc_id = False
+    #
+    #     self.logger.info("{0} Init shared memory of size {1}x{2}".format(self, n_mem, self.image_size))
+    #     self.sh_mem_rawarray = multiprocessing.RawArray("i", self.image_size[0] * self.image_size[1] * n_mem)
+    #     self.sh_np_array = np.frombuffer(self.sh_mem_rawarray, dtype="i").reshape((self.image_size[0],
+    #                                                                                self.image_size[1],
+    #                                                                                n_mem))
+    #     self.sh_mem_roi_rawarray = multiprocessing.RawArray("f", self.image_size[0] * self.image_size[1] * n_mem)
+    #     while not self.mem_ind_queue.empty():
+    #         self.mem_ind_queue.get_nowait()
+    #     [self.mem_ind_queue.put(x) for x in range(n_mem)]  # Fill queue with available memory indices
+    #     self.current_job_list = [None for x in range(n_mem)]
 
     def _add_work_item(self, image, k_ind, k_value, image_ind, threshold, roi_cent, roi_dim, cal=[1.0, 1.0], kernel=3,
                        bpp=16, normalize=False, enabled=True):
-        self.logger.debug("{0}: Adding work item".format(self))
+        # self.logger.debug("{0}: Adding work item".format(self))
         # self.logger.debug("{0}: Args: {1}, kwArgs: {2}".format(self, args, kwargs))
         if not self.finish_process_event.is_set():
             with self.lock:
@@ -919,28 +935,30 @@ class ImageProcessorTask2(Task):
                             roi_cent=roi_cent, roi_dim=roi_dim, cal=cal, kernel=kernel, bpp=bpp, normalize=normalize,
                             enabled=enabled, job_proc_id=proc_id)
             self.job_queue.put(job)
-            self.logger.debug("{0}: Work item added to queue. "
-                              "Process id: {1}, job queue length: {2}".format(self, proc_id, self.job_queue.qsize()))
+            self.logger.debug("{0}: Work item added to queue. Process id: {1}, job queue length: {2}, "
+                              "mem_slots {3}".format(self, proc_id, self.job_queue.qsize(), self.mem_ind_queue.qsize()))
             if self.mem_ind_queue.qsize() > 0:
-                self._job_launch()
+                th = threading.Thread(target=self._job_launch)
+                th.start()
+                # self._job_launch()
             else:
                 self.logger.debug("{0} No available memory slots. "
                                   "Waiting for job completion before starting.".format(self))
 
     def _job_launch(self):
-        self.logger.debug("Launching new job for processing")
         with self.lock:
             if self.update_image_size_proc_id is not None:
                 self.logger.info("{0} Not launching new jobs while waiting for image size change".format(self))
                 # Do not launch new job when waiting for image size change
                 return
+
         try:
             job = self.job_queue.get(False, 0.05)  # type: JobStruct
         except Queue.Empty:
             # If the queue was empty, timeout and check the stop_result_flag again
-            self.logger.debug("{0} Job queue empty. Not launching new job.".format(self))
+            self.logger.debug("{0} Job queue empty. Not launching new job. "
+                              "Next proc id {1}".format(self, self.next_process_id))
             return
-        self.logger.debug("{0} Job received: {1} {2}".format(self, job.k_ind, job.image_ind))
 
         # wait for memory to be available:
         while not self.stop_launcher_thread_flag:
@@ -949,13 +967,15 @@ class ImageProcessorTask2(Task):
             except Queue.Empty:
                 # If the queue was empty, timeout and check the stop_result_flag again
                 continue
+            self.logger.debug("{0} Job received: {1} {2}".format(self, job.k_ind, job.image_ind))
 
             roi_d = [int(job.roi_dim[0]), int(job.roi_dim[1])]
             roi_c = [int(job.roi_cent[0]), int(job.roi_cent[1])]
 
             # copy image data to shared memory:
-            np.copyto(self.sh_np_array[ind, :, :], job.image)
-            kwargs = {"image_ind": ind, "threshold": job.threshold, "roi_cent": roi_c,
+            im_size = job.image.shape
+            np.copyto(self.sh_np_array[ind, 0:im_size[0], 0:im_size[1]], job.image)
+            kwargs = {"mem_ind": ind, "im_size": im_size, "threshold": job.threshold, "roi_cent": roi_c,
                       "roi_dim": roi_d, "cal": job.cal, "kernel": job.kernel,
                       "bpp": job.bpp, "normalize": job.normalize}
 
@@ -964,41 +984,49 @@ class ImageProcessorTask2(Task):
 
             # Start processing:
             if not self.stop_launcher_thread_flag:
-                self.logger.debug("{0} apply async {1}".format(self, self.work_func))
+                self.logger.debug("{0} apply async proc {1}".format(self, ind))
                 self.pool.apply_async(self.work_func, kwds=kwargs, callback=self._pool_callback)
-            return
+
+            if self.mem_ind_queue.qsize() > 0:
+                try:
+                    job = self.job_queue.get(False, 0.05)  # type: JobStruct
+                except Queue.Empty:
+                    return
+            else:
+                return
 
     def _pool_callback(self, result):
         self.logger.debug("Pool callback returned {0}".format(result[0]))
         self.completed_work_items += 1
 
-        # Cancel task if an exception was received:
-        if isinstance(result, Exception):
-            self.logger.exception("{0} pool callback exception: {1}".format(self, result))
-            self.cancel()
-            return
-
         if self.is_done() is False:
             ind = result[0]
-            x_cent = result[1]
-            sigma_x = result[2]
-            y_cent = result[3]
-            sigma_y = result[4]
-            q = result[5]
-            enabled = result[6]
-            job = self.current_job_list[ind]    # type: JobStruct
-            if not job.enabled:
-                enabled = False
+            if isinstance(result[1], Exception):
+                self.logger.exception("{0} pool callback exception: {1}".format(self, result))
+                self.result = result[1]
+            else:
+                x_cent = result[1]
+                sigma_x = result[2]
+                y_cent = result[3]
+                sigma_y = result[4]
+                q = result[5]
+                enabled = result[6]
+                job = self.current_job_list[ind]    # type: JobStruct
+                if not job.enabled:
+                    enabled = False
 
-            roi_d = [int(job.roi_dim[0]), int(job.roi_dim[1])]
-            pic_roi = np.frombuffer(self.sh_mem_roi_rawarray, "f", roi_d[0] * roi_d[1],
-                                    self.image_size[0] * self.image_size[1] *
-                                    ind * np.dtype("f").itemsize).reshape(roi_d)
-            line_x = pic_roi.sum(0)
-            line_y = pic_roi.sum(1)
-            self.result = ProcessedImage(k_ind=job.k_ind, k_value=job.k_value, image_ind=job.image_ind, pic_roi=pic_roi,
-                                         line_x=line_x, line_y=line_y, x_cent=x_cent, sigma_x=sigma_x, y_cent=y_cent,
-                                         sigma_y=sigma_y, q=q, enabled=enabled, threshold=job.threshold)
+                roi_d = [int(job.roi_dim[0]), int(job.roi_dim[1])]
+                pic_roi = np.frombuffer(self.sh_mem_roi_rawarray, "f", roi_d[0] * roi_d[1],
+                                        self.image_size[0] * self.image_size[1] *
+                                        ind * np.dtype("f").itemsize).reshape(roi_d).copy()
+                line_x = pic_roi.sum(0)
+                line_y = pic_roi.sum(1)
+                self.result = ProcessedImage(k_ind=job.k_ind, k_value=job.k_value, image_ind=job.image_ind,
+                                             pic_roi=pic_roi, line_x=line_x, line_y=line_y, x_cent=x_cent,
+                                             sigma_x=sigma_x, y_cent=y_cent, sigma_y=sigma_y, q=q, enabled=enabled,
+                                             threshold=job.threshold)
+                for callback in self.callback_list:
+                    callback(self)
 
             # Mark this index as free for processing:
             self.mem_ind_queue.put(ind)
@@ -1021,8 +1049,6 @@ class ImageProcessorTask2(Task):
             self.result_ready_event.set()
             self.result_ready_event.clear()
 
-            for callback in self.callback_list:
-                callback(self)
 
     def _stop_processes(self, terminate=True):
         self.logger.info("{0}: Stopping processes".format(self))
@@ -1077,14 +1103,19 @@ class ProcessAllImagesTask(Task):
             # If the image_processor was supplied, don't add self as trigger.
             self.image_processor = image_processor_task     # Type: ImageProcessorTask
         if self.image_processor.is_started() is False:
-            self.logger.info("Starting image_processor")
+            self.logger.info("{0} Image processor not started. Starting. "
+                             "Cancel status: {1}".format(self, self.image_processor.is_cancelled()))
             self.image_processor.start()
         self.image_processor.add_callback(self.processed_image_done)
         self.processed_image_list = list()
 
     def action(self):
         self.logger.info("{0}: entering action".format(self))
-        self.processed_image_list = list()
+
+        acc_params = self.quad_scan_data.acc_params
+        n_images = acc_params.num_k * acc_params.num_images
+        pic_roi = np.zeros((int(acc_params.roi_dim[0]), int(acc_params.roi_dim[1])), dtype=np.float32)
+        [self.processed_image_list.append(pic_roi) for x in range(n_images)]
 
         self.image_processor.set_roi(self.quad_scan_data.acc_params.roi_center, self.quad_scan_data.acc_params.roi_dim)
         self.image_processor.set_processing_parameters(self.threshold, self.quad_scan_data.acc_params.cal, self.kernel)
@@ -1110,14 +1141,24 @@ class ProcessAllImagesTask(Task):
         # type: (ImageProcessorTask) -> None
         proc_image = image_processor_task.get_result(wait=False)    # type: ProcessedImage
         if image_processor_task.is_done() is False:
-            self.logger.debug("Adding processed image {0} {1} to list".format(proc_image.k_ind, proc_image.image_ind))
             with self.lock:
-                self.processed_image_list.append(proc_image)
+                ind = proc_image.k_ind * self.quad_scan_data.acc_params.num_images + proc_image.image_ind
+                self.logger.debug(
+                    "{0} Adding processed image {1} {2} to list at index {3}".format(self,
+                                                                                     proc_image.k_ind,
+                                                                                     proc_image.image_ind,
+                                                                                     ind))
+                self.processed_image_list[ind] = proc_image
+                # self.processed_image_list.append(proc_image)
                 self.pending_images -= 1
                 if self.pending_images <= 0:
                     self.images_done_event.set()
         else:
             self.images_done_event.set()
+
+    def cancel(self):
+        # self.image_processor.cancel()
+        Task.cancel(self)
 
 
 class TangoScanTask(Task):
@@ -1490,7 +1531,13 @@ class FitQuadDataTask(Task):
         self.logger.info("alpha  = {0:.4g} rad".format(alpha))
         self.logger.info("-------------------------------")
 
-        x = np.linspace(k.min(), k.max(), 100)
+        try:
+            x = np.linspace(k.min(), k.max(), 100)
+        except ValueError as e:
+            self.logger.exception("{0} k_data error:".format(self))
+            self.result = e
+            self.cancel()
+            return
         x_sqrt = np.sqrt(x*(1+0j))
         Ax = np.real(np.cos(x_sqrt * L) - d * x_sqrt * np.sin(x_sqrt * L))
         Bx = np.real(1 / x_sqrt * np.sin(x_sqrt * L) + d * np.cos(x_sqrt * L))

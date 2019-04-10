@@ -147,7 +147,7 @@ class QuadScanGui(QtGui.QWidget):
         #                                           kernel=self.ui.p_median_kernel_spinbox.value(),
         #                                           process_exec="process",
         #                                           name="gui_image_proc")
-        self.image_processor = ImageProcessorTask2(image_size=(1280, 1024), threshold=self.ui.p_threshold_spinbox.value(),
+        self.image_processor = ImageProcessorTask2(image_size=(1300, 2000), threshold=self.ui.p_threshold_spinbox.value(),
                                                    kernel=self.ui.p_median_kernel_spinbox.value(),
                                                    name="gui_image_proc")
         self.image_processor.start()
@@ -470,6 +470,7 @@ class QuadScanGui(QtGui.QWidget):
         load_dir = str(filedialog.directory().absolutePath())
         self.last_load_dir = load_dir
         root.debug("Loading from directory {0}".format(load_dir))
+        self.image_processor.clear_callback_list()
         self.image_processor.add_callback(self.update_load_data)        # This method is called when loading is finished
         self.ui.process_image_widget.getHistogramWidget().item.blockSignals(True)    # Block signals to avoid threshold problems
         self.load_image_max = 0.0
@@ -573,26 +574,30 @@ class QuadScanGui(QtGui.QWidget):
             else:
                 root.debug("Load data complete. Storing quad scan data.")
                 hw = self.ui.process_image_widget.getHistogramWidget()      # type: pq.HistogramLUTWidget
+                hw.item.blockSignals(True)
+                self.ui.p_threshold_spinbox.blockSignals(True)
                 hl = hw.getLevels()
                 hw.setLevels(self.ui.p_threshold_spinbox.value(), self.load_image_max)
                 hw.item.blockSignals(False)
+                self.ui.p_threshold_spinbox.blockSignals(False)
                 task.remove_callback(self.update_load_data)
                 if isinstance(task, LoadQuadScanDirTask):
-                    quad_scan_data = task.get_result(wait=False)   # type: QuadScanData
+                    result = task.get_result(wait=False)   # type: QuadScanData
                     if task.is_cancelled():
                         time_str = time.strftime("%Y-%m-%d_%H-%M-%S", time.localtime(time.time()))
-                        msg = "Load dir error: {0}".format(quad_scan_data)
+                        msg = "Load dir error: {0}".format(result)
                         self.ui.status_textedit.append("\n{0}: {1}"
                                                        "\n---------------------------\n".format(time_str, msg))
 
                         root.error(msg)
                     else:
-                        self.quad_scan_data_analysis = quad_scan_data
+                        self.quad_scan_data_analysis = result
+                        root.debug("Acc parameters: {0}".format(result.acc_params))
                         self.ui.p_image_index_slider.setMaximum(len(self.quad_scan_data_analysis.images) - 1)
                         self.ui.p_image_index_slider.setValue(0)
                         self.ui.p_image_index_slider.update()
-                        root.debug("Proc images len: {0}".format(len(quad_scan_data.proc_images)))
-                        root.debug("Images len: {0}".format(len(quad_scan_data.images)))
+                        root.debug("Proc images len: {0}".format(len(result.proc_images)))
+                        root.debug("Images len: {0}".format(len(result.images)))
                         self.update_analysis_parameters()
                         self.update_image_selection()
                         self.update_fit_signal.emit()
@@ -968,18 +973,23 @@ class QuadScanGui(QtGui.QWidget):
         root.info("{0}: Updating fit result.".format(self))
         if task is not None:
             fitresult = task.get_result(wait=False)     # type: FitResult
-            if self.ui.p_x_radio.isChecked():
-                self.ui.result_axis_label.setText("x-axis")
+            if isinstance(fitresult, Exception):
+                time_str = time.strftime("%Y-%m-%d_%H-%M-%S", time.localtime(time.time()))
+                self.ui.status_textedit.append("\n{0}: Could not generate fit: {1}\n"
+                                               "======================\n".format(time_str, fitresult))
             else:
-                self.ui.result_axis_label.setText("y-axis")
-            if fitresult is not None:
-                self.ui.eps_label.setText("{0:.2f} mm x mmrad".format(1e6 * fitresult.eps_n))
-                self.ui.beta_label.setText("{0:.2f} m".format(fitresult.beta))
-                self.ui.alpha_label.setText("{0:.2f}".format(fitresult.alpha))
-                self.fit_result = fitresult
-                self.update_fit_signal.emit()
-            else:
-                root.error("Fit result NONE")
+                if self.ui.p_x_radio.isChecked():
+                    self.ui.result_axis_label.setText("x-axis")
+                else:
+                    self.ui.result_axis_label.setText("y-axis")
+                if fitresult is not None:
+                    self.ui.eps_label.setText("{0:.2f} mm x mmrad".format(1e6 * fitresult.eps_n))
+                    self.ui.beta_label.setText("{0:.2f} m".format(fitresult.beta))
+                    self.ui.alpha_label.setText("{0:.2f}".format(fitresult.alpha))
+                    self.fit_result = fitresult
+                    self.update_fit_signal.emit()
+                else:
+                    root.error("Fit result NONE")
 
     def update_camera_image(self, new_image):
         # root.debug("Updating camera image")
@@ -1394,6 +1404,12 @@ class QuadScanGui(QtGui.QWidget):
             acc_params = acc_params._replace(roi_center=roi_center)
             acc_params = acc_params._replace(roi_dim=roi_size)
             self.quad_scan_data_analysis = self.quad_scan_data_analysis._replace(acc_params=acc_params)
+        # root.info("Start processing. Accelerator params: {0}".format(acc_params))
+        try:
+            root.info("Start processing. Num images: {0}".format(len(self.quad_scan_data_analysis.images)))
+        except TypeError:
+            root.info("No images.")
+            return
         task = ProcessAllImagesTask(self.quad_scan_data_analysis, threshold=th,
                                     kernel_size=kern,
                                     image_processor_task=self.image_processor,
@@ -1401,7 +1417,7 @@ class QuadScanGui(QtGui.QWidget):
                                     name="process_images",
                                     callback_list=[self.update_image_processing])
         task.start()
-        self.processing_tasks.append(task)
+        # self.processing_tasks.append(task)
 
     def start_fit(self):
         if "Full matrix" in str(self.ui.fit_algo_combobox.currentText()):

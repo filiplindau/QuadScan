@@ -29,9 +29,14 @@ try:
     import PyTango as pt
 except ImportError:
     try:
-        import tango as pt
-    except ModuleNotFoundError:
-        pass
+        ModuleNotFoundError
+        try:
+            import tango as pt
+        except ModuleNotFoundError:
+            pass
+    except NameError:
+        pt = None
+
 
 logger = logging.getLogger("Task")
 while len(logger.handlers):
@@ -297,16 +302,20 @@ class Task(object):
 
     def cancel(self):
         self.logger.debug("{0} cancelling.".format(self))
+        do_cancel = False
         with self.lock:
-            self.started = False
-            self.completed = False
-            self.cancelled = True
-            self.trigger_done_list = list()
-            self.trigger_result_dict = dict()
-            self.trigger_event.set()
+            if not self.cancelled:
+                self.started = False
+                self.completed = False
+                self.cancelled = True
+                self.trigger_done_list = list()
+                self.trigger_result_dict = dict()
+                self.trigger_event.set()
+                do_cancel = True
 #            if self.run_thread.isAlive():
 #                self.run_thread.raise_exc(self.CancelException)
-        self.emit()
+        if do_cancel:
+            self.emit()
 
     def is_cancelled(self):
         return self.cancelled
