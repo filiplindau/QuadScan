@@ -20,7 +20,7 @@ f = logging.Formatter("%(asctime)s - %(name)s.   %(funcName)s - %(levelname)s - 
 fh = logging.StreamHandler()
 fh.setFormatter(f)
 logger.addHandler(fh)
-logger.setLevel(logging.INFO)
+logger.setLevel(logging.DEBUG)
 
 
 from collections import namedtuple
@@ -463,6 +463,59 @@ class ProcessPoolTaskShared(Task):
         Task.emit(self)
 
 
+test_var_dict = dict()
+
+
+def init_test_worker(sh_mem, sh_roi, shape):
+    test_var_dict["mem"] = sh_mem
+    test_var_dict["roi"] = sh_roi
+    test_var_dict["shape"] = shape
+
+
+def sh_test_func(ind):
+    shape = test_var_dict["shape"]
+    logger.info("Processing {0} in pool".format(ind))
+    data = np.frombuffer(test_var_dict["mem"], "i", shape[1]*shape[2],
+                         ind*shape[1]*shape[2]*np.dtype("i").itemsize).reshape((shape[1], shape[2]))
+    # roi = np.frombuffer(test_var_dict["roi"], "f", shape[0]*shape[1]*shape[2])
+    roi = np.frombuffer(test_var_dict["roi"], "f", shape[1]*shape[2],
+                        ind*shape[1]*shape[2]*np.dtype("f").itemsize)
+
+    logger.info("Data: {0}".format(data))
+    np.copyto(roi, np.float32(data.flatten()*2))
+    return ind
+
+
+class SharedMemTest(object):
+    def __init__(self):
+        self.shape = np.array([5, 5])
+        self.sh_mem = multiprocessing.RawArray("i", 3*self.shape[0]*self.shape[1])
+        self.sh_roi = multiprocessing.RawArray("f", 3*self.shape[0]*self.shape[1])
+        self.sh_np_array = np.frombuffer(self.sh_mem, dtype="i").reshape((3, self.shape[0], self.shape[1]))
+
+        self.pool = multiprocessing.Pool(8, initializer=init_test_worker, initargs=(self.sh_mem, self.sh_roi,
+                                                                                    (3, self.shape[0], self.shape[1])))
+
+    def run(self):
+        logger.info("Launching jobs")
+        data = np.arange(self.shape[0]*self.shape[1]).reshape(self.shape)
+        np.copyto(self.sh_np_array[0, :, :], data)
+        ind = 0
+        self.pool.apply_async(sh_test_func, args=(ind, ), callback=self.pool_callback)
+
+    def pool_callback(self, result):
+        logger.info("Result: {0}".format(result))
+        ind = result
+        roi = np.frombuffer(self.sh_roi, "f", self.shape[0] * self.shape[1],
+                            ind * self.shape[0] * self.shape[1] * np.dtype("f").itemsize).reshape(self.shape)
+        logger.info("roi: {0}".format(roi))
+        logger.info("done")
+
+    def join(self):
+        self.pool.close()
+        self.pool.join()
+
+
 def callback_f(task):
     name = task.get_name()
     res = task.get_result(wait=False)
@@ -471,52 +524,58 @@ def callback_f(task):
 
 if __name__ == "__main__":
 
-    im = np.random.random((1280, 1024))
-    im_list = [np.random.randint(0, 16383, (1280, 1024)) for k in range(16)]
+    sh_test = SharedMemTest()
+    # time.sleep(0.5)
+    sh_test.run()
+    sh_test.join()
 
-    t = ProcessPoolTaskShared(image_shape=im.shape, name="test", callback_list=[callback_f])
-    t.start()
-    time.sleep(1.0)
 
-#    im = np.random.random((1000, 1000))
-    k_ind = 0
-    k_val = 0
-    im_ind = 0
-    th = 0
-    roi_c = [256, 150]
-    roi_d = [256, 256]
-    cal = [1, 1]
-    kern = 3
-    norm = False
-    en = True
-
-    qi = QuadImage(k_ind, k_val, im_ind, im)
-#    process_image_func(image=im, k_ind=k_ind, k_value=k_val, image_ind=im_ind, threshold=th, roi_cent=roi_c,
-#                       roi_dim=roi_d, cal=cal, kernel=kern, bpp=16, normalize=norm, enabled=en)
-#     t.add_work_item(image=im, k_ind=k_ind, k_value=k_val, image_ind=im_ind, threshold=th, roi_cent=roi_c,
-#                     roi_dim=roi_d, cal=cal, kernel=kern, bpp=16, normalize=norm, enabled=en)
-
-    for im in im_list:
-        t.add_work_item(image=im, k_ind=k_ind, k_value=k_val, image_ind=im_ind, threshold=th, roi_cent=roi_c,
-                        roi_dim=roi_d, cal=cal, kernel=kern, bpp=16, normalize=norm, enabled=en)
-        k_ind += 1
-
-    t0 = time.time()
-    logger.info("WAITING")
-    while t.get_remaining_workitems() > 0:
-        res = t.get_result(wait=True, timeout=1.0)
-        dt = time.time() - t0
-        if dt > 2:
-            break
-    logger.info("RESULT from task: {0}, {1:.2f} ms".format(res, dt * 1e3))
-
-    time.sleep(1.0)
-    t.finish_processing()
-    t.get_done_event().wait()
-
-    logger.info("=========================================================================")
-    logger.info("TOTAL time: {0:.2f} ms".format((time.time() - t0) * 1e3))
-    # t.cancel()
+#     im = np.random.random((1280, 1024))
+#     im_list = [np.random.randint(0, 16383, (1280, 1024)) for k in range(16)]
+#
+#     t = ProcessPoolTaskShared(image_shape=im.shape, name="test", callback_list=[callback_f])
+#     t.start()
+#     time.sleep(1.0)
+#
+# #    im = np.random.random((1000, 1000))
+#     k_ind = 0
+#     k_val = 0
+#     im_ind = 0
+#     th = 0
+#     roi_c = [256, 150]
+#     roi_d = [256, 256]
+#     cal = [1, 1]
+#     kern = 3
+#     norm = False
+#     en = True
+#
+#     qi = QuadImage(k_ind, k_val, im_ind, im)
+# #    process_image_func(image=im, k_ind=k_ind, k_value=k_val, image_ind=im_ind, threshold=th, roi_cent=roi_c,
+# #                       roi_dim=roi_d, cal=cal, kernel=kern, bpp=16, normalize=norm, enabled=en)
+# #     t.add_work_item(image=im, k_ind=k_ind, k_value=k_val, image_ind=im_ind, threshold=th, roi_cent=roi_c,
+# #                     roi_dim=roi_d, cal=cal, kernel=kern, bpp=16, normalize=norm, enabled=en)
+#
+#     for im in im_list:
+#         t.add_work_item(image=im, k_ind=k_ind, k_value=k_val, image_ind=im_ind, threshold=th, roi_cent=roi_c,
+#                         roi_dim=roi_d, cal=cal, kernel=kern, bpp=16, normalize=norm, enabled=en)
+#         k_ind += 1
+#
+#     t0 = time.time()
+#     logger.info("WAITING")
+#     while t.get_remaining_workitems() > 0:
+#         res = t.get_result(wait=True, timeout=1.0)
+#         dt = time.time() - t0
+#         if dt > 2:
+#             break
+#     logger.info("RESULT from task: {0}, {1:.2f} ms".format(res, dt * 1e3))
+#
+#     time.sleep(1.0)
+#     t.finish_processing()
+#     t.get_done_event().wait()
+#
+#     logger.info("=========================================================================")
+#     logger.info("TOTAL time: {0:.2f} ms".format((time.time() - t0) * 1e3))
+#     # t.cancel()
 
 
 

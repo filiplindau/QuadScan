@@ -405,6 +405,9 @@ class LoadQuadScanDirTask(Task):
             else:
                 self.logger.debug("Adding processed image {0} {1} to list".format(proc_image.k_ind, proc_image.image_ind))
                 self.processed_image_list.append(proc_image)
+                # self.result = proc_image
+                # for callback in self.callback_list:
+                #     callback(self)
 
     def cancel(self):
         if self.task_seq is not None:
@@ -639,69 +642,70 @@ def init_worker(sh_mem_image, sh_mem_roi, image_shape):
 
 def work_func_shared(image_ind, threshold, roi_cent, roi_dim, cal=[1.0, 1.0], kernel=3, bpp=16, normalize=False):
     t0 = time.time()
-    shape = var_dict["image_shape"]
-    logger.info("Processing image {0} in pool".format(image_ind))
-    # return image_ind, 0, 0, 0, 0, 0, 0
-    image = np.frombuffer(var_dict["image"], "i", shape[0]*shape[1],
-                          shape[0] * shape[1] * image_ind * np.dtype("i").itemsize).reshape((shape[0], shape[1]))
-    roi = np.frombuffer(var_dict["roi"], "f", roi_dim[0] * roi_dim[1],
-                        shape[0] * shape[1] * image_ind * np.dtype("f").itemsize).reshape(roi_dim)
-
     try:
-        x = np.array([int(roi_cent[0] - roi_dim[0] / 2.0), int(roi_cent[0] + roi_dim[0] / 2.0)])
-        y = np.array([int(roi_cent[1] - roi_dim[1] / 2.0), int(roi_cent[1] + roi_dim[1] / 2.0)])
-        # Extract ROI and convert to double:
-        pic_roi = np.double(image[x[0]:x[1], y[0]:y[1]])
-    except IndexError:
-        pic_roi = np.double(image)
-    n = 2 ** bpp
-    logger.debug("Pic roi {0}".format(image_ind))
+        shape = var_dict["image_shape"]
+        # logger.debug("Processing image {0} in pool".format(image_ind))
+        image = np.frombuffer(var_dict["image"], "i", shape[1]*shape[2],
+                              shape[1] * shape[2] * image_ind * np.dtype("i").itemsize).reshape((shape[1], shape[2]))
+        roi = np.frombuffer(var_dict["roi"], "f", roi_dim[0] * roi_dim[1],
+                            shape[1] * shape[2] * image_ind * np.dtype("f").itemsize).reshape(roi_dim)
 
-    # Median filtering:
-    try:
-        if normalize is True:
-            pic_roi = medfilt2d(pic_roi / n, kernel)
+        try:
+            x = np.array([int(roi_cent[0] - roi_dim[0] / 2.0), int(roi_cent[0] + roi_dim[0] / 2.0)])
+            y = np.array([int(roi_cent[1] - roi_dim[1] / 2.0), int(roi_cent[1] + roi_dim[1] / 2.0)])
+            # Extract ROI and convert to double:
+            pic_roi = np.float32(image[x[0]:x[1], y[0]:y[1]])
+        except IndexError:
+            pic_roi = np.float32(image)
+        n = 2 ** bpp
+        # logger.debug("Pic roi {0}".format(image_ind))
+
+        # Median filtering:
+        try:
+            if normalize is True:
+                pic_roi = medfilt2d(pic_roi / n, kernel)
+            else:
+                pic_roi = medfilt2d(pic_roi, kernel)
+        except ValueError as e:
+            logger.warning("Medfilt kernel value error: {0}".format(e))
+            # print("Medfilt kernel value error: {0}".format(e))
+        # logger.debug("Medfilt {0}".format(image_ind))
+
+        # Threshold image
+        try:
+            if threshold is None:
+                threshold = pic_roi[0:20, 0:20].mean() * 3 + pic_roi[-20:, -20:].mean() * 3
+            pic_roi[pic_roi < threshold] = 0.0
+        except Exception:
+            pic_roi = pic_roi
+
+        # Centroid and sigma calculations:
+        line_x = pic_roi.sum(0)
+        line_y = pic_roi.sum(1)
+        q = line_x.sum()  # Total signal (charge) in the image
+        l_x_n = np.sum(line_x)
+        l_y_n = np.sum(line_y)
+        # Enable point only if there is data:
+        if l_x_n <= 0.0:
+            enabled = False
         else:
-            pic_roi = medfilt2d(pic_roi, kernel)
-    except ValueError as e:
-        logger.warning("Medfilt kernel value error: {0}".format(e))
-        # print("Medfilt kernel value error: {0}".format(e))
-    logger.debug("Medfilt {0}".format(image_ind))
-
-
-    # Threshold image
-    try:
-        if threshold is None:
-            threshold = pic_roi[0:20, 0:20].mean() * 3 + pic_roi[-20:, -20:].mean() * 3
-        pic_roi[pic_roi < threshold] = 0.0
-    except Exception:
-        pic_roi = pic_roi
-
-    # Centroid and sigma calculations:
-    line_x = pic_roi.sum(0)
-    line_y = pic_roi.sum(1)
-    q = line_x.sum()  # Total signal (charge) in the image
-    l_x_n = np.sum(line_x)
-    l_y_n = np.sum(line_y)
-    # Enable point only if there is data:
-    if l_x_n <= 0.0:
-        enabled = False
-    else:
-        enabled = True
-    try:
-        x_v = cal[0] * np.arange(line_x.shape[0])
-        y_v = cal[1] * np.arange(line_y.shape[0])
-        x_cent = np.sum(x_v * line_x) / l_x_n
-        sigma_x = np.sqrt(np.sum((x_v - x_cent) ** 2 * line_x) / l_x_n)
-        y_cent = np.sum(y_v * line_y) / l_y_n
-        sigma_y = np.sqrt(np.sum((y_v - y_cent) ** 2 * line_y) / l_y_n)
+            enabled = True
+        try:
+            x_v = cal[0] * np.arange(line_x.shape[0])
+            y_v = cal[1] * np.arange(line_y.shape[0])
+            x_cent = np.sum(x_v * line_x) / l_x_n
+            sigma_x = np.sqrt(np.sum((x_v - x_cent) ** 2 * line_x) / l_x_n)
+            y_cent = np.sum(y_v * line_y) / l_y_n
+            sigma_y = np.sqrt(np.sum((y_v - y_cent) ** 2 * line_y) / l_y_n)
+        except Exception as e:
+            print(e)
+            sigma_x = None
+            sigma_y = None
+            x_cent = 0
+            y_cent = 0
+        np.copyto(roi, pic_roi)
     except Exception as e:
-        print(e)
-        sigma_x = None
-        sigma_y = None
-        x_cent = 0
-        y_cent = 0
-    np.copyto(roi, pic_roi)
+        return e
     # print("Process time {0:.2f} ms".format((time.time()-t0)*1e3))
     return image_ind, x_cent, sigma_x, y_cent, sigma_y, q, enabled
 
@@ -711,8 +715,6 @@ class ImageProcessorTask2(Task):
                  image_size=[1280, 1024], number_processes=None,
                  name=None, timeout=None, trigger_dict=dict(), callback_list=list()):
         Task.__init__(self,  name, timeout=timeout, trigger_dict=trigger_dict, callback_list=callback_list)
-        self.logger.setLevel(logging.DEBUG)
-
         self.kernel = kernel
         self.cal = cal
         self.threshold = threshold
@@ -749,7 +751,7 @@ class ImageProcessorTask2(Task):
 
         self.stop_launcher_thread_flag = False
 
-        self.logger.setLevel(logging.DEBUG)
+        self.logger.setLevel(logging.INFO)
 
     def run(self):
         self._create_processes()
@@ -867,11 +869,11 @@ class ImageProcessorTask2(Task):
                 self.image_size = self.pending_image_size
 
         self.logger.info("{0} Init shared memory of size {1}x{2}".format(self, n_mem, self.image_size))
-        self.sh_mem_rawarray = multiprocessing.RawArray("i", self.image_size[0] * self.image_size[1] * n_mem)
-        self.sh_np_array = np.frombuffer(self.sh_mem_rawarray, dtype="i").reshape((self.image_size[0],
-                                                                                   self.image_size[1],
-                                                                                   n_mem))
-        self.sh_mem_roi_rawarray = multiprocessing.RawArray("f", self.image_size[0] * self.image_size[1] * n_mem)
+        self.sh_mem_rawarray = multiprocessing.RawArray("i", n_mem * self.image_size[0] * self.image_size[1])
+        self.sh_np_array = np.frombuffer(self.sh_mem_rawarray, dtype="i").reshape((n_mem,
+                                                                                   self.image_size[0],
+                                                                                   self.image_size[1]))
+        self.sh_mem_roi_rawarray = multiprocessing.RawArray("f", n_mem * self.image_size[0] * self.image_size[1])
 
         while not self.mem_ind_queue.empty():
             self.mem_ind_queue.get_nowait()
@@ -880,10 +882,12 @@ class ImageProcessorTask2(Task):
 
         self.pool = multiprocessing.Pool(self.num_processes, initializer=init_worker,
                                          initargs=(self.sh_mem_rawarray, self.sh_mem_roi_rawarray,
-                                                   (self.image_size[0], self.image_size[1], n_mem)))
-        time.sleep(0.2)
+                                                   (n_mem, self.image_size[0], self.image_size[1])))
+        # time.sleep(0.1)
         with self.lock:
             self.update_image_size_proc_id = None
+        self.logger.info("Process creation complete")
+        self._job_launch()
 
     def _init_shared_memory(self):
         n_mem = self.num_processes
@@ -948,11 +952,9 @@ class ImageProcessorTask2(Task):
 
             roi_d = [int(job.roi_dim[0]), int(job.roi_dim[1])]
             roi_c = [int(job.roi_cent[0]), int(job.roi_cent[1])]
-            self.logger.debug("{0} Copy data: {1}".format(self, job.k_ind))
 
             # copy image data to shared memory:
-            np.copyto(self.sh_np_array[:, :, ind], job.image)
-            self.logger.debug("{0} Copy data done {1}".format(self, job.k_ind))
+            np.copyto(self.sh_np_array[ind, :, :], job.image)
             kwargs = {"image_ind": ind, "threshold": job.threshold, "roi_cent": roi_c,
                       "roi_dim": roi_d, "cal": job.cal, "kernel": job.kernel,
                       "bpp": job.bpp, "normalize": job.normalize}
@@ -961,11 +963,9 @@ class ImageProcessorTask2(Task):
             self.current_job_list[ind] = job
 
             # Start processing:
-            self.logger.debug("{0} Putting job {1} on pool process {2}".format(self, job.k_ind, ind))
             if not self.stop_launcher_thread_flag:
                 self.logger.debug("{0} apply async {1}".format(self, self.work_func))
                 self.pool.apply_async(self.work_func, kwds=kwargs, callback=self._pool_callback)
-                # self.pool.apply_async(self.work_func, args=(ind, ), callback=self.pool_callback)
             return
 
     def _pool_callback(self, result):
@@ -991,7 +991,6 @@ class ImageProcessorTask2(Task):
                 enabled = False
 
             roi_d = [int(job.roi_dim[0]), int(job.roi_dim[1])]
-            self.logger.debug("{0} {1} q: {2}".format(self, ind, q))
             pic_roi = np.frombuffer(self.sh_mem_roi_rawarray, "f", roi_d[0] * roi_d[1],
                                     self.image_size[0] * self.image_size[1] *
                                     ind * np.dtype("f").itemsize).reshape(roi_d)
@@ -1003,7 +1002,6 @@ class ImageProcessorTask2(Task):
 
             # Mark this index as free for processing:
             self.mem_ind_queue.put(ind)
-            self.logger.debug("{0} index {1} available for job".format(self, ind))
             # Check if it is time to change image size:
             with self.lock:
                 if self.update_image_size_proc_id is not None:

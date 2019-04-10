@@ -190,10 +190,13 @@ class QuadScanGui(QtGui.QWidget):
         self.ui.process_image_widget.ui.menuBtn.hide()
         self.ui.process_image_widget.roi.sigRegionChanged.disconnect()
         h = self.ui.process_image_widget.getHistogramWidget()
-        # h.item.sigLevelChangeFinished.connect(self.update_process_image_threshold)
+        h.item.sigLevelChangeFinished.connect(self.update_process_image_threshold)
         self.ui.process_image_widget.roi.show()
 
         self.ui.process_image_widget.roi.blockSignals(True)
+        roi = self.ui.process_image_widget.roi      # type: pq.ROI
+        roi_handles = roi.getHandles()
+        roi.removeHandle(roi_handles[1])
         self.ui.process_image_widget.roi.setPos((0, 0))
         self.ui.process_image_widget.roi.setSize((64, 64))
         self.ui.process_image_widget.roi.blockSignals(False)
@@ -313,7 +316,7 @@ class QuadScanGui(QtGui.QWidget):
         self.ui.process_image_widget.roi.sigRegionChangeFinished.connect(self.update_process_image_roi)
         hw = self.ui.process_image_widget.getHistogramWidget()
         # hw.sigLevelChangeFinished.connect(self.update_process_image_histogram)
-        hw.blockSignals(True)
+        hw.item.blockSignals(True)
         self.ui.process_button.clicked.connect(self.start_processing)
         self.ui.p_threshold_spinbox.editingFinished.connect(self.start_processing)
         self.ui.p_load_hist_button.clicked.connect(self.update_process_image_threshold)
@@ -468,7 +471,7 @@ class QuadScanGui(QtGui.QWidget):
         self.last_load_dir = load_dir
         root.debug("Loading from directory {0}".format(load_dir))
         self.image_processor.add_callback(self.update_load_data)        # This method is called when loading is finished
-        self.ui.process_image_widget.getHistogramWidget().blockSignals(True)    # Block signals to avoid threshold problems
+        self.ui.process_image_widget.getHistogramWidget().item.blockSignals(True)    # Block signals to avoid threshold problems
         self.load_image_max = 0.0
         # LoadQuadScanTask takes care of the actual loading of the files in the specified directory:
         t1 = LoadQuadScanDirTask(str(load_dir), process_now=True,
@@ -569,9 +572,10 @@ class QuadScanGui(QtGui.QWidget):
                     self.update_image_selection(image.pic_roi, auto_levels=True)
             else:
                 root.debug("Load data complete. Storing quad scan data.")
-                hw = self.ui.process_image_widget.getHistogramWidget()
+                hw = self.ui.process_image_widget.getHistogramWidget()      # type: pq.HistogramLUTWidget
                 hl = hw.getLevels()
                 hw.setLevels(self.ui.p_threshold_spinbox.value(), self.load_image_max)
+                hw.item.blockSignals(False)
                 task.remove_callback(self.update_load_data)
                 if isinstance(task, LoadQuadScanDirTask):
                     quad_scan_data = task.get_result(wait=False)   # type: QuadScanData
@@ -878,14 +882,16 @@ class QuadScanGui(QtGui.QWidget):
         root.info("Updating image threshold from histogram widget")
         hl = self.ui.process_image_widget.getHistogramWidget().getLevels()
         root.debug("Levels: {0}".format(hl))
+        self.ui.p_threshold_spinbox.blockSignals(True)
         self.ui.p_threshold_spinbox.setValue(hl[0])
+        self.ui.p_threshold_spinbox.blockSignals(False)
         self.start_processing()
 
     def update_process_image_histogram(self):
         levels = self.ui.process_image_widget.getHistogramWidget().getLevels()
         root.info("Histogram changed: {0}".format(levels))
-        # self.ui.p_threshold_spinbox.setValue(levels[0])
-        # self.start_processing()
+        self.ui.p_threshold_spinbox.setValue(levels[0])
+        self.start_processing()
 
     def update_camera_roi(self):
         root.info("Updating ROI for camera image")
@@ -1375,6 +1381,7 @@ class QuadScanGui(QtGui.QWidget):
     def start_processing(self):
         if len(self.processing_tasks) > 0:
             for task in self.processing_tasks:
+                root.info("Removing processing task {0}".format(task.get_name()))
                 task.cancel()
                 self.processing_tasks.remove(task)
         th = self.ui.p_threshold_spinbox.value()
