@@ -267,8 +267,7 @@ class SaveQuadImageTask(Task):
 
 
 class LoadQuadScanDirTask(Task):
-    def __init__(self, quadscandir, process_now=True, threshold=None, kernel_size=3,
-                 image_processor_task=None, process_exec_type="process",
+    def __init__(self, quadscandir, process_now=True, threshold=None, kernel_size=3, process_exec_type="thread",
                  name=None, timeout=None, trigger_dict=dict(), callback_list=list()):
         Task.__init__(self, name, timeout=timeout, trigger_dict=trigger_dict, callback_list=callback_list)
         self.logger.setLevel(logging.DEBUG)
@@ -281,18 +280,18 @@ class LoadQuadScanDirTask(Task):
         self.acc_params = None
         self.task_seq = None
         # The images are processed as they are loaded:
-        self.image_processor = None         # type: ImageProcessorTask2
-        if image_processor_task is None:
-            self.image_processor = ImageProcessorTask(threshold=threshold, kernel=kernel_size,
-                                                      process_exec=process_exec_type,
-                                                      trigger_dict=trigger_dict, name="loaddir_image_proc")
-        else:
-            # If the image_processor was supplied, don't add self as trigger.
-            self.image_processor = image_processor_task
-        if self.image_processor.is_started() is False:
-            self.logger.info("Starting image_processor")
-            self.image_processor.start()
-        self.image_processor.add_callback(self.processed_image_done)    # Call this method after completing each image
+        # self.image_processor = None         # type: ImageProcessorTask2
+        # if image_processor_task is None:
+        #     self.image_processor = ImageProcessorTask(threshold=threshold, kernel=kernel_size,
+        #                                               process_exec=process_exec_type,
+        #                                               trigger_dict=trigger_dict, name="loaddir_image_proc")
+        # else:
+        #     # If the image_processor was supplied, don't add self as trigger.
+        #     self.image_processor = image_processor_task
+        # if self.image_processor.is_started() is False:
+        #     self.logger.info("Starting image_processor")
+        #     self.image_processor.start()
+        # self.image_processor.add_callback(self.processed_image_done)    # Call this method after completing each image
 
     def action(self):
         load_dir = self.pathname
@@ -357,8 +356,8 @@ class LoadQuadScanDirTask(Task):
         pic_roi = np.zeros((int(self.acc_params.roi_dim[0]), int(self.acc_params.roi_dim[1])), dtype=np.float32)
         [self.processed_image_list.append(pic_roi) for x in range(n_images)]
 
-        self.image_processor.set_roi(data_dict["roi_center"], data_dict["roi_dim"])
-        self.image_processor.set_processing_parameters(self.threshold, data_dict["pixel_size"], self.kernel_size)
+        # self.image_processor.set_roi(data_dict["roi_center"], data_dict["roi_dim"])
+        # self.image_processor.set_processing_parameters(self.threshold, data_dict["pixel_size"], self.kernel_size)
         file_list = os.listdir(load_dir)
         image_file_list = list()
         load_task_list = list()         # List of tasks, each loading an image. Loading should be done in sequence
@@ -366,8 +365,10 @@ class LoadQuadScanDirTask(Task):
         for file_name in file_list:
             if file_name.endswith(".png"):
                 image_file_list.append(file_name)
+                # t = LoadQuadImageTask(file_name, load_dir, name=file_name,
+                #                       callback_list=[self.image_processor.process_image])
                 t = LoadQuadImageTask(file_name, load_dir, name=file_name,
-                                      callback_list=[self.image_processor.process_image])
+                                      callback_list=[self.processed_image_done])
                 t.logger.setLevel(logging.WARNING)
                 load_task_list.append(t)
 
@@ -383,42 +384,44 @@ class LoadQuadScanDirTask(Task):
         self.logger.debug("{0}: Waiting for image processing to finish".format(self))
         starttime = time.time()
         dt = 0
-        if self.timeout is None:
-            while self.image_processor.get_remaining_number_images() > 0 and dt < 10.0:
-                dt = time.time() - starttime
-                time.sleep(0.01)
-        else:
-            while self.image_processor.get_remaining_number_images() > 0 and dt < self.timeout:
-                dt = time.time() - starttime
-                time.sleep(0.01)
+        # if self.timeout is None:
+        #     while self.image_processor.get_remaining_number_images() > 0 and dt < 10.0:
+        #         dt = time.time() - starttime
+        #         time.sleep(0.01)
+        # else:
+        #     while self.image_processor.get_remaining_number_images() > 0 and dt < self.timeout:
+        #         dt = time.time() - starttime
+        #         time.sleep(0.01)
         # self.image_processor.wait_for_queue_empty()
         self.logger.debug("{0}: Image processing finished".format(self))
 
         self.result = QuadScanData(self.acc_params, image_list, self.processed_image_list)
-        self.image_processor.clear_callback_list()
+        # self.image_processor.clear_callback_list()
 
-    def processed_image_done(self, image_processor_task):
-        # type: (ImageProcessorTask) -> None
-        proc_image = image_processor_task.get_result(wait=False)    # type: ProcessedImage
-        if image_processor_task.is_cancelled():
-            self.result = proc_image
-            self.cancel()
-            return
-        if image_processor_task.is_done() is False:
-            if isinstance(proc_image, Exception):
-                self.logger.error("{0}: Found error in processed image: {1}".format(self, proc_image))
-            else:
-                # self.processed_image_list.append(proc_image)
-                ind = proc_image.k_ind * self.acc_params.num_images + proc_image.image_ind
-                self.logger.debug("{0}: Adding processed image {1} {2} to list at index {3}".format(self,
-                                                                                                    proc_image.k_ind,
-                                                                                                    proc_image.image_ind,
-                                                                                                    ind))
+    def processed_image_done(self, load_quadimage_task):
+        quad_image = load_quadimage_task.get_result(wait=False)    # type: QuadImage
+        if isinstance(quad_image, Exception):
+            self.logger.error("{0}: Found error in processed image: {1}".format(self, quad_image))
 
-                self.processed_image_list[ind] = proc_image
-                # self.result = proc_image
-                # for callback in self.callback_list:
-                #     callback(self)
+        self.result = quad_image
+        for callback in self.callback_list:
+            callback(self)
+
+        # if image_processor_task.is_done() is False:
+        #     if isinstance(proc_image, Exception):
+        #         self.logger.error("{0}: Found error in processed image: {1}".format(self, proc_image))
+        #     else:
+        #         # self.processed_image_list.append(proc_image)
+        #         ind = proc_image.k_ind * self.acc_params.num_images + proc_image.image_ind
+        #         self.logger.debug("{0}: Adding processed image {1} {2} to list at index {3}".format(self,
+        #                                                                                             proc_image.k_ind,
+        #                                                                                             proc_image.image_ind,
+        #                                                                                             ind))
+        #
+        #         self.processed_image_list[ind] = proc_image
+        #         # self.result = proc_image
+        #         # for callback in self.callback_list:
+        #         #     callback(self)
 
     def cancel(self):
         if self.task_seq is not None:
@@ -1159,6 +1162,179 @@ class ProcessAllImagesTask(Task):
     def cancel(self):
         # self.image_processor.cancel()
         Task.cancel(self)
+
+
+class ProcessAllImagesTask2(Task):
+    def __init__(self, image_size=[2000, 2000], num_processes=None, process_exec_type="thread",
+                 name=None, timeout=None, trigger_dict=dict(), callback_list=list()):
+        """
+        The idea is here to process all images in batches in a process pool.
+
+        :param quad_scan_data:
+        :param threshold:
+        :param kernel_size:
+        :param image_processor_task:
+        :param process_exec_type:
+        :param name:
+        :param timeout:
+        :param trigger_dict:
+        :param callback_list:
+        """
+        Task.__init__(self, name, timeout=timeout, trigger_dict=trigger_dict, callback_list=callback_list)
+        self.logger.setLevel(logging.DEBUG)
+        self.image_size = image_size
+        self.quad_scan_data = None    # type: QuadScanData
+        self.threshold = None
+        self.kernel = None
+        self.finish_process_event = threading.Event()
+        self.result_done_event = threading.Event()
+        self.pending_images = 0
+        self.pending_data = None
+
+        self.processed_image_list = list()
+
+        if num_processes is None:
+            self.num_processes = multiprocessing.cpu_count()
+        else:
+            self.num_processes = num_processes
+        self.pool = None
+
+        self.sh_mem_rawarray = None
+        self.sh_mem_roi_rawarray = None
+        self.sh_np_array = None
+        self.job_queue = Queue.Queue()
+        self.current_jobs_in_process_list = None
+        self.mem_ind_queue = Queue.Queue()
+        self.next_process_id = None
+
+        self.job_thread = None
+
+    def start(self):
+        self.next_process_id = 0
+        self.create_pool()
+        Task.start(self)
+
+    def action(self):
+        self.logger.info("{0}: entering action".format(self))
+        self.result_done_event.set()
+
+        self.finish_process_event.wait(self.timeout)
+        if self.finish_process_event.is_set() is False:
+            self.cancel()
+            return
+        self.logger.debug("{0} Finish process event set".format(self))
+
+        t0 = time.time()
+        while self.completed_work_items < self.next_process_id:
+            time.sleep(0.01)
+            if time.time() - t0 > 5.0:
+                self.logger.error("{0}: Timeout waiting for {1} work items to complete".format(self,
+                                                                                               self.next_process_id - self.completed_work_items))
+                self._stop_processes(terminate=True)
+                # self.result = self.result_dict
+                return
+        self._stop_processes(terminate=False)
+        self.result = True
+        self.pool = None
+
+    def process_images(self, quad_scan_data, threshold, kernel):
+        self.logger.info("{0}: New image set {1} images".format(self, len(quad_scan_data.images)))
+
+        # Overwrite pending data if there already was some:
+        with self.lock:
+            self.pending_data = quad_scan_data
+            self.threshold = threshold
+            self.kernel = kernel
+
+        # Check if processing is on-going. If not, result done is set. Then we can start immediately
+        if self.result_done_event.is_set():
+            self.result_done_event.clear()
+            self.job_thread = threading.Thread(target=self.prepare_data)
+            self.job_thread.start()
+
+    def prepare_data(self):
+        with self.lock:
+            # Do this again to make sure:
+            if not self.result_done_event.is_set():
+                self.result_done_event.clear()
+            # Transfer pending data to quad_scan_data
+            self.quad_scan_data = self.pending_data
+            self.pending_data = None
+
+        acc_params = self.quad_scan_data.acc_params
+        n_images = acc_params.num_k * acc_params.num_images
+
+        # Prepare processed images as zero-filled images:
+        pic_roi = np.zeros((int(acc_params.roi_dim[0]), int(acc_params.roi_dim[1])), dtype=np.float32)
+        [self.processed_image_list.append(pic_roi) for x in range(n_images)]
+
+        self.pending_images = len(self.quad_scan_data.images)
+
+        # Check image size and see if we need to resize and create new process pool
+        quad_image = self.quad_scan_data.images[0]
+        if (quad_image.image.shape[0] * quad_image.image.shape[1]) > (self.image_size[0] * self.image_size[1]):
+            self.logger.debug("{0}: Got image size {1}, shared memory size {2}. "
+                              "Resize needed.".format(self, quad_image.image.shape, self.image_size))
+            self.image_size = quad_image.image.shape
+            self.create_pool()
+
+        # Fill up job queue
+        [self.job_queue.put(ind) for ind in range(len(self.quad_scan_data.images))]
+
+        self.job_launcher()
+
+    def job_launcher(self):
+        if self.finish_process_event.is_set():
+            self.logger.debug("Finish process set. Not launching new job")
+            return
+
+
+
+    def pool_callback(self, result):
+        proc_image = result
+        with self.lock:
+            ind = proc_image.k_ind * self.quad_scan_data.acc_params.num_images + proc_image.image_ind
+            self.logger.debug(
+                "{0} Adding processed image {1} {2} to list at index {3}".format(self,
+                                                                                 proc_image.k_ind,
+                                                                                 proc_image.image_ind,
+                                                                                 ind))
+            self.processed_image_list[ind] = proc_image
+            # self.processed_image_list.append(proc_image)
+            self.pending_images -= 1
+            if self.pending_images <= 0:
+                self.images_done_event.set()
+
+    def cancel(self):
+        # self.image_processor.cancel()
+        Task.cancel(self)
+
+    def create_pool(self):
+        if self.pool is not None:
+            self.pool.terminate()
+        self.logger.info("{1}: Creating pool with {0} processes".format(self.num_processes, self))
+
+        n_mem = self.num_processes
+        self.current_jobs_in_process_list = list()
+
+        n_mem = self.num_processes
+        self.logger.info("{0} Init shared memory of size {1}x{2}".format(self, n_mem, self.image_size))
+        self.sh_mem_rawarray = multiprocessing.RawArray("i", n_mem * self.image_size[0] * self.image_size[1])
+        self.sh_np_array = np.frombuffer(self.sh_mem_rawarray, dtype="i").reshape((n_mem,
+                                                                                   self.image_size[0],
+                                                                                   self.image_size[1]))
+        self.sh_mem_roi_rawarray = multiprocessing.RawArray("f", n_mem * self.image_size[0] * self.image_size[1])
+
+        # Prepare queue for shared mem access. Empty old queue, then put all mem indices as available.
+        while not self.mem_ind_queue.empty():
+            self.mem_ind_queue.get_nowait()
+        [self.mem_ind_queue.put(x) for x in range(n_mem)]  # Fill queue with available memory indices
+        self.current_jobs_in_process_list = [None for x in range(n_mem)]
+
+        self.pool = multiprocessing.Pool(self.num_processes, initializer=init_worker,
+                                         initargs=(self.sh_mem_rawarray, self.sh_mem_roi_rawarray,
+                                                   (n_mem, self.image_size[0], self.image_size[1])))
+        self.logger.info("Pool creation complete")
 
 
 class TangoScanTask(Task):

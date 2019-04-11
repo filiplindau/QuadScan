@@ -501,6 +501,7 @@ class SharedMemTest(object):
         data = np.arange(self.shape[0]*self.shape[1]).reshape(self.shape)
         np.copyto(self.sh_np_array[0, :, :], data)
         ind = 0
+        shape = (3, self.shape[0], self.shape[1])
         self.pool.apply_async(sh_test_func, args=(ind, ), callback=self.pool_callback)
 
     def pool_callback(self, result):
@@ -516,6 +517,72 @@ class SharedMemTest(object):
         self.pool.join()
 
 
+def sh_test_func2(id, cmd_queue, res_queue):
+    stop_flag = False
+    logger.info("Processing in {0}".format(id))
+    while not stop_flag:
+        try:
+            cmd = cmd_queue.get(timeout=0.05)
+        except Queue.Empty:
+            continue
+
+        logger.info("Process {0} got command {1}".format(id, cmd))
+        if cmd is None:
+            stop_flag = True
+            continue
+        shape = cmd[0]
+        sh_mem = cmd[1]
+
+    logger.info("Process {0} exiting".format(id))
+    return
+
+    # data = np.frombuffer(sh_mem_rawarray, "i", shape[1]*shape[2],
+    #                      ind*shape[1]*shape[2]*np.dtype("i").itemsize).reshape((shape[1], shape[2]))
+    # # roi = np.frombuffer(test_var_dict["roi"], "f", shape[0]*shape[1]*shape[2])
+    # roi = np.frombuffer(sh_roi_rawarray, "f", shape[1]*shape[2],
+    #                     ind*shape[1]*shape[2]*np.dtype("f").itemsize)
+    #
+    # logger.info("Data: {0}".format(data))
+    # np.copyto(roi, np.float32(data.flatten()*2))
+    # return ind
+
+
+class SharedMemTestProc(object):
+    def __init__(self):
+        self.shape = None
+        self.sh_mem = None
+        self.sh_np_array = None
+
+        self.proc_list = list()
+        self.cmd_queue_list = list()
+        self.res_queue_list = list()
+        for x in range(1):
+            cmd_queue = multiprocessing.Queue()
+            res_queue = multiprocessing.Queue()
+            proc = multiprocessing.Process(target=sh_test_func2, args=(x, cmd_queue, res_queue))
+            logger.info("Starting proc {0}".format(x))
+            proc.start()
+            self.proc_list.append(proc)
+            self.cmd_queue_list.append(cmd_queue)
+            self.res_queue_list.append(res_queue)
+
+    def run(self):
+        self.shape = np.array([5, 5])
+        self.sh_mem = multiprocessing.RawArray("i", 3 * self.shape[0] * self.shape[1])
+        self.sh_np_array = np.frombuffer(self.sh_mem, dtype="i").reshape((3, self.shape[0], self.shape[1]))
+        data = np.arange(self.shape[0] * self.shape[1]).reshape(self.shape)
+        np.copyto(self.sh_np_array[0, :, :], data)
+        cmd = (self.shape, self.sh_mem)
+        self.cmd_queue_list[0].put(cmd)
+        self.cmd_queue_list[0].put(None)
+
+    def join(self):
+        logger.info("Join processes")
+        for p in self.proc_list:
+            p.join()
+        logger.info("Done")
+
+
 def callback_f(task):
     name = task.get_name()
     res = task.get_result(wait=False)
@@ -524,10 +591,13 @@ def callback_f(task):
 
 if __name__ == "__main__":
 
-    sh_test = SharedMemTest()
-    # time.sleep(0.5)
+    sh_test = SharedMemTestProc()
     sh_test.run()
     sh_test.join()
+
+    # sh_test = SharedMemTest()
+    # sh_test.run()
+    # sh_test.join()
 
 
 #     im = np.random.random((1280, 1024))

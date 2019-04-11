@@ -478,7 +478,6 @@ class QuadScanGui(QtGui.QWidget):
         t1 = LoadQuadScanDirTask(str(load_dir), process_now=True,
                                  threshold=self.ui.p_threshold_spinbox.value(),
                                  kernel_size=self.ui.p_median_kernel_spinbox.value(),
-                                 image_processor_task=self.image_processor,
                                  process_exec_type="thread",
                                  name="load_task", callback_list=[self.update_load_data])
         t1.start()
@@ -562,15 +561,24 @@ class QuadScanGui(QtGui.QWidget):
         if task is not None:
             if task.is_done() is False:
                 # Task is not done so this is an image update
-                image = task.get_result(wait=False)   # type: ProcessedImage
+                image = task.get_result(wait=False)   # type: QuadImage
+                acc_params = task.acc_params
                 if task.is_cancelled():
                     root.error("Error when loading image: {0}".format(image))
                 else:
-                    m = image.pic_roi.max()
+                    m = image.image.max()
                     if m > self.load_image_max:
                         self.load_image_max = m
                     # root.debug("image {0}".format(image.pic_roi))
-                    self.update_image_selection(image.pic_roi, auto_levels=True)
+
+                    pos = [acc_params.roi_center[0] - acc_params.roi_dim[0] / 2.0,
+                           acc_params.roi_center[1] - acc_params.roi_dim[1] / 2.0]
+
+                    self.process_image_view = [0, 0, acc_params.roi_dim[0], acc_params.roi_dim[1]]
+                    x_range = [pos[0], pos[0] + self.process_image_view[2]]
+                    y_range = [pos[1], pos[1] + self.process_image_view[3]]
+                    self.ui.process_image_widget.view.setRange(xRange=x_range, yRange=y_range)
+                    self.update_image_selection(image.image, auto_levels=True)
             else:
                 root.debug("Load data complete. Storing quad scan data.")
                 hw = self.ui.process_image_widget.getHistogramWidget()      # type: pq.HistogramLUTWidget
