@@ -97,9 +97,10 @@ class QuadScanGui(QtGui.QWidget):
         self.last_load_dir = "."
         self.data_base_dir = "."
         self.scan_save_path = "."
-        self.section_init_flag = True
-        self.screen_init_flag = True
-        self.quad_init_flag = True
+        self.section_init_flag = True   # Set when selecting a new section in combobox
+        self.screen_init_flag = True    # Set when selecting new screen in combobox
+        self.quad_init_flag = True      # Set when selecting new quad in combobox
+        self.load_init_flag = False     # Set when staring new load from disk
 
         self.line_x_plot = None
         self.line_y_plot = None
@@ -147,9 +148,11 @@ class QuadScanGui(QtGui.QWidget):
         #                                           kernel=self.ui.p_median_kernel_spinbox.value(),
         #                                           process_exec="process",
         #                                           name="gui_image_proc")
-        self.image_processor = ImageProcessorTask2(image_size=(1300, 2000), threshold=self.ui.p_threshold_spinbox.value(),
-                                                   kernel=self.ui.p_median_kernel_spinbox.value(),
-                                                   name="gui_image_proc")
+        # self.image_processor = ImageProcessorTask2(image_size=(1300, 2000), threshold=self.ui.p_threshold_spinbox.value(),
+        #                                            kernel=self.ui.p_median_kernel_spinbox.value(),
+        #                                            name="gui_image_proc")
+        self.image_processor = ProcessAllImagesTask2(image_size=[2000, 2000], name="gui_image_proc",
+                                                     callback_list=[self.update_image_processing])
         self.image_processor.start()
 
         if no_database:
@@ -470,10 +473,13 @@ class QuadScanGui(QtGui.QWidget):
         load_dir = str(filedialog.directory().absolutePath())
         self.last_load_dir = load_dir
         root.debug("Loading from directory {0}".format(load_dir))
-        self.image_processor.clear_callback_list()
-        self.image_processor.add_callback(self.update_load_data)        # This method is called when loading is finished
+        # self.image_processor.clear_callback_list()
+        # self.image_processor.add_callback(self.update_load_data)        # This method is called when loading is finished
         self.ui.process_image_widget.getHistogramWidget().item.blockSignals(True)    # Block signals to avoid threshold problems
         self.load_image_max = 0.0
+
+        self.load_init_flag = True
+
         # LoadQuadScanTask takes care of the actual loading of the files in the specified directory:
         t1 = LoadQuadScanDirTask(str(load_dir), process_now=True,
                                  threshold=self.ui.p_threshold_spinbox.value(),
@@ -557,7 +563,7 @@ class QuadScanGui(QtGui.QWidget):
         :param task:
         :return:
         """
-        root.info("Update load data {0}".format(task.name))
+        root.info("Update load data {0}, {1}".format(task.name, self.load_init_flag))
         if task is not None:
             if task.is_done() is False:
                 # Task is not done so this is an image update
@@ -571,14 +577,17 @@ class QuadScanGui(QtGui.QWidget):
                         self.load_image_max = m
                     # root.debug("image {0}".format(image.pic_roi))
 
-                    pos = [acc_params.roi_center[0] - acc_params.roi_dim[0] / 2.0,
-                           acc_params.roi_center[1] - acc_params.roi_dim[1] / 2.0]
+                    if self.load_init_flag:
+                        pos = [acc_params.roi_center[0] - acc_params.roi_dim[0] / 2.0,
+                               acc_params.roi_center[1] - acc_params.roi_dim[1] / 2.0]
 
-                    self.process_image_view = [0, 0, acc_params.roi_dim[0], acc_params.roi_dim[1]]
-                    x_range = [pos[0], pos[0] + self.process_image_view[2]]
-                    y_range = [pos[1], pos[1] + self.process_image_view[3]]
-                    self.ui.process_image_widget.view.setRange(xRange=x_range, yRange=y_range)
-                    self.update_image_selection(image.image, auto_levels=True)
+                        self.process_image_view = [0, 0, acc_params.roi_dim[0], acc_params.roi_dim[1]]
+                        x_range = [pos[0], pos[0] + self.process_image_view[2]]
+                        y_range = [pos[1], pos[1] + self.process_image_view[3]]
+                        root.debug("Init image view {0}, {1}".format(x_range, y_range))
+                        self.ui.process_image_widget.view.setRange(xRange=x_range, yRange=y_range)
+                        self.load_init_flag = False
+                    self.update_image_selection(image.image, auto_levels=True, auto_range=False)
             else:
                 root.debug("Load data complete. Storing quad scan data.")
                 hw = self.ui.process_image_widget.getHistogramWidget()      # type: pq.HistogramLUTWidget
@@ -911,8 +920,8 @@ class QuadScanGui(QtGui.QWidget):
 
     def update_image_processing(self, task=None):
         if task is not None:
-            if task.is_done() is True:
-                proc_image_list = task.get_result(False)
+            if not task.is_done():
+                proc_image_list = task.get_result(wait=False)
                 root.debug("New image list: {0}".format(len(proc_image_list)))
                 # root.debug("Proc image list: {0}".format(proc_image_list))
                 # root.debug("Im 0 thr: {0}".format(proc_image_list[0].threshold))
@@ -921,7 +930,7 @@ class QuadScanGui(QtGui.QWidget):
                     self.update_image_selection(None)
                 self.start_fit()
 
-    def update_image_selection(self, image=None, auto_levels=False):
+    def update_image_selection(self, image=None, auto_levels=False, auto_range=False):
         if image is None or isinstance(image, int):
             im_ind = self.ui.p_image_index_slider.value()
             if self.ui.p_raw_image_radio.isChecked():
@@ -940,7 +949,7 @@ class QuadScanGui(QtGui.QWidget):
                 image = image_struct.image
                 try:
 
-                    self.ui.process_image_widget.setImage(image, autoRange=False, autoLevels=auto_levels)
+                    self.ui.process_image_widget.setImage(image, autoRange=auto_range, autoLevels=auto_levels)
                     self.ui.process_image_widget.roi.show()
                     self.ui.process_image_widget.update()
                 except TypeError as e:
@@ -973,7 +982,8 @@ class QuadScanGui(QtGui.QWidget):
         else:
             # If an image was sent directly to the method, such as when updating a loading task
             try:
-                self.ui.process_image_widget.setImage(image)
+                # self.ui.process_image_widget.setImage(image)
+                self.ui.process_image_widget.setImage(image, autoRange=auto_range, autoLevels=auto_levels)
             except TypeError as e:
                 root.error("Error setting image: {0}".format(e))
 
@@ -1397,11 +1407,11 @@ class QuadScanGui(QtGui.QWidget):
             return
 
     def start_processing(self):
-        if len(self.processing_tasks) > 0:
-            for task in self.processing_tasks:
-                root.info("Removing processing task {0}".format(task.get_name()))
-                task.cancel()
-                self.processing_tasks.remove(task)
+        # if len(self.processing_tasks) > 0:
+        #     for task in self.processing_tasks:
+        #         root.info("Removing processing task {0}".format(task.get_name()))
+        #         task.cancel()
+        #         self.processing_tasks.remove(task)
         th = self.ui.p_threshold_spinbox.value()
         kern = self.ui.p_median_kernel_spinbox.value()
         root.info("Start processing. Threshold: {0}, Kernel: {1}".format(th, kern))
@@ -1418,13 +1428,16 @@ class QuadScanGui(QtGui.QWidget):
         except TypeError:
             root.info("No images.")
             return
-        task = ProcessAllImagesTask(self.quad_scan_data_analysis, threshold=th,
-                                    kernel_size=kern,
-                                    image_processor_task=self.image_processor,
-                                    process_exec_type="process",
-                                    name="process_images",
-                                    callback_list=[self.update_image_processing])
-        task.start()
+        # task = ProcessAllImagesTask(self.quad_scan_data_analysis, threshold=th,
+        #                             kernel_size=kern,
+        #                             image_processor_task=self.image_processor,
+        #                             process_exec_type="process",
+        #                             name="process_images",
+        #                             callback_list=[self.update_image_processing])
+        self.image_processor.clear_callback_list()
+        self.image_processor.add_callback(self.update_image_processing)
+        self.image_processor.process_images(self.quad_scan_data_analysis, threshold=th, kernel=kern)
+        # task.start()
         # self.processing_tasks.append(task)
 
     def start_fit(self):
