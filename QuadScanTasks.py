@@ -404,7 +404,8 @@ class LoadQuadScanDirTask(Task):
         line_y = pic_roi.sum(1)
         proc_image = ProcessedImage(k_ind=quad_image.k_ind, k_value=quad_image.k_value, image_ind=quad_image.image_ind,
                                     pic_roi=pic_roi, line_x=line_x, line_y=line_y, x_cent=pic_roi.shape[0]/2,
-                                    y_cent=pic_roi.shape[1]/2, sigma_x=0.0, sigma_y=0.0, q=0, threshold=0, enabled=True)
+                                    y_cent=pic_roi.shape[1]/2, sigma_x=0.0, sigma_y=0.0,
+                                    q=0, threshold=self.threshold, enabled=True)
         self.processed_image_list.append(proc_image)
 
         if isinstance(quad_image, Exception):
@@ -1182,7 +1183,8 @@ def work_func_shared2(mem_ind, im_ind, im_size, threshold, roi_cent, roi_dim,
                               shape[1] * shape[2] * mem_ind * np.dtype("i").itemsize).reshape((shape[1], shape[2]))
         roi = np.frombuffer(var_dict["roi"], "f", roi_dim[0] * roi_dim[1],
                             shape[1] * shape[2] * mem_ind * np.dtype("f").itemsize).reshape(roi_dim)
-        # logger.debug("{0}: Mem copy time {1:.2f} ms".format(mem_ind, (time.time() - t0) * 1e3))
+        t1 = time.time()
+        # logger.debug("{0}: Mem copy time {1:.2f} ms".format(mem_ind, (t1 - t0) * 1e3))
         try:
             x = np.array([int(roi_cent[0] - roi_dim[0] / 2.0), int(roi_cent[0] + roi_dim[0] / 2.0)])
             y = np.array([int(roi_cent[1] - roi_dim[1] / 2.0), int(roi_cent[1] + roi_dim[1] / 2.0)])
@@ -1191,7 +1193,8 @@ def work_func_shared2(mem_ind, im_ind, im_size, threshold, roi_cent, roi_dim,
         except IndexError:
             pic_roi = np.float32(image)
         n = 2 ** bpp
-        # logger.debug("Pic roi {0}".format(im_ind))
+        # t2 = time.time()
+        # logger.debug("{0}: Pic roi time {1:.2f} ms".format(im_ind, (t2-t1)*1e3))
 
         # Median filtering:
         try:
@@ -1202,8 +1205,9 @@ def work_func_shared2(mem_ind, im_ind, im_size, threshold, roi_cent, roi_dim,
         except ValueError as e:
             logger.warning("{0}======================================".format(mem_ind))
             logger.warning("{1}: Medfilt kernel value error: {0}".format(e, mem_ind))
-            # print("Medfilt kernel value error: {0}".format(e))
         # logger.debug("Medfilt {0}".format(image_ind))
+        # t3 = time.time()
+        # logger.debug("{0}: Medfilt time {1:.2f} ms".format(im_ind, (t3-t2)*1e3))
 
         # Threshold image
         try:
@@ -1214,6 +1218,9 @@ def work_func_shared2(mem_ind, im_ind, im_size, threshold, roi_cent, roi_dim,
             logger.warning("{0}======================================".format(mem_ind))
             logger.exception("{0}: Could not threshold.".format(mem_ind))
             pic_roi = pic_roi
+
+        # t4 = time.time()
+        # logger.debug("{0}: Threshold time {1:.2f} ms".format(im_ind, (t4-t3)*1e3))
 
         # Centroid and sigma calculations:
         line_x = pic_roi.sum(0)
@@ -1241,6 +1248,9 @@ def work_func_shared2(mem_ind, im_ind, im_size, threshold, roi_cent, roi_dim,
             y_cent = 0
 
         # return mem_ind, im_ind, 0, 0, 0, 0, 0, True
+        # t5 = time.time()
+        # logger.debug("{0}: Sigma time {1:.2f} ms".format(im_ind, (t5-t4)*1e3))
+
         np.copyto(roi, pic_roi)
     except Exception as e:
         logger.warning("{0}======================================".format(mem_ind))
@@ -1267,7 +1277,7 @@ class ProcessAllImagesTask2(Task):
         :param callback_list:
         """
         Task.__init__(self, name, timeout=timeout, trigger_dict=trigger_dict, callback_list=callback_list)
-        self.logger.setLevel(logging.INFO)
+        self.logger.setLevel(logging.DEBUG)
 
         self.work_func = work_func_shared2
 
@@ -1302,6 +1312,7 @@ class ProcessAllImagesTask2(Task):
         self.job_thread = None
         self.start_time = time.time()
         self.prepare_time = time.time()
+        self.tot_proc_time = 0.0
 
     def start(self):
         self.next_process_id = 0
@@ -1500,6 +1511,7 @@ class ProcessAllImagesTask2(Task):
                 self.job_launcher()
 
     def processing_done(self):
+        tot_time = time.time()-self.start_time
         self.logger.info("\n"
                          "---------------------------------------------------\n"
                          "{0}: \n"
@@ -1507,12 +1519,13 @@ class ProcessAllImagesTask2(Task):
                          "    Prepare time: {1:.2f} ms\n"
                          "    Total time: {2:.2f} ms\n"
                          "---------------------------------------------------\n"
-                         "".format(self, (self.prepare_time-self.start_time)*1e3, (time.time()-self.start_time)*1e3))
+                         "".format(self, (self.prepare_time-self.start_time)*1e3, (tot_time)*1e3))
         self.result_done_event.set()
         with self.lock:
             # self.quad_scan_data = self.quad_scan_data._replace(proc_images=self.processed_image_list)
             # self.result = self.quad_scan_data
             self.result = self.processed_image_list
+            self.tot_proc_time = tot_time
         for callback in self.callback_list:
             callback(self)
 

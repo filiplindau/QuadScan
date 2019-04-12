@@ -469,7 +469,10 @@ class QuadScanGui(QtGui.QWidget):
         filedialog.setFileMode(QtGui.QFileDialog.Directory)
         filedialog.directoryEntered.connect(self.load_dir_entered)
         filedialog.directoryEntered.emit(self.last_load_dir)
-        filedialog.exec_()
+        res = filedialog.exec_()
+        root.debug("Load dir return value: {0}".format(res))
+        if res != QtGui.QDialog.Accepted:
+            return
         load_dir = str(filedialog.directory().absolutePath())
         self.last_load_dir = load_dir
         root.debug("Loading from directory {0}".format(load_dir))
@@ -585,8 +588,12 @@ class QuadScanGui(QtGui.QWidget):
                         x_range = [pos[0], pos[0] + self.process_image_view[2]]
                         y_range = [pos[1], pos[1] + self.process_image_view[3]]
                         root.debug("Init image view {0}, {1}".format(x_range, y_range))
+                        self.ui.process_image_widget.view.setAspectLocked(True, 1)
                         self.ui.process_image_widget.view.setRange(xRange=x_range, yRange=y_range)
                         self.load_init_flag = False
+
+                    hw = self.ui.process_image_widget.getHistogramWidget()  # type: pq.HistogramLUTWidget
+                    hw.item.blockSignals(True)
                     self.update_image_selection(image.image, auto_levels=True, auto_range=False)
             else:
                 root.debug("Load data complete. Storing quad scan data.")
