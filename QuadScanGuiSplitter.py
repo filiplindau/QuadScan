@@ -14,9 +14,8 @@ import sys
 import glob
 import numpy as np
 import itertools
-# from QuadScanController import QuadScanController
-# from QuadScanState import StateDispatcher
 from quadscan_gui_splitter import Ui_QuadScanDialog
+from scandata_file_dialog import OpenScanFileDialog
 from collections import OrderedDict
 import threading
 import time
@@ -464,16 +463,18 @@ class QuadScanGui(QtGui.QWidget):
         root.info("Loading data from disk")
         # load_dir = QtGui.QFileDialog.getExistingDirectory(self, "Select directory", self.last_load_dir)
         filedialog = QtGui.QFileDialog(self, "Load data", directory=self.last_load_dir)
-        filedialog.setOption(QtGui.QFileDialog.DontUseNativeDialog, True)
-        filedialog.setViewMode(QtGui.QFileDialog.Detail)
-        filedialog.setFileMode(QtGui.QFileDialog.Directory)
-        filedialog.directoryEntered.connect(self.load_dir_entered)
-        filedialog.directoryEntered.emit(self.last_load_dir)
+        # filedialog.setOption(QtGui.QFileDialog.DontUseNativeDialog, True)
+        # filedialog.setViewMode(QtGui.QFileDialog.Detail)
+        # filedialog.setFileMode(QtGui.QFileDialog.Directory)
+        # filedialog.directoryEntered.connect(self.load_dir_entered)
+        # filedialog.directoryEntered.emit(self.last_load_dir)
+        filedialog = OpenScanFileDialog(self.last_load_dir)
         res = filedialog.exec_()
         root.debug("Load dir return value: {0}".format(res))
         if res != QtGui.QDialog.Accepted:
             return
-        load_dir = str(filedialog.directory().absolutePath())
+        # load_dir = str(filedialog.directory().absolutePath())
+        load_dir = filedialog.get_selected_path()
         self.last_load_dir = load_dir
         root.debug("Loading from directory {0}".format(load_dir))
         # self.image_processor.clear_callback_list()

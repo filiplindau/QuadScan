@@ -27,22 +27,22 @@ logger.addHandler(fh)
 logger.setLevel(logging.DEBUG)
 
 
-class MyFileSystemModel(QtGui.QFileSystemModel):
+class ScanDataFileSystemModel(QtGui.QFileSystemModel):
     def columnCount(self, parent=QtCore.QModelIndex()):
-        return super(MyFileSystemModel, self).columnCount() + 1
+        return super(ScanDataFileSystemModel, self).columnCount() + 1
 
     def headerData(self, section, orientation, role):
         if section == 0:
-            return super(MyFileSystemModel, self).headerData(section, orientation, role)
+            return super(ScanDataFileSystemModel, self).headerData(section, orientation, role)
         elif section == 1:
             return "Images"
         else:
-            return super(MyFileSystemModel, self).headerData(section - 1, orientation, role)
+            return super(ScanDataFileSystemModel, self).headerData(section - 1, orientation, role)
 
     def data(self, index, role):
         # if index.column() == self.columnCount() - 1:
         if index.column() == 0:
-            return super(MyFileSystemModel, self).data(index, role)
+            return super(ScanDataFileSystemModel, self).data(index, role)
         elif index.column() == 1:
             if role == QtCore.Qt.DisplayRole:
                 fileinfo = self.fileInfo(index)
@@ -62,10 +62,10 @@ class MyFileSystemModel(QtGui.QFileSystemModel):
                 return QtCore.Qt.AlignHCenter
         else:
             idx = index.sibling(index.row(), index.column()-1)
-            return super(MyFileSystemModel, self).data(idx, role)
+            return super(ScanDataFileSystemModel, self).data(idx, role)
 
 
-class MyFileDialog(QtGui.QDialog):
+class OpenScanFileDialog(QtGui.QDialog):
     def __init__(self, start_dir=None, parent=None):
         QtGui.QWidget.__init__(self, parent)
 
@@ -77,7 +77,7 @@ class MyFileDialog(QtGui.QDialog):
         self.ui = Ui_QuadFileDialog()
         self.ui.setupUi(self)
 
-        self.model = MyFileSystemModel()
+        self.model = ScanDataFileSystemModel()
         self.model.setRootPath(QtCore.QDir.rootPath())
         self.model.directoryLoaded.connect(self.dir_loaded)
         self.model.setFilter(QtCore.QDir.AllDirs | QtCore.QDir.NoDotAndDotDot)
@@ -126,7 +126,7 @@ class MyFileDialog(QtGui.QDialog):
         self.settings.setValue("splitter", self.ui.splitter.sizes())
         self.settings.setValue("filename_col", self.ui.file_treeview.columnWidth(0))
 
-        return super(MyFileDialog, self).closeEvent(event)
+        return super(OpenScanFileDialog, self).closeEvent(event)
 
     def dir_loaded(self, dir_str):
         logger.info("Dir {0} loaded".format(str(dir_str)))
@@ -162,20 +162,28 @@ class MyFileDialog(QtGui.QDialog):
         sel_ind = self.ui.file_treeview.selectionModel().selection().indexes()[0]
         row = sel_ind.row()
         sel_string = self.model.fileInfo(sel_ind).canonicalFilePath()
-        sel_images = self.model.data(self.model.index(row, 1), QtCore.Qt.DisplayRole).toInt()
-        logger.info("Data: {0}, {1}".format(str(sel_string), sel_images))
+        parent = sel_ind.parent()
+        sel_images = self.model.data(self.model.index(row, 1, parent), QtCore.Qt.DisplayRole).toInt()
+        if sel_images[1] is False:
+            image_count = None
+        else:
+            image_count = sel_images[0]
+        # logger.info("Data: {0}, {1}, {2}".format(str(sel_string), row, sel_images))
         self.ui.dir_lineedit.setText(sel_string)
-        self.load_daqinfo(sel_string)
+        self.load_daqinfo(sel_string, image_count)
 
     def update_selection_from_lineedit(self):
         pathname = self.ui.dir_lineedit.text()
         logger.info("Expanding tree to {0}".format(str(pathname)))
         self.expand_to_path(pathname)
 
+    def directory(self):
+        return QtCore.QDir(self.ui.dir_lineedit.text())
+
     def get_selected_path(self):
         return str(self.ui.dir_lineedit.text())
 
-    def load_daqinfo(self, load_dir):
+    def load_daqinfo(self, load_dir, image_count=None):
         # See if there is a file called daq_info.txt
         filename = "daq_info.txt"
         load_dir_str = str(load_dir)
@@ -198,10 +206,20 @@ class MyFileDialog(QtGui.QDialog):
                 except ValueError:
                     pass
 
-        num_k = int(data_dict["num_k_values"])
-        num_im = int(data_dict["num_shots"])
+        try:
+            num_k = int(data_dict["num_k_values"])
+            num_im = int(data_dict["num_shots"])
+            total_im = num_k * num_im
+        except (ValueError, NameError):
+            num_k = "--"
+            num_im = "--"
+            total_im = "--"
 
-        s_list = load_dir_str.split("/")[-1].split("_")
+        try:
+            s_list = load_dir_str.split("/")[-1].split("_")
+        except IndexError:
+            s_list[0] = "--"
+            s_list[1] = "--"
 
         # logger.debug("Loaded data_dict: \n{0}".format(pprint.pformat(data_dict)))
 
@@ -209,38 +227,40 @@ class MyFileDialog(QtGui.QDialog):
                "==============================\n\n" \
                "\n" \
                "Quad         {0}\n" \
-               "Num k        {3}\n" \
+               "Num k pos    {1}\n" \
                "\n" \
-               "Screen       {5}\n" \
-               "Images       {6}\n" \
+               "Screen       {2}\n" \
+               "Images/pos   {3}\n" \
                "\n" \
-               "Total images {7}\n" \
+               "Total images {4}\n" \
+               "Images found {5}\n" \
                "\n" \
-               "Energy       {4} MeV\n" \
-               "k_min        {1} \n" \
-               "k_max        {2} \n" \
+               "Energy       {6} MeV\n" \
+               "k_min        {7:.2f} \n" \
+               "k_max        {8:.2f} \n" \
                "\n" \
-               "Date         {8}\n" \
-               "Time         {9}".format(data_dict["quad"],
-                                         data_dict["k_min"],
-                                         data_dict["k_max"],
-                                         num_k,
-                                         data_dict["beam_energy"],
-                                         data_dict["screen"],
-                                         num_im,
-                                         num_k * num_im,
-                                         s_list[0],
-                                         s_list[1].replace("-", ":"))
+               "Date         {9}\n" \
+               "Time         {10}".format(data_dict["quad"],
+                                          num_k,
+                                          data_dict["screen"],
+                                          num_im,
+                                          total_im,
+                                          image_count,
+                                          data_dict["beam_energy"],
+                                          float(data_dict["k_min"]),
+                                          float(data_dict["k_max"]),
+                                          s_list[0],
+                                          s_list[1].replace("-", ":"))
         self.ui.daqinfo_label.setText(text)
 
 
 if __name__ == "__main__":
     app = QtGui.QApplication(sys.argv)
-    myapp = MyFileDialog("D:/Programming/emittancesinglequad/saved-images")
+    myapp = OpenScanFileDialog("D:/Programming/emittancesinglequad/saved-images")
     logger.info("GUI object created")
     logger.info("App show")
     if myapp.exec_():
-        logger.info("App exit accept: {0}".format(myapp.get_selected_path()))
+        logger.info("App exit accept: {0}".format(myapp.directory()))
     else:
         logger.info("App exit reject")
     sys.exit(app)
