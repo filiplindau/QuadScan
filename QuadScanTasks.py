@@ -1173,7 +1173,7 @@ class ProcessAllImagesTask(Task):
 
 
 def work_func_shared2(mem_ind, im_ind, im_size, threshold, roi_cent, roi_dim,
-                     cal=[1.0, 1.0], kernel=3, bpp=16, normalize=False):
+                     cal=[1.0, 1.0], kernel=3, bpp=16, normalize=False, keep_charge_ratio=1.0):
     t0 = time.time()
     # return mem_ind, im_ind, 0, 0, 0, 0, 0, True
     try:
@@ -1221,6 +1221,20 @@ def work_func_shared2(mem_ind, im_ind, im_size, threshold, roi_cent, roi_dim,
 
         # t4 = time.time()
         # logger.debug("{0}: Threshold time {1:.2f} ms".format(im_ind, (t4-t3)*1e3))
+
+        # Filter out charge:
+        if normalize:
+            n_bins = np.unique(pic_roi.flatten()).shape[0]
+        else:
+            n_bins = pic_roi.max()
+        h = np.histogram(pic_roi, n_bins)
+        hq = h[0]*h[1][:-1]
+        hq = (hq.astype(np.float) / hq.max()).cumsum()
+        th_ind = np.searchsorted(hq, 1-keep_charge_ratio)
+        d = (h[1][1] - h[1][0])/2.0
+        th_q = h[1][th_ind] - d
+        pic_roi[pic_roi < th_q] = 0.0
+        logger.debug("Pic_roi max: {0}, threshold index: {1}, threshold: {2}".format(n_bins, th_ind, th_q))
 
         # Centroid and sigma calculations:
         line_x = pic_roi.sum(0)
@@ -1287,6 +1301,8 @@ class ProcessAllImagesTask2(Task):
         self.kernel = None
         self.normalize = False
         self.bpp = 16
+        self.enabled_list = None
+        self.keep_charge_ratio = None
 
         self.finish_process_event = threading.Event()
         self.result_done_event = threading.Event()
@@ -1342,7 +1358,8 @@ class ProcessAllImagesTask2(Task):
         self.result = True
         self.pool = None
 
-    def process_images(self, quad_scan_data, threshold, kernel=3, bpp=16, normalize=False):
+    def process_images(self, quad_scan_data, threshold, kernel=3, bpp=16, normalize=False,
+                       enabled_list=None, keep_charge_ratio=1.0):
         self.logger.info("{0}: New image set {1} images".format(self, len(quad_scan_data.images)))
         self.start_time = time.time()
 
@@ -1353,6 +1370,8 @@ class ProcessAllImagesTask2(Task):
             self.kernel = kernel
             self.normalize = normalize
             self.bpp = bpp
+            self.enabled_list = enabled_list
+            self.keep_charge_ratio = keep_charge_ratio
 
         # Check if processing is on-going. If not, result done is set. Then we can start immediately
         if self.result_done_event.is_set():
@@ -1443,7 +1462,7 @@ class ProcessAllImagesTask2(Task):
             np.copyto(self.sh_np_array[ind, 0:im_size[0], 0:im_size[1]], quad_image.image)
             kwargs = {"mem_ind": ind, "im_ind": im_ind, "im_size": im_size, "threshold": self.threshold,
                       "roi_cent": roi_c, "roi_dim": roi_d, "cal": acc_params.cal, "kernel": self.kernel,
-                      "bpp": self.bpp, "normalize": self.normalize}
+                      "bpp": self.bpp, "normalize": self.normalize, "keep_charge_ratio": self.keep_charge_ratio}
 
             # Start processing:
             self.logger.debug("{0} apply async proc {1}".format(self, ind))
@@ -1474,8 +1493,12 @@ class ProcessAllImagesTask2(Task):
 
                 quad_image = self.quad_scan_data.images[im_ind]
 
-                if not self.quad_scan_data.proc_images[im_ind].enabled:
-                    enabled = False
+                if self.enabled_list is None:
+                    if not self.quad_scan_data.proc_images[im_ind].enabled:
+                        enabled = False
+                else:
+                    if not self.enabled_list[im_ind]:
+                        enabled = False
 
                 acc_params = self.quad_scan_data.acc_params     # type: AcceleratorParameters
                 roi_d = [int(acc_params.roi_dim[0]), int(acc_params.roi_dim[1])]
@@ -1851,6 +1874,7 @@ class FitQuadDataTask(Task):
         self.accelerator_params = accelerator_params        # type: AcceleratorParameters
         self.algo = algo
         self.axis = axis
+        self.logger.setLevel(logging.DEBUG)
 
     def action(self):
         self.logger.info("{0} entering action.".format(self))
@@ -1872,10 +1896,13 @@ class FitQuadDataTask(Task):
         en_data = np.array([pi.enabled for pi in self.processed_image_list]).flatten()
         try:
             s2 = (sigma_data[en_data]) ** 2
-        except IndexError:
+        except IndexError as e:
             self.logger.warning("Could not address enabled sigma values. "
                                 "En_data: {0}, sigma_data: {1}".format(en_data, sigma_data))
-            return
+            self.result = e
+            self.cancel()
+            return e
+
         k = k_data[en_data]
         ind = np.isfinite(s2)
         p = np.polyfit(k[ind], s2[ind], 2, full=True)
@@ -1914,15 +1941,17 @@ class FitQuadDataTask(Task):
         d = self.accelerator_params.quad_screen_dist
         L = self.accelerator_params.quad_length
         gamma_energy = self.accelerator_params.electron_energy / 0.511
-        self.logger.debug("sigma_data: {0}".format(sigma_data.shape))
-        self.logger.debug("en_data: {0}".format(en_data.shape))
+        self.logger.debug("sigma_data: {0}".format(sigma_data))
+        self.logger.debug("en_data: {0}".format(en_data))
         self.logger.debug("k_data: {0}".format(k_data))
         try:
             s2 = (sigma_data[en_data]) ** 2
         except IndexError as e:
             self.logger.warning("Could not address enabled sigma values. "
                                 "En_data: {0}, sigma_data: {1}".format(en_data, sigma_data))
-            return
+            self.result = e
+            self.cancel()
+            return e
 
         k = k_data[en_data]
         ind = np.isfinite(s2)
@@ -1938,7 +1967,9 @@ class FitQuadDataTask(Task):
             res = l_data[1]
         except Exception as e:
             self.logger.error("Error when fitting lstsqr: {0}".format(e))
-            return
+            self.result = e
+            self.cancel()
+            return e
         self.logger.debug("Fit coefficients: {0}".format(x[0]))
         eps = np.sqrt(x[2] * x[0] - x[1]**2)
         eps_n = eps * gamma_energy
@@ -1957,7 +1988,7 @@ class FitQuadDataTask(Task):
             self.logger.exception("{0} k_data error:".format(self))
             self.result = e
             self.cancel()
-            return
+            return e
         x_sqrt = np.sqrt(x*(1+0j))
         Ax = np.real(np.cos(x_sqrt * L) - d * x_sqrt * np.sin(x_sqrt * L))
         Bx = np.real(1 / x_sqrt * np.sin(x_sqrt * L) + d * np.cos(x_sqrt * L))

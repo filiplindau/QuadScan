@@ -77,6 +77,26 @@ class MyScatterPlotItem(pq.ScatterPlotItem):
             ev.ignore()
 
 
+class MyHistogramItem(pq.HistogramLUTItem):
+    def imageChanged(self, autoLevel=False, autoRange=False):
+        root.info("Hist item!!!")
+        # return pq.HistogramLUTItem.imageChanged(self, autoLevel, autoRange)
+
+        if self.imageItem() is None:
+            return
+
+        h0 = self.imageItem().getHistogram()
+        if h0[0] is None:
+            return
+        # h = (h0[0], (h0[0] * h0[1]).cumsum())
+        h = (h0[0], (h0[0] * h0[1]))
+        self.plot.setData(*h)
+        if autoLevel:
+            mn = h[0]
+            mx = h[-1]
+            self.region.setRegion([mn, mx])
+
+
 class QuadScanGui(QtGui.QWidget):
     """
     Class for scanning a motor while grabbing images to produce a frog trace. It can also analyse the scanned trace
@@ -111,6 +131,7 @@ class QuadScanGui(QtGui.QWidget):
         self.process_image_view = None       # ROI for when viewing raw process image
         self.load_image_max = 0.0
         self.scan_image_max = 0.0
+        self.user_enable_list = list()
 
         self.camera_proxy = None    # Signal proxy to track mouse position over image
         self.process_image_proxy = None  # Signal proxy to track mouse position over image
@@ -184,6 +205,10 @@ class QuadScanGui(QtGui.QWidget):
         self.ui.camera_widget.roi.setSize((64, 64))
         self.ui.camera_widget.roi.blockSignals(False)
 
+        # hw = self.ui.process_image_widget.getHistogramWidget()
+        # hw.item = MyHistogramItem()
+        # hw.setCentralItem(hw.item)
+        # hw.item.setImageItem(self.ui.process_image_widget.getImageItem())
         self.ui.process_image_widget.ui.histogram.gradient.loadPreset('thermalclip')
         self.ui.process_image_widget.setSizePolicy(QtGui.QSizePolicy.Expanding, QtGui.QSizePolicy.Expanding)
         self.ui.process_image_widget.getView().setAspectLocked(False)
@@ -321,11 +346,12 @@ class QuadScanGui(QtGui.QWidget):
         hw.item.blockSignals(True)
         self.ui.process_button.clicked.connect(self.start_processing)
         self.ui.p_threshold_spinbox.editingFinished.connect(self.start_processing)
-        self.ui.p_load_hist_button.clicked.connect(self.update_process_image_threshold)
+        # self.ui.p_load_hist_button.clicked.connect(self.update_process_image_threshold)
         self.ui.p_median_kernel_spinbox.editingFinished.connect(self.start_processing)
         self.ui.p_image_index_slider.valueChanged.connect(self.update_image_selection)
-        self.ui.p_raw_image_radio.toggled.connect(self.change_raw_filtered_view)
+        self.ui.p_raw_image_radio.toggled.connect(self.change_raw_or_processed_view)
         self.ui.p_x_radio.toggled.connect(self.change_analysis_axis)
+        self.ui.p_enable_all_button.clicked.connect(self.enable_all_points)
         self.sigma_x_plot.sigClicked.connect(self.points_clicked)
         self.sigma_x_plot.sigRightClicked.connect(self.points_clicked)
         self.charge_plot.sigClicked.connect(self.points_clicked)
@@ -451,6 +477,18 @@ class QuadScanGui(QtGui.QWidget):
 
     def set_roi(self):
         root.info("Set roi from spinboxes")
+        roi_x = self.ui.p_roi_cent_x_spinbox.value()
+        roi_y = self.ui.p_roi_cent_y_spinbox.value()
+        roi_w = self.ui.p_roi_size_w_spinbox.value()
+        roi_h = self.ui.p_roi_size_h_spinbox.value()
+        pos = [roi_x - roi_w / 2.0, roi_y - roi_h / 2.0]
+
+        self.ui.process_image_widget.roi.blockSignals(True)
+        self.ui.process_image_widget.roi.setPos(pos, update=False)
+        self.ui.process_image_widget.roi.setSize([roi_w, roi_h])
+        self.ui.process_image_widget.roi.blockSignals(False)
+
+        self.ui.process_image_widget
         self.start_processing()
 
     def load_data_disk(self):
@@ -461,24 +499,14 @@ class QuadScanGui(QtGui.QWidget):
         :return:
         """
         root.info("Loading data from disk")
-        # load_dir = QtGui.QFileDialog.getExistingDirectory(self, "Select directory", self.last_load_dir)
-        filedialog = QtGui.QFileDialog(self, "Load data", directory=self.last_load_dir)
-        # filedialog.setOption(QtGui.QFileDialog.DontUseNativeDialog, True)
-        # filedialog.setViewMode(QtGui.QFileDialog.Detail)
-        # filedialog.setFileMode(QtGui.QFileDialog.Directory)
-        # filedialog.directoryEntered.connect(self.load_dir_entered)
-        # filedialog.directoryEntered.emit(self.last_load_dir)
         filedialog = OpenScanFileDialog(self.last_load_dir)
         res = filedialog.exec_()
         root.debug("Load dir return value: {0}".format(res))
         if res != QtGui.QDialog.Accepted:
             return
-        # load_dir = str(filedialog.directory().absolutePath())
         load_dir = filedialog.get_selected_path()
         self.last_load_dir = load_dir
         root.debug("Loading from directory {0}".format(load_dir))
-        # self.image_processor.clear_callback_list()
-        # self.image_processor.add_callback(self.update_load_data)        # This method is called when loading is finished
         self.ui.process_image_widget.getHistogramWidget().item.blockSignals(True)    # Block signals to avoid threshold problems
         self.load_image_max = 0.0
 
@@ -510,6 +538,7 @@ class QuadScanGui(QtGui.QWidget):
             hl = hw.getLevels()
             hw.setLevels(self.ui.p_threshold_spinbox.value(), self.scan_image_max)
             root.debug("Proc images len: {0}".format(len(self.quad_scan_data_scan.proc_images)))
+            self.user_enable_list = [True for x in range(len(self.quad_scan_data_scan.proc_images))]
             self.update_analysis_parameters()
             self.update_image_selection()
 
@@ -582,10 +611,10 @@ class QuadScanGui(QtGui.QWidget):
                     # root.debug("image {0}".format(image.pic_roi))
 
                     if self.load_init_flag:
-                        pos = [acc_params.roi_center[0] - acc_params.roi_dim[0] / 2.0,
-                               acc_params.roi_center[1] - acc_params.roi_dim[1] / 2.0]
+                        pos = [acc_params.roi_center[1] - acc_params.roi_dim[1] / 2.0,
+                               acc_params.roi_center[0] - acc_params.roi_dim[0] / 2.0]
 
-                        self.process_image_view = [0, 0, acc_params.roi_dim[0], acc_params.roi_dim[1]]
+                        self.process_image_view = [0, 0, acc_params.roi_dim[1], acc_params.roi_dim[0]]
                         x_range = [pos[0], pos[0] + self.process_image_view[2]]
                         y_range = [pos[1], pos[1] + self.process_image_view[3]]
                         root.debug("Init image view {0}, {1}".format(x_range, y_range))
@@ -609,10 +638,11 @@ class QuadScanGui(QtGui.QWidget):
                 if isinstance(task, LoadQuadScanDirTask):
                     result = task.get_result(wait=False)   # type: QuadScanData
                     if task.is_cancelled():
-                        time_str = time.strftime("%Y-%m-%d_%H-%M-%S", time.localtime(time.time()))
+                        time_str = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(time.time()))
                         msg = "Load dir error: {0}".format(result)
-                        self.ui.status_textedit.append("\n{0}: {1}"
-                                                       "\n---------------------------\n".format(time_str, msg))
+                        self.ui.status_textedit.append("\n---------------------------\n"
+                                                       "{0}:\n"
+                                                       "{1}\n".format(time_str, msg))
 
                         root.error(msg)
                     else:
@@ -623,10 +653,12 @@ class QuadScanGui(QtGui.QWidget):
                         self.ui.p_image_index_slider.update()
                         root.debug("Proc images len: {0}".format(len(result.proc_images)))
                         root.debug("Images len: {0}".format(len(result.images)))
+                        self.user_enable_list = [True for x in range(len(result.proc_images))]
                         self.update_analysis_parameters()
                         self.update_image_selection()
-                        self.update_fit_signal.emit()
-                        self.start_fit()
+                        self.start_processing()
+                        # self.update_fit_signal.emit()
+                        # self.start_fit()
 
     def update_analysis_parameters(self):
         root.debug("Acc params {0}".format(self.quad_scan_data_analysis.acc_params))
@@ -635,19 +667,19 @@ class QuadScanGui(QtGui.QWidget):
         self.ui.p_quad_length_label.setText("{0:.2f} m".format(acc_params.quad_length))
         self.ui.p_quad_screen_dist_label.setText("{0:.2f} m".format(acc_params.quad_screen_dist))
 
-        self.ui.p_roi_cent_x_spinbox.setValue(acc_params.roi_center[0])
-        self.ui.p_roi_cent_y_spinbox.setValue(acc_params.roi_center[1])
-        self.ui.p_roi_size_w_spinbox.setValue(acc_params.roi_dim[0])
-        self.ui.p_roi_size_h_spinbox.setValue(acc_params.roi_dim[1])
+        self.ui.p_roi_cent_x_spinbox.setValue(acc_params.roi_center[1])
+        self.ui.p_roi_cent_y_spinbox.setValue(acc_params.roi_center[0])
+        self.ui.p_roi_size_w_spinbox.setValue(acc_params.roi_dim[1])
+        self.ui.p_roi_size_h_spinbox.setValue(acc_params.roi_dim[0])
         # Init image view as the ROI:
-        pos = [acc_params.roi_center[0] - acc_params.roi_dim[0] / 2.0,
-               acc_params.roi_center[1] - acc_params.roi_dim[1] / 2.0]
+        pos = [acc_params.roi_center[1] - acc_params.roi_dim[1] / 2.0,
+               acc_params.roi_center[0] - acc_params.roi_dim[0] / 2.0]
         if self.ui.p_raw_image_radio.isChecked():
-            self.process_image_view = [0, 0, acc_params.roi_dim[0], acc_params.roi_dim[1]]
+            self.process_image_view = [0, 0, acc_params.roi_dim[1], acc_params.roi_dim[0]]
             x_range = [pos[0], pos[0] + self.process_image_view[2]]
             y_range = [pos[1], pos[1] + self.process_image_view[3]]
         else:
-            self.process_image_view = [pos[0], pos[1], acc_params.roi_dim[0], acc_params.roi_dim[1]]
+            self.process_image_view = [pos[0], pos[1], acc_params.roi_dim[1], acc_params.roi_dim[0]]
             x_range = [0, self.process_image_view[2]]
             y_range = [0, self.process_image_view[3]]
         root.debug("x range: {0}, y range: {1}".format(x_range, y_range))
@@ -655,7 +687,7 @@ class QuadScanGui(QtGui.QWidget):
 
         self.ui.process_image_widget.roi.blockSignals(True)
         self.ui.process_image_widget.roi.setPos(pos, update=False)
-        self.ui.process_image_widget.roi.setSize(acc_params.roi_dim)
+        self.ui.process_image_widget.roi.setSize([acc_params.roi_dim[1], acc_params.roi_dim[0]])
         self.ui.process_image_widget.roi.blockSignals(False)
 
         # self.ui.p_image_index_slider.setMaximum(acc_params.num_images-1)
@@ -880,7 +912,7 @@ class QuadScanGui(QtGui.QWidget):
         # self.process_image_raw_roi = [pos[0], pos[1], size[0], size[1]]
         self.start_processing()
 
-    def change_raw_filtered_view(self):
+    def change_raw_or_processed_view(self):
         """
         Select which image to be shown in the process image widget.
         Raw is before thresholding, cropping, and median filtering.
@@ -931,7 +963,7 @@ class QuadScanGui(QtGui.QWidget):
             if not task.is_done():
                 proc_image_list = task.get_result(wait=False)
                 root.debug("New image list: {0}".format(len(proc_image_list)))
-                # root.debug("Proc image list: {0}".format(proc_image_list))
+                # root.debug("Sigma x: {0}".format([x.sigma_x for x in proc_image_list]))
                 # root.debug("Im 0 thr: {0}".format(proc_image_list[0].threshold))
                 if len(proc_image_list) > 0:
                     self.quad_scan_data_analysis = self.quad_scan_data_analysis._replace(proc_images=proc_image_list)
@@ -946,18 +978,19 @@ class QuadScanGui(QtGui.QWidget):
                 try:
                     image_struct = self.quad_scan_data_analysis.images[im_ind]
                 except IndexError:
-                    time_str = time.strftime("%Y-%m-%d_%H-%M-%S", time.localtime(time.time()))
+                    time_str = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(time.time()))
                     msg = "Index {0} out of range, len {1}.".format(im_ind,
                                                                     len(self.quad_scan_data_analysis.images))
-                    self.ui.status_textedit.append("\n{0}: {1}"
-                                                   "\n---------------------------\n".format(time_str, msg))
+                    self.ui.status_textedit.append("\n---------------------------\n"
+                                                   "{0}:\n"
+                                                   "{1}\n".format(time_str, msg))
                     root.error(msg)
 
                     return
                 image = image_struct.image
                 try:
 
-                    self.ui.process_image_widget.setImage(image, autoRange=auto_range, autoLevels=auto_levels)
+                    self.ui.process_image_widget.setImage(np.transpose(image), autoRange=auto_range, autoLevels=auto_levels)
                     self.ui.process_image_widget.roi.show()
                     self.ui.process_image_widget.update()
                 except TypeError as e:
@@ -968,17 +1001,18 @@ class QuadScanGui(QtGui.QWidget):
                 try:
                     image_struct = self.quad_scan_data_analysis.proc_images[im_ind]    # type: ProcessedImage
                 except IndexError:
-                    time_str = time.strftime("%Y-%m-%d_%H-%M-%S", time.localtime(time.time()))
+                    time_str = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(time.time()))
                     msg = "Index {0} out of range, len {1}.".format(im_ind,
                                                                     len(self.quad_scan_data_analysis.proc_images))
-                    self.ui.status_textedit.append("\n{0}: {1}"
-                                                   "\n---------------------------\n".format(time_str, msg))
+                    self.ui.status_textedit.append("\n---------------------------\n"
+                                                   "{0}:\n"
+                                                   "{1}\n".format(time_str, msg))
                     root.error(msg)
                     return
                 image = image_struct.pic_roi
                 try:
                     self.ui.process_image_widget.roi.hide()
-                    self.ui.process_image_widget.setImage(image, autoRange=False, autoLevels=auto_levels)
+                    self.ui.process_image_widget.setImage(np.transpose(image), autoRange=False, autoLevels=auto_levels)
                 except TypeError as e:
                     root.error("Error setting image: {0}".format(e))
 
@@ -991,24 +1025,38 @@ class QuadScanGui(QtGui.QWidget):
             # If an image was sent directly to the method, such as when updating a loading task
             try:
                 # self.ui.process_image_widget.setImage(image)
-                self.ui.process_image_widget.setImage(image, autoRange=auto_range, autoLevels=auto_levels)
+                self.ui.process_image_widget.setImage(np.transpose(image), autoRange=auto_range, autoLevels=auto_levels)
             except TypeError as e:
                 root.error("Error setting image: {0}".format(e))
 
     def update_fit_result(self, task=None):
         root.info("{0}: Updating fit result.".format(self))
         if task is not None:
+            if self.ui.p_x_radio.isChecked():
+                self.ui.result_axis_label.setText("x-axis")
+            else:
+                self.ui.result_axis_label.setText("y-axis")
+
             fitresult = task.get_result(wait=False)     # type: FitResult
             if isinstance(fitresult, Exception):
-                time_str = time.strftime("%Y-%m-%d_%H-%M-%S", time.localtime(time.time()))
-                self.ui.status_textedit.append("\n{0}: Could not generate fit: {1}\n"
-                                               "======================\n".format(time_str, fitresult))
+                time_str = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(time.time()))
+                self.ui.status_textedit.append("\n===================\n"
+                                               "{0}:\n"
+                                               "Could not generate fit: \n"
+                                               "{1}\n".format(time_str, fitresult))
+                self.ui.eps_label.setText("-- mm x mmrad")
+                self.ui.beta_label.setText("-- m")
+                self.ui.alpha_label.setText("--")
+                self.fit_result = fitresult
+                self.update_fit_signal.emit()
+
             else:
-                if self.ui.p_x_radio.isChecked():
-                    self.ui.result_axis_label.setText("x-axis")
-                else:
-                    self.ui.result_axis_label.setText("y-axis")
                 if fitresult is not None:
+                    time_str = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(time.time()))
+                    self.ui.status_textedit.append("\n===================\n"
+                                                   "{0}:\n"
+                                                   "Fit ok. \n"
+                                                   "Residual: {1}\n".format(time_str, fitresult.residual))
                     self.ui.eps_label.setText("{0:.2f} mm x mmrad".format(1e6 * fitresult.eps_n))
                     self.ui.beta_label.setText("{0:.2f} m".format(fitresult.beta))
                     self.ui.alpha_label.setText("{0:.2f}".format(fitresult.alpha))
@@ -1020,10 +1068,10 @@ class QuadScanGui(QtGui.QWidget):
     def update_camera_image(self, new_image):
         # root.debug("Updating camera image")
         if self.screen_init_flag:
-            self.ui.camera_widget.setImage(new_image, autoRange=True, autoLevels=True)
+            self.ui.camera_widget.setImage(np.transpose(new_image), autoRange=True, autoLevels=True)
             self.screen_init_flag = False
         else:
-            self.ui.camera_widget.setImage(new_image, autoRange=False, autoLevels=False)
+            self.ui.camera_widget.setImage(np.transpose(new_image), autoRange=False, autoLevels=False)
         self.ui.camera_widget.roi.show()
         self.ui.camera_widget.update()
 
@@ -1180,15 +1228,17 @@ class QuadScanGui(QtGui.QWidget):
             self.scan_task.cancel()
         if str(self.ui.camera_state_label.text()).upper() not in ["RUNNING", "ON"]:
             root.warning("Camera not running. Can't start scan")
-            time_str = time.strftime("%Y-%m-%d_%H-%M-%S", time.localtime(time.time()))
-            self.ui.status_textedit.append("\n{0}: Camera not running. Can't start scan. "
-                                           "\n---------------------------\n".format(time_str))
+            time_str = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(time.time()))
+            self.ui.status_textedit.append("\n------------------------\n"
+                                           "{0}:\n"
+                                           "Camera not running. Can't start scan.\n".format(time_str))
             return False
         if "IN" not in str(self.ui.screen_state_label.text()).upper():
             root.warning("Screen not inserted. Can't start scan")
-            time_str = time.strftime("%Y-%m-%d_%H-%M-%S", time.localtime(time.time()))
-            self.ui.status_textedit.append("\n{0}: Screen not inserted. Can't start scan. "
-                                           "\n---------------------------\n".format(time_str))
+            time_str = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(time.time()))
+            self.ui.status_textedit.append("\n------------------------\n"
+                                           "{0}:\n"
+                                           "Screen not inserted. Can't start scan.\n".format(time_str))
             return False
         return True
 
@@ -1244,28 +1294,31 @@ class QuadScanGui(QtGui.QWidget):
         except KeyError as e:
             msg = "Could not generate daq_info: {0}".format(e)
             root.exception(e)
-            time_str = time.strftime("%Y-%m-%d_%H-%M-%S", time.localtime(time.time()))
-            self.ui.status_textedit.append("\n{0}: Could not generate daq_info: {1}\n"
-                                           "=============================\n".format(time_str, e))
+            time_str = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(time.time()))
+            self.ui.status_textedit.append("\n=============================\n"
+                                           "{0}:\n"
+                                           "Could not generate daq_info: {1}\n".format(time_str, e))
             return False
         except IndexError as e:
             msg = "Could not generate daq_info: {0}".format(e)
-            time_str = time.strftime("%Y-%m-%d_%H-%M-%S", time.localtime(time.time()))
-            self.ui.status_textedit.append("\n{0}: Could not generate daq_info: {1}\n"
-                                           "=============================\n".format(time_str, e))
+            time_str = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(time.time()))
+            self.ui.status_textedit.append("\n=============================\n"
+                                           "{0}:\n"
+                                           "Could not generate daq_info: {1}\n".format(time_str, e))
             root.exception(e)
             return False
         base_path = str(self.ui.save_path_linedit.text())
-        time_str = time.strftime("%Y-%m-%d_%H-%M-%S", time.localtime(time.time()))
+        time_str = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(time.time()))
         dev_str = "{0}_{1}".format(self.current_quad.mag, self.current_screen.screen)
         save_path = "{0}/{1}_{2}".format(base_path, time_str, dev_str.replace("/", "-"))
         try:
             os.makedirs(save_path)
             self.scan_save_path = save_path
         except OSError as e:
-            time_str = time.strftime("%Y-%m-%d_%H-%M-%S", time.localtime(time.time()))
-            self.ui.status_textedit.append("\n{0}: Error creating directory: {1}\n"
-                                           "==============================\n".format(time_str, e))
+            time_str = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(time.time()))
+            self.ui.status_textedit.append("\n=============================\n"
+                                           "{0}:\n"
+                                           "Error creating directory: {1}\n".format(time_str, e))
             return False
         full_name = os.path.join(save_path, "daq_info.txt")
         with open(full_name, "w+") as f:
@@ -1375,13 +1428,15 @@ class QuadScanGui(QtGui.QWidget):
 
         except IndexError as e:
             root.exception("Error for returned image in scan")
-            time_str = time.strftime("%Y-%m-%d_%H-%M-%S", time.localtime(time.time()))
-            self.ui.status_textedit.append("\n{0}: Error for returned image in scan\n".format(time_str))
+            time_str = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(time.time()))
+            self.ui.status_textedit.append("\n{0}: \n"
+                                           "Error for returned image in scan\n".format(time_str))
             return
         except ValueError as e:
             root.exception("Error for returned image name in scan")
-            time_str = time.strftime("%Y-%m-%d_%H-%M-%S", time.localtime(time.time()))
-            self.ui.status_textedit.append("\n{0}: Error for returned image name in scan\n{1}\n".format(time_str,
+            time_str = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(time.time()))
+            self.ui.status_textedit.append("\n{0}: \n"
+                                           "Error for returned image name in scan\n{1}\n".format(time_str,
                                                                                                         name_elements))
             return
 
@@ -1409,8 +1464,9 @@ class QuadScanGui(QtGui.QWidget):
         root.debug("Save image task {0} returned {1}".format(task.get_name(), result))
         if task.is_cancelled():
             root.exception("Error for save image in scan")
-            time_str = time.strftime("%Y-%m-%d_%H-%M-%S", time.localtime(time.time()))
-            self.ui.status_textedit.append("\n{0}: Error for save image in scan\n{1}\n".format(time_str,
+            time_str = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(time.time()))
+            self.ui.status_textedit.append("\n{0}: \n"
+                                           "Error for save image in scan\n{1}\n".format(time_str,
                                                                                                result))
             return
 
@@ -1422,13 +1478,15 @@ class QuadScanGui(QtGui.QWidget):
         #         self.processing_tasks.remove(task)
         th = self.ui.p_threshold_spinbox.value()
         kern = self.ui.p_median_kernel_spinbox.value()
+        keep_charge_ratio = 0.01 * self.ui.p_keep_charge_ratio_spinbox.value()
         root.info("Start processing. Threshold: {0}, Kernel: {1}".format(th, kern))
         acc_params = self.quad_scan_data_analysis.acc_params         # type: AcceleratorParameters
-        roi_center = [self.ui.p_roi_cent_x_spinbox.value(), self.ui.p_roi_cent_y_spinbox.value()]
-        roi_size = [self.ui.p_roi_size_w_spinbox.value(), self.ui.p_roi_size_h_spinbox.value()]
+        roi_center = [self.ui.p_roi_cent_y_spinbox.value(), self.ui.p_roi_cent_x_spinbox.value()]
+        roi_size = [self.ui.p_roi_size_h_spinbox.value(), self.ui.p_roi_size_w_spinbox.value()]
         if acc_params is not None:
             acc_params = acc_params._replace(roi_center=roi_center)
             acc_params = acc_params._replace(roi_dim=roi_size)
+            self.quad_scan_data_analysis = self.quad_scan_data_analysis._replace(acc_params=acc_params)
             self.quad_scan_data_analysis = self.quad_scan_data_analysis._replace(acc_params=acc_params)
         # root.info("Start processing. Accelerator params: {0}".format(acc_params))
         try:
@@ -1444,7 +1502,9 @@ class QuadScanGui(QtGui.QWidget):
         #                             callback_list=[self.update_image_processing])
         self.image_processor.clear_callback_list()
         self.image_processor.add_callback(self.update_image_processing)
-        self.image_processor.process_images(self.quad_scan_data_analysis, threshold=th, kernel=kern)
+        self.image_processor.process_images(self.quad_scan_data_analysis,
+                                            threshold=th, kernel=kern, enabled_list=self.user_enable_list,
+                                            keep_charge_ratio=keep_charge_ratio)
         # task.start()
         # self.processing_tasks.append(task)
 
@@ -1493,7 +1553,8 @@ class QuadScanGui(QtGui.QWidget):
                 y = [proc_im.sigma_y for proc_im in self.quad_scan_data_analysis.proc_images]
 
         x = [proc_im.k_value for proc_im in self.quad_scan_data_analysis.proc_images]
-        en_data = [proc_im.enabled for proc_im in self.quad_scan_data_analysis.proc_images]
+        # en_data = [proc_im.enabled for proc_im in self.quad_scan_data_analysis.proc_images]
+        en_data = self.user_enable_list
         enabled = not right             # True if left button is pressed
         eps = 1e-9
         mouse_pos = self.mapFromGlobal(QtGui.QCursor.pos())
@@ -1533,6 +1594,16 @@ class QuadScanGui(QtGui.QWidget):
 
             self.update_image_selection()
             self.start_fit()
+
+    def enable_all_points(self):
+        """
+        Enable all points in processed data as a response from button press.
+
+        :return:
+        """
+        root.info("Enable all points in processed data")
+        self.user_enable_list = [True for x in range(len(self.user_enable_list))]
+        self.start_processing()
 
     def camera_mouse_moved(self, event):
         pos = self.ui.camera_widget.view.mapSceneToView(event[0])
@@ -1626,8 +1697,9 @@ class QuadScanGui(QtGui.QWidget):
             except TypeError as e:
                 s = "Could not read calibration. Got {0}".format(result)
                 root.exception(s)
-                time_str = time.strftime("%Y-%m-%d_%H-%M-%S", time.localtime(time.time()))
-                self.ui.status_textedit.append("{0}: {1}".format(time_str, s))
+                time_str = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(time.time()))
+                self.ui.status_textedit.append("\n{0}: \n"
+                                               "{1}\n".format(time_str, s))
                 return
             root.debug("Camera calibration: {0} mm/pixel".format(cal))
             self.camera_cal = [cal, cal]
