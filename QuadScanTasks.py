@@ -218,7 +218,7 @@ class LoadQuadImageTask(Task):
         Task.__init__(self, name, timeout=timeout, trigger_dict=trigger_dict, callback_list=callback_list)
         self.image_name = image_name
         self.path = path
-        self.logger.setLevel(logging.DEBUG)
+        self.logger.setLevel(logging.WARNING)
 
     def action(self):
         self.logger.info("{0} entering action. Loading file {1}".format(self, self.image_name))
@@ -270,7 +270,7 @@ class LoadQuadScanDirTask(Task):
     def __init__(self, quadscandir, process_now=True, threshold=None, kernel_size=3, process_exec_type="thread",
                  name=None, timeout=None, trigger_dict=dict(), callback_list=list()):
         Task.__init__(self, name, timeout=timeout, trigger_dict=trigger_dict, callback_list=callback_list)
-        self.logger.setLevel(logging.DEBUG)
+        self.logger.setLevel(logging.INFO)
 
         self.pathname = quadscandir
         self.process_now = process_now
@@ -279,19 +279,7 @@ class LoadQuadScanDirTask(Task):
         self.processed_image_list = list()
         self.acc_params = None
         self.task_seq = None
-        # The images are processed as they are loaded:
-        # self.image_processor = None         # type: ImageProcessorTask2
-        # if image_processor_task is None:
-        #     self.image_processor = ImageProcessorTask(threshold=threshold, kernel=kernel_size,
-        #                                               process_exec=process_exec_type,
-        #                                               trigger_dict=trigger_dict, name="loaddir_image_proc")
-        # else:
-        #     # If the image_processor was supplied, don't add self as trigger.
-        #     self.image_processor = image_processor_task
-        # if self.image_processor.is_started() is False:
-        #     self.logger.info("Starting image_processor")
-        #     self.image_processor.start()
-        # self.image_processor.add_callback(self.processed_image_done)    # Call this method after completing each image
+        self.update_image_flag = False          # Set this if read images should be sent to callbacks
 
     def action(self):
         load_dir = self.pathname
@@ -354,8 +342,6 @@ class LoadQuadScanDirTask(Task):
 
         n_images = self.acc_params.num_k * self.acc_params.num_images
 
-        # self.image_processor.set_roi(data_dict["roi_center"], data_dict["roi_dim"])
-        # self.image_processor.set_processing_parameters(self.threshold, data_dict["pixel_size"], self.kernel_size)
         file_list = os.listdir(load_dir)
         image_file_list = list()
         load_task_list = list()         # List of tasks, each loading an image. Loading should be done in sequence
@@ -371,66 +357,49 @@ class LoadQuadScanDirTask(Task):
                 load_task_list.append(t)
 
         self.logger.debug("{1} Found {0} images in directory".format(len(image_file_list), self))
+        with self.lock:
+            self.update_image_flag = True
         self.task_seq = SequenceTask(load_task_list, name="load_seq")
         self.task_seq.start()
         # Wait for image sequence to be done reading:
         image_list = self.task_seq.get_result(wait=True)
         if self.task_seq.is_cancelled():
             self.logger.error("Load image error: {0}".format(image_list))
-        # Now wait for images to be done processing:
-        # The processed images are already stored in the processed_image_list by the callback
-        self.logger.debug("{0}: Waiting for image processing to finish".format(self))
-        starttime = time.time()
-        dt = 0
-        # if self.timeout is None:
-        #     while self.image_processor.get_remaining_number_images() > 0 and dt < 10.0:
-        #         dt = time.time() - starttime
-        #         time.sleep(0.01)
-        # else:
-        #     while self.image_processor.get_remaining_number_images() > 0 and dt < self.timeout:
-        #         dt = time.time() - starttime
-        #         time.sleep(0.01)
-        # self.image_processor.wait_for_queue_empty()
-        self.logger.debug("{0}: Image processing finished".format(self))
+
+        self.logger.info("{0}: Sequence complete.".format(self))
+        with self.lock:
+            self.update_image_flag = False
 
         self.result = QuadScanData(self.acc_params, image_list, self.processed_image_list)
-        # self.image_processor.clear_callback_list()
+        self.logger.info("{0}: Loading finished.".format(self))
 
     def processed_image_done(self, load_quadimage_task):
-        quad_image = load_quadimage_task.get_result(wait=False)    # type: QuadImage
+        with self.lock:
+            go = self.update_image_flag
+            self.logger.info("{0}: Update flag {1}".format(self, go))
 
-        pic_roi = np.zeros((int(self.acc_params.roi_dim[0]), int(self.acc_params.roi_dim[1])), dtype=np.float32)
-        line_x = pic_roi.sum(0)
-        line_y = pic_roi.sum(1)
-        proc_image = ProcessedImage(k_ind=quad_image.k_ind, k_value=quad_image.k_value, image_ind=quad_image.image_ind,
-                                    pic_roi=pic_roi, line_x=line_x, line_y=line_y, x_cent=pic_roi.shape[0]/2,
-                                    y_cent=pic_roi.shape[1]/2, sigma_x=0.0, sigma_y=0.0,
-                                    q=0, threshold=self.threshold, enabled=True)
-        self.processed_image_list.append(proc_image)
+            if go:
+                quad_image = load_quadimage_task.get_result(wait=False)    # type: QuadImage
 
-        if isinstance(quad_image, Exception):
-            self.logger.error("{0}: Found error in processed image: {1}".format(self, quad_image))
-            return
+                pic_roi = np.zeros((int(self.acc_params.roi_dim[0]), int(self.acc_params.roi_dim[1])), dtype=np.float32)
+                line_x = pic_roi.sum(0)
+                line_y = pic_roi.sum(1)
+                proc_image = ProcessedImage(k_ind=quad_image.k_ind, k_value=quad_image.k_value, image_ind=quad_image.image_ind,
+                                            pic_roi=pic_roi, line_x=line_x, line_y=line_y, x_cent=pic_roi.shape[0]/2,
+                                            y_cent=pic_roi.shape[1]/2, sigma_x=0.0, sigma_y=0.0,
+                                            q=0, threshold=self.threshold, enabled=True)
+                self.processed_image_list.append(proc_image)
 
-        self.result = quad_image
-        for callback in self.callback_list:
-            callback(self)
+                if isinstance(quad_image, Exception):
+                    self.logger.error("{0}: Found error in processed image: {1}".format(self, quad_image))
+                    return
 
-        # if image_processor_task.is_done() is False:
-        #     if isinstance(proc_image, Exception):
-        #         self.logger.error("{0}: Found error in processed image: {1}".format(self, proc_image))
-        #     else:
-        #         # self.processed_image_list.append(proc_image)
-        #         ind = proc_image.k_ind * self.acc_params.num_images + proc_image.image_ind
-        #         self.logger.debug("{0}: Adding processed image {1} {2} to list at index {3}".format(self,
-        #                                                                                             proc_image.k_ind,
-        #                                                                                             proc_image.image_ind,
-        #                                                                                             ind))
-        #
-        #         self.processed_image_list[ind] = proc_image
-        #         # self.result = proc_image
-        #         # for callback in self.callback_list:
-        #         #     callback(self)
+                self.result = quad_image
+                self.logger.info("{0}: Calling {1} callbacks".format(self, len(self.callback_list)))
+                for callback in self.callback_list:
+                    callback(self)
+
+                self.logger.info("{0}: Done calling callbacks".format(self, len(self.callback_list)))
 
     def cancel(self):
         if self.task_seq is not None:
@@ -1226,15 +1195,17 @@ def work_func_shared2(mem_ind, im_ind, im_size, threshold, roi_cent, roi_dim,
         if normalize:
             n_bins = np.unique(pic_roi.flatten()).shape[0]
         else:
-            n_bins = pic_roi.max()
+            n_bins = int(pic_roi.max())
         h = np.histogram(pic_roi, n_bins)
-        hq = h[0]*h[1][:-1]
-        hq = (hq.astype(np.float) / hq.max()).cumsum()
+        hq = (h[0]*h[1][:-1]).cumsum()
+        hq = hq / np.float(hq.max())
+        # hq = (hq.astype(np.float) / hq.max()).cumsum()
         th_ind = np.searchsorted(hq, 1-keep_charge_ratio)
         d = (h[1][1] - h[1][0])/2.0
         th_q = h[1][th_ind] - d
         pic_roi[pic_roi < th_q] = 0.0
-        logger.debug("Pic_roi max: {0}, threshold index: {1}, threshold: {2}".format(n_bins, th_ind, th_q))
+        # logger.debug("Pic_roi max: {0}, threshold index: {1}, threshold: {2}, ch ratio: {3}\n"
+        #              "hq: {4}".format(n_bins, th_ind, th_q, keep_charge_ratio, hq[0:20]))
 
         # Centroid and sigma calculations:
         line_x = pic_roi.sum(0)
@@ -1270,7 +1241,7 @@ def work_func_shared2(mem_ind, im_ind, im_size, threshold, roi_cent, roi_dim,
         logger.warning("{0}======================================".format(mem_ind))
         logger.exception("{0} Work function error".format(mem_ind))
         return mem_ind, e
-    logger.debug("{1}: Process time {0:.2f} ms".format((time.time()-t0) * 1e3, mem_ind))
+    # logger.debug("{1}: Process time {0:.2f} ms".format((time.time()-t0) * 1e3, mem_ind))
     return mem_ind, im_ind, x_cent, sigma_x, y_cent, sigma_y, q, enabled
 
 
@@ -1291,7 +1262,7 @@ class ProcessAllImagesTask2(Task):
         :param callback_list:
         """
         Task.__init__(self, name, timeout=timeout, trigger_dict=trigger_dict, callback_list=callback_list)
-        self.logger.setLevel(logging.DEBUG)
+        self.logger.setLevel(logging.INFO)
 
         self.work_func = work_func_shared2
 
@@ -1874,7 +1845,7 @@ class FitQuadDataTask(Task):
         self.accelerator_params = accelerator_params        # type: AcceleratorParameters
         self.algo = algo
         self.axis = axis
-        self.logger.setLevel(logging.DEBUG)
+        self.logger.setLevel(logging.WARNING)
 
     def action(self):
         self.logger.info("{0} entering action.".format(self))

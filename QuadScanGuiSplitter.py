@@ -279,6 +279,8 @@ class QuadScanGui(QtGui.QWidget):
         self.ui.save_path_linedit.setText(self.data_base_dir)
         val = self.settings.value("threshold", "0.0", type=float)
         self.ui.p_threshold_spinbox.setValue(val)
+        val = self.settings.value("keep_charge_ratio", "100.0", type=float)
+        self.ui.p_keep_charge_ratio_spinbox.setValue(val)
         val = self.settings.value("median_kernel", "3", type=int)
         self.ui.p_median_kernel_spinbox.setValue(val)
 
@@ -346,6 +348,7 @@ class QuadScanGui(QtGui.QWidget):
         hw.item.blockSignals(True)
         self.ui.process_button.clicked.connect(self.start_processing)
         self.ui.p_threshold_spinbox.editingFinished.connect(self.start_processing)
+        self.ui.p_keep_charge_ratio_spinbox.editingFinished.connect(self.start_processing)
         # self.ui.p_load_hist_button.clicked.connect(self.update_process_image_threshold)
         self.ui.p_median_kernel_spinbox.editingFinished.connect(self.start_processing)
         self.ui.p_image_index_slider.valueChanged.connect(self.update_image_selection)
@@ -374,8 +377,8 @@ class QuadScanGui(QtGui.QWidget):
         window_pos_y = self.settings.value('window_pos_y', 100, type=int)
         window_size_w = self.settings.value('window_size_w', 1100, type=int)
         window_size_h = self.settings.value('window_size_h', 800, type=int)
-        if window_pos_x < 50:
-            window_pos_x = 50
+        # if window_pos_x < 50:
+        #     window_pos_x = 50
         if window_pos_y < 50:
             window_pos_y = 50
         self.setGeometry(window_pos_x, window_pos_y, window_size_w, window_size_h)
@@ -454,6 +457,7 @@ class QuadScanGui(QtGui.QWidget):
         self.settings.setValue("tab_index", self.ui.tabWidget.currentIndex())
 
         self.settings.setValue("threshold", self.ui.p_threshold_spinbox.value())
+        self.settings.setValue("keep_charge_ratio", self.ui.p_keep_charge_ratio_spinbox.value())
         self.settings.setValue("median_kernel", self.ui.p_median_kernel_spinbox.value())
         self.settings.setValue("filtered_image_show", self.ui.p_filtered_image_radio.isChecked())
         self.settings.setValue("use_x_axis", self.ui.p_x_radio.isChecked())
@@ -598,7 +602,9 @@ class QuadScanGui(QtGui.QWidget):
         """
         root.info("Update load data {0}, {1}".format(task.name, self.load_init_flag))
         if task is not None:
-            if task.is_done() is False:
+            result = task.get_result(wait=False)
+            if isinstance(result, QuadImage):
+            # if task.is_done() is False:
                 # Task is not done so this is an image update
                 image = task.get_result(wait=False)   # type: QuadImage
                 acc_params = task.acc_params
@@ -1033,17 +1039,20 @@ class QuadScanGui(QtGui.QWidget):
         root.info("{0}: Updating fit result.".format(self))
         if task is not None:
             if self.ui.p_x_radio.isChecked():
-                self.ui.result_axis_label.setText("x-axis")
+                self.ui.result_axis_label.setText("x-axis, "
+                                                  "{0:.1f}% charge".format(self.ui.p_keep_charge_ratio_spinbox.value()))
             else:
-                self.ui.result_axis_label.setText("y-axis")
+                self.ui.result_axis_label.setText("y-axis, "
+                                                  "{0:.1f}% charge".format(self.ui.p_keep_charge_ratio_spinbox.value()))
 
             fitresult = task.get_result(wait=False)     # type: FitResult
             if isinstance(fitresult, Exception):
-                time_str = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(time.time()))
-                self.ui.status_textedit.append("\n===================\n"
-                                               "{0}:\n"
-                                               "Could not generate fit: \n"
-                                               "{1}\n".format(time_str, fitresult))
+                self.append_status_message("Could not generate fit.", fitresult)
+                # time_str = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(time.time()))
+                # self.ui.status_textedit.append("\n===================\n"
+                #                                "{0}:\n"
+                #                                "Could not generate fit: \n"
+                #                                "{1}\n".format(time_str, fitresult))
                 self.ui.eps_label.setText("-- mm x mmrad")
                 self.ui.beta_label.setText("-- m")
                 self.ui.alpha_label.setText("--")
@@ -1052,11 +1061,13 @@ class QuadScanGui(QtGui.QWidget):
 
             else:
                 if fitresult is not None:
-                    time_str = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(time.time()))
-                    self.ui.status_textedit.append("\n===================\n"
-                                                   "{0}:\n"
-                                                   "Fit ok. \n"
-                                                   "Residual: {1}\n".format(time_str, fitresult.residual))
+                    self.append_status_message("Fit ok.\n"
+                                               "Residual: {0}".format(fitresult.residual))
+                    # time_str = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(time.time()))
+                    # self.ui.status_textedit.append("\n===================\n"
+                    #                                "{0}:\n"
+                    #                                "Fit ok. \n"
+                    #                                "Residual: {1}\n".format(time_str, fitresult.residual))
                     self.ui.eps_label.setText("{0:.2f} mm x mmrad".format(1e6 * fitresult.eps_n))
                     self.ui.beta_label.setText("{0:.2f} m".format(fitresult.beta))
                     self.ui.alpha_label.setText("{0:.2f}".format(fitresult.alpha))
@@ -1464,10 +1475,11 @@ class QuadScanGui(QtGui.QWidget):
         root.debug("Save image task {0} returned {1}".format(task.get_name(), result))
         if task.is_cancelled():
             root.exception("Error for save image in scan")
-            time_str = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(time.time()))
-            self.ui.status_textedit.append("\n{0}: \n"
-                                           "Error for save image in scan\n{1}\n".format(time_str,
-                                                                                               result))
+            self.append_status_message("Error for save image in scan", result)
+            # time_str = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(time.time()))
+            # self.ui.status_textedit.append("\n{0}: \n"
+            #                                "Error for save image in scan\n{1}\n".format(time_str,
+            #                                                                                    result))
             return
 
     def start_processing(self):
@@ -1617,6 +1629,20 @@ class QuadScanGui(QtGui.QWidget):
                 return
             self.ui.mouse_label.setText(
                 "Cam image at ({0}, {1}) px: {2:.0f}".format(min(x, 9999), min(y, 9999), intensity))
+
+    def append_status_message(self, msg, exception=None):
+        time_str = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(time.time()))
+        if exception is None:
+            self.ui.status_textedit.append("\n===================\n"
+                                           "\n{0}: \n"
+                                           "{1}\n".format(time_str, msg))
+        else:
+            self.ui.status_textedit.append("\n===================\n"
+                                           "\n{0}: \n"
+                                           "--ERROR--\n"
+                                           "{1}\n"
+                                           "{2}\n".format(time_str, msg, exception))
+        self.ui.status_textedit.verticalScrollBar().setValue(self.ui.status_textedit.verticalScrollBar().maximum())
 
     def process_image_mouse_moved(self, event):
         pos = self.ui.process_image_widget.view.mapSceneToView(event[0])

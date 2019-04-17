@@ -51,7 +51,7 @@
           </sizepolicy>
          </property>
          <property name="currentIndex">
-          <number>0</number>
+          <number>1</number>
          </property>
          <widget class="QWidget" name="quad_tab">
           <attribute name="title">
@@ -824,6 +824,9 @@
              <width>180</width>
              <height>16777215</height>
             </size>
+           </property>
+           <property name="readOnly">
+            <bool>true</bool>
            </property>
           </widget>
          </item>
@@ -1686,6 +1689,48 @@ QSplitter::handle:horizontal {
    <container>1</container>
   </customwidget>
  </customwidgets>
+ <tabstops>
+  <tabstop>tabWidget</tabstop>
+  <tabstop>section_combobox</tabstop>
+  <tabstop>quad_combobox</tabstop>
+  <tabstop>screen_combobox</tabstop>
+  <tabstop>camera_start_button</tabstop>
+  <tabstop>camera_stop_button</tabstop>
+  <tabstop>screen_in_button</tabstop>
+  <tabstop>screen_out_button</tabstop>
+  <tabstop>electron_energy_spinbox</tabstop>
+  <tabstop>k_current_spinbox</tabstop>
+  <tabstop>k_start_spinbox</tabstop>
+  <tabstop>set_start_k_button</tabstop>
+  <tabstop>k_end_spinbox</tabstop>
+  <tabstop>set_end_k_button</tabstop>
+  <tabstop>num_k_spinbox</tabstop>
+  <tabstop>num_images_spinbox</tabstop>
+  <tabstop>reprate_spinbox</tabstop>
+  <tabstop>save_path_linedit</tabstop>
+  <tabstop>save_name_lineedit</tabstop>
+  <tabstop>scan_start_button</tabstop>
+  <tabstop>scan_stop_button</tabstop>
+  <tabstop>update_analysis_radiobutton</tabstop>
+  <tabstop>load_disk_button</tabstop>
+  <tabstop>load_scan_button</tabstop>
+  <tabstop>p_raw_image_radio</tabstop>
+  <tabstop>p_filtered_image_radio</tabstop>
+  <tabstop>p_roi_cent_x_spinbox</tabstop>
+  <tabstop>p_roi_cent_y_spinbox</tabstop>
+  <tabstop>p_roi_size_w_spinbox</tabstop>
+  <tabstop>p_roi_size_h_spinbox</tabstop>
+  <tabstop>p_threshold_spinbox</tabstop>
+  <tabstop>p_keep_charge_ratio_spinbox</tabstop>
+  <tabstop>p_median_kernel_spinbox</tabstop>
+  <tabstop>fit_algo_combobox</tabstop>
+  <tabstop>p_x_radio</tabstop>
+  <tabstop>p_y_radio</tabstop>
+  <tabstop>process_button</tabstop>
+  <tabstop>p_image_index_slider</tabstop>
+  <tabstop>p_enable_all_button</tabstop>
+  <tabstop>status_textedit</tabstop>
+ </tabstops>
  <resources>
   <include location="quadscan_res.qrc"/>
  </resources>
