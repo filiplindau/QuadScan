@@ -51,7 +51,7 @@
           </sizepolicy>
          </property>
          <property name="currentIndex">
-          <number>1</number>
+          <number>0</number>
          </property>
          <widget class="QWidget" name="quad_tab">
           <attribute name="title">
@@ -760,6 +760,7 @@
           <widget class="QLabel" name="label_37">
            <property name="font">
             <font>
+             <family>Arial</family>
              <pointsize>12</pointsize>
             </font>
            </property>
@@ -772,6 +773,7 @@
           <widget class="QLabel" name="result_label">
            <property name="font">
             <font>
+             <family>Arial</family>
              <pointsize>12</pointsize>
             </font>
            </property>
@@ -782,6 +784,11 @@
          </item>
          <item row="8" column="0">
           <widget class="QLabel" name="label_39">
+           <property name="font">
+            <font>
+             <family>Arial</family>
+            </font>
+           </property>
            <property name="text">
             <string>Mouse</string>
            </property>
@@ -791,6 +798,7 @@
           <widget class="QLabel" name="alpha_label">
            <property name="font">
             <font>
+             <family>Arial</family>
              <pointsize>12</pointsize>
             </font>
            </property>
@@ -803,6 +811,7 @@
           <widget class="QLabel" name="label_35">
            <property name="font">
             <font>
+             <family>Arial</family>
              <pointsize>12</pointsize>
             </font>
            </property>
@@ -819,11 +828,22 @@
              <verstretch>0</verstretch>
             </sizepolicy>
            </property>
+           <property name="minimumSize">
+            <size>
+             <width>200</width>
+             <height>0</height>
+            </size>
+           </property>
            <property name="maximumSize">
             <size>
-             <width>180</width>
+             <width>200</width>
              <height>16777215</height>
             </size>
+           </property>
+           <property name="font">
+            <font>
+             <family>Arial</family>
+            </font>
            </property>
            <property name="readOnly">
             <bool>true</bool>
@@ -834,6 +854,7 @@
           <widget class="QLabel" name="label_38">
            <property name="font">
             <font>
+             <family>Arial</family>
              <pointsize>12</pointsize>
             </font>
            </property>
@@ -844,6 +865,11 @@
          </item>
          <item row="7" column="0">
           <widget class="QLabel" name="label_40">
+           <property name="font">
+            <font>
+             <family>Arial</family>
+            </font>
+           </property>
            <property name="text">
             <string>Status</string>
            </property>
@@ -862,15 +888,20 @@
            </property>
            <property name="minimumSize">
             <size>
-             <width>180</width>
+             <width>200</width>
              <height>0</height>
             </size>
            </property>
            <property name="maximumSize">
             <size>
-             <width>160</width>
+             <width>200</width>
              <height>16777215</height>
             </size>
+           </property>
+           <property name="font">
+            <font>
+             <family>Arial</family>
+            </font>
            </property>
            <property name="text">
             <string>--</string>
@@ -881,6 +912,7 @@
           <widget class="QLabel" name="beta_label">
            <property name="font">
             <font>
+             <family>Arial</family>
              <pointsize>12</pointsize>
             </font>
            </property>
@@ -909,6 +941,7 @@
           <widget class="QLabel" name="result_axis_label">
            <property name="font">
             <font>
+             <family>Arial</family>
              <pointsize>12</pointsize>
             </font>
            </property>
@@ -1607,6 +1640,11 @@ QSplitter::handle:horizontal {
                     </property>
                     <item>
                      <widget class="QLabel" name="label_12">
+                      <property name="font">
+                       <font>
+                        <family>Arial</family>
+                       </font>
+                      </property>
                       <property name="text">
                        <string>Fit</string>
                       </property>
@@ -1629,9 +1667,14 @@ QSplitter::handle:horizontal {
                      <widget class="QPushButton" name="p_enable_all_button">
                       <property name="maximumSize">
                        <size>
-                        <width>60</width>
+                        <width>80</width>
                         <height>16777215</height>
                        </size>
+                      </property>
+                      <property name="font">
+                       <font>
+                        <family>Arial</family>
+                       </font>
                       </property>
                       <property name="text">
                        <string>Enable All</string>

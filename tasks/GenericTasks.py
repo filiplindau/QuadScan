@@ -167,12 +167,12 @@ class Task(object):
             self.add_trigger(e)
 
     def add_trigger(self, trigger_task):
-        self.logger.info("{0} adding trigger {1}".format(self, trigger_task.name))
+        self.logger.debug("{0} adding trigger {1}".format(self, trigger_task.name))
         with self.lock:
             self.trigger_dict[trigger_task.id] = trigger_task
 
     def add_callback(self, callback):
-        self.logger.info("{0} adding callback {1}".format(self, callback))
+        self.logger.debug("{0} adding callback {1}".format(self, callback))
         with self.lock:
             if callback not in self.callback_list:
                 self.callback_list.append(callback)
@@ -181,7 +181,7 @@ class Task(object):
             callback(self)
 
     def remove_callback(self, callback):
-        self.logger.info("{0} removing callback {1}".format(self, callback))
+        self.logger.debug("{0} removing callback {1}".format(self, callback))
         with self.lock:
             if callback in self.callback_list:
                 self.callback_list.remove(callback)
@@ -216,7 +216,7 @@ class Task(object):
         self.name = name
 
     def action(self):
-        self.logger.info("{0} entering action.".format(self))
+        self.logger.debug("{0} entering action.".format(self))
         self.result = None
 
     def emit(self):

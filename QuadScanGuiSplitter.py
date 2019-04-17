@@ -32,7 +32,7 @@ f = logging.Formatter("%(asctime)s - %(module)s.   %(funcName)s - %(levelname)s 
 fh = logging.StreamHandler()
 fh.setFormatter(f)
 root.addHandler(fh)
-root.setLevel(logging.DEBUG)
+root.setLevel(logging.INFO)
 
 pq.graphicsItems.GradientEditorItem.Gradients['greyclip2'] = {
     'ticks': [(0.0, (0, 0, 50, 255)), (0.0001, (0, 0, 0, 255)), (1.0, (255, 255, 255, 255))], 'mode': 'rgb'}
@@ -347,7 +347,7 @@ class QuadScanGui(QtGui.QWidget):
         # hw.sigLevelChangeFinished.connect(self.update_process_image_histogram)
         hw.item.blockSignals(True)
         self.ui.process_button.clicked.connect(self.start_processing)
-        self.ui.p_threshold_spinbox.editingFinished.connect(self.start_processing)
+        self.ui.p_threshold_spinbox.editingFinished.connect(self.update_process_threshold_from_spinbox)
         self.ui.p_keep_charge_ratio_spinbox.editingFinished.connect(self.start_processing)
         # self.ui.p_load_hist_button.clicked.connect(self.update_process_image_threshold)
         self.ui.p_median_kernel_spinbox.editingFinished.connect(self.start_processing)
@@ -600,7 +600,7 @@ class QuadScanGui(QtGui.QWidget):
         :param task:
         :return:
         """
-        root.info("Update load data {0}, {1}".format(task.name, self.load_init_flag))
+        root.debug("Update load data {0}, {1}".format(task.name, self.load_init_flag))
         if task is not None:
             result = task.get_result(wait=False)
             if isinstance(result, QuadImage):
@@ -955,6 +955,16 @@ class QuadScanGui(QtGui.QWidget):
         self.ui.p_threshold_spinbox.blockSignals(False)
         self.start_processing()
 
+    def update_process_threshold_from_spinbox(self):
+        root.info("Updating image threshold from spinbox widget")
+        hw = self.ui.process_image_widget.getHistogramWidget()
+        hl = hw.getLevels()
+        th = self.ui.p_threshold_spinbox.value()
+        hw.blockSignals(True)
+        hw.setLevels(th, hl[1])
+        hw.blockSignals(False)
+        self.start_processing()
+
     def update_process_image_histogram(self):
         levels = self.ui.process_image_widget.getHistogramWidget().getLevels()
         root.info("Histogram changed: {0}".format(levels))
@@ -1124,9 +1134,14 @@ class QuadScanGui(QtGui.QWidget):
         # x_range = [k.min(), k.max()]
         # self.ui.charge_widget.getViewBox().setRange(xRange=x_range, yRange=y_range, disableAutoRange=True)
 
-        fit_data = self.fit_result.fit_data
-        if fit_data is not None:
-            self.fit_x_plot.setData(x=fit_data[0], y=fit_data[1])
+        if not isinstance(self.fit_result, Exception):
+            fit_data = self.fit_result.fit_data
+            if fit_data is not None:
+                self.fit_x_plot.setData(x=fit_data[0], y=fit_data[1])
+                self.ui.fit_widget.update()
+                self.ui.charge_widget.update()
+        else:
+            self.fit_x_plot.setData(x=[], y=[])
             self.ui.fit_widget.update()
             self.ui.charge_widget.update()
 

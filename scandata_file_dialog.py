@@ -16,15 +16,15 @@ from PyQt4 import QtGui, QtCore
 from open_scan_dialog_ui import Ui_QuadFileDialog
 
 import logging
-logger = logging.getLogger("Task")
-while len(logger.handlers):
-    logger.removeHandler(logger.handlers[0])
-
-f = logging.Formatter("%(asctime)s - %(name)s.   %(funcName)s - %(levelname)s - %(message)s")
-fh = logging.StreamHandler()
-fh.setFormatter(f)
-logger.addHandler(fh)
-logger.setLevel(logging.WARNING)
+# logger = logging.getLogger("Task")
+# while len(logger.handlers):
+#     logger.removeHandler(logger.handlers[0])
+#
+# f = logging.Formatter("%(asctime)s - %(name)s.   %(funcName)s - %(levelname)s - %(message)s")
+# fh = logging.StreamHandler()
+# fh.setFormatter(f)
+# logger.addHandler(fh)
+# logger.setLevel(logging.WARNING)
 
 
 class ScanDataFileSystemModel(QtGui.QFileSystemModel):
@@ -69,6 +69,9 @@ class OpenScanFileDialog(QtGui.QDialog):
     def __init__(self, start_dir=None, parent=None):
         QtGui.QWidget.__init__(self, parent)
 
+        self.logger = logging.getLogger("FileDialog")
+        self.logger.setLevel(logging.WARNING)
+
         if start_dir is None:
             start_dir = QtCore.QDir.currentPath()
 
@@ -85,17 +88,16 @@ class OpenScanFileDialog(QtGui.QDialog):
         self.target_path_index = None
         self.target_path_list = None
 
-        logger.info("Current path: {0}".format(start_dir))
-        target_path = QtCore.QDir.currentPath()
+        self.logger.info("Current path: {0}".format(start_dir))
         self.expand_to_path(start_dir)
 
         self.ui.file_treeview.setModel(self.model)
-        # self.ui.file_treeview.setRootIndex(index_root)
         self.ui.file_treeview.setSortingEnabled(True)
         self.ui.file_treeview.sortByColumn(0)
         self.ui.file_treeview.setAnimated(False)
         self.ui.file_treeview.setIndentation(20)
         self.ui.file_treeview.setColumnWidth(0, self.settings.value("filename_col", 200, type=int))
+        self.logger.debug("Column width: {0}".format(self.settings.value("filename_col", 200, type=int)))
         self.ui.file_treeview.selectionModel().selectionChanged.connect(self.update_selection_from_tree)
 
         self.ui.cancel_button.clicked.connect(self.reject)
@@ -129,19 +131,19 @@ class OpenScanFileDialog(QtGui.QDialog):
         return super(OpenScanFileDialog, self).closeEvent(event)
 
     def dir_loaded(self, dir_str):
-        logger.info("Dir {0} loaded".format(str(dir_str)))
+        self.logger.info("Dir {0} loaded".format(str(dir_str)))
 
         # Expand to path code:
         if self.target_path_index < len(self.target_path_list):
             tp = self.target_path_list[self.target_path_index]
             ind = self.model.index(self.target_path_list[self.target_path_index])
-            logger.debug("Path {0} index {1} {2}".format(tp, ind.row(), ind.column()))
+            self.logger.debug("Path {0} index {1} {2}".format(tp, ind.row(), ind.column()))
             self.ui.file_treeview.scrollTo(ind)
             self.ui.file_treeview.expand(ind)
             self.ui.file_treeview.entered.emit(ind)
             self.target_path_index += 1
             if self.target_path_index < len(self.target_path_list):
-                logger.debug("Fetch more from {0}".format(ind))
+                self.logger.debug("Fetch more from {0}".format(ind))
                 if self.model.rowCount(ind) == 0:
                     self.model.fetchMore(ind)
                 else:
@@ -151,14 +153,14 @@ class OpenScanFileDialog(QtGui.QDialog):
 
     def expand_to_path(self, path_name):
         self.target_path_list = str(path_name).split("/")
-        logger.debug("Expand to {0}".format(self.target_path_list))
+        self.logger.debug("Expand to {0}".format(self.target_path_list))
         self.target_path_index = 0
         for ind in range(len(self.target_path_list)-1):
             self.target_path_list[ind+1] = "{0}/{1}".format(self.target_path_list[ind], self.target_path_list[ind+1])
         self.dir_loaded(self.target_path_list[0])
 
     def update_selection_from_tree(self):
-        logger.info("Selection")
+        self.logger.info("Selection")
         sel_ind = self.ui.file_treeview.selectionModel().selection().indexes()[0]
         row = sel_ind.row()
         sel_string = self.model.fileInfo(sel_ind).canonicalFilePath()
@@ -174,7 +176,7 @@ class OpenScanFileDialog(QtGui.QDialog):
 
     def update_selection_from_lineedit(self):
         pathname = self.ui.dir_lineedit.text()
-        logger.info("Expanding tree to {0}".format(str(pathname)))
+        self.logger.info("Expanding tree to {0}".format(str(pathname)))
         self.expand_to_path(pathname)
 
     def directory(self):
@@ -189,11 +191,11 @@ class OpenScanFileDialog(QtGui.QDialog):
         load_dir_str = str(load_dir)
         if os.path.isfile(os.path.join(load_dir_str, filename)) is False:
             e = "daq_info.txt not found in {0}".format(load_dir)
-            logger.error(e)
+            self.logger.error(e)
             self.ui.daqinfo_label.setText("-- No data --")
             return
 
-        logger.info("Loading Jason format data")
+        self.logger.info("Loading Jason format data")
         data_dict = dict()
         with open(os.path.join(load_dir_str, filename), "r") as daq_file:
             while True:
@@ -257,11 +259,5 @@ class OpenScanFileDialog(QtGui.QDialog):
 if __name__ == "__main__":
     app = QtGui.QApplication(sys.argv)
     myapp = OpenScanFileDialog("D:/Programming/emittancesinglequad/saved-images")
-    logger.info("GUI object created")
-    logger.info("App show")
-    if myapp.exec_():
-        logger.info("App exit accept: {0}".format(myapp.directory()))
-    else:
-        logger.info("App exit reject")
     sys.exit(app)
 

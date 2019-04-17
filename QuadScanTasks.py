@@ -366,17 +366,14 @@ class LoadQuadScanDirTask(Task):
         if self.task_seq.is_cancelled():
             self.logger.error("Load image error: {0}".format(image_list))
 
-        self.logger.info("{0}: Sequence complete.".format(self))
         with self.lock:
             self.update_image_flag = False
 
         self.result = QuadScanData(self.acc_params, image_list, self.processed_image_list)
-        self.logger.info("{0}: Loading finished.".format(self))
 
     def processed_image_done(self, load_quadimage_task):
         with self.lock:
             go = self.update_image_flag
-            self.logger.info("{0}: Update flag {1}".format(self, go))
 
             if go:
                 quad_image = load_quadimage_task.get_result(wait=False)    # type: QuadImage
@@ -395,11 +392,8 @@ class LoadQuadScanDirTask(Task):
                     return
 
                 self.result = quad_image
-                self.logger.info("{0}: Calling {1} callbacks".format(self, len(self.callback_list)))
                 for callback in self.callback_list:
                     callback(self)
-
-                self.logger.info("{0}: Done calling callbacks".format(self, len(self.callback_list)))
 
     def cancel(self):
         if self.task_seq is not None:
@@ -1144,7 +1138,6 @@ class ProcessAllImagesTask(Task):
 def work_func_shared2(mem_ind, im_ind, im_size, threshold, roi_cent, roi_dim,
                      cal=[1.0, 1.0], kernel=3, bpp=16, normalize=False, keep_charge_ratio=1.0):
     t0 = time.time()
-    # return mem_ind, im_ind, 0, 0, 0, 0, 0, True
     try:
         shape = var_dict["image_shape"]
         # logger.debug("Processing image {0} in pool".format(mem_ind))
@@ -1232,7 +1225,6 @@ def work_func_shared2(mem_ind, im_ind, im_size, threshold, roi_cent, roi_dim,
             x_cent = 0
             y_cent = 0
 
-        # return mem_ind, im_ind, 0, 0, 0, 0, 0, True
         # t5 = time.time()
         # logger.debug("{0}: Sigma time {1:.2f} ms".format(im_ind, (t5-t4)*1e3))
 
@@ -1246,8 +1238,8 @@ def work_func_shared2(mem_ind, im_ind, im_size, threshold, roi_cent, roi_dim,
 
 
 class ProcessAllImagesTask2(Task):
-    def __init__(self, image_size=[2000, 2000], num_processes=None, process_exec_type="thread",
-                 name=None, timeout=None, trigger_dict=dict(), callback_list=list()):
+    def __init__(self, image_size=[2000, 2000], num_processes=None, watchdog_time=3.0,
+                 process_exec_type="thread", name=None, timeout=None, trigger_dict=dict(), callback_list=list()):
         """
         The idea is here to process all images in batches in a process pool.
 
@@ -1279,6 +1271,9 @@ class ProcessAllImagesTask2(Task):
         self.result_done_event = threading.Event()
         self.pending_images = 0
         self.pending_data = None
+        self.watchdog_time = watchdog_time
+        self.watchdog_timer = threading.Timer(self.watchdog_time, self.restart_processes)
+        self.watchdog_timer.cancel()
 
         self.processed_image_list = list()
 
@@ -1343,6 +1338,9 @@ class ProcessAllImagesTask2(Task):
             self.bpp = bpp
             self.enabled_list = enabled_list
             self.keep_charge_ratio = keep_charge_ratio
+            self.watchdog_timer.cancel()
+            self.watchdog_timer = threading.Timer(self.watchdog_time, self.restart_processes)
+            self.watchdog_timer.start()
 
         # Check if processing is on-going. If not, result done is set. Then we can start immediately
         if self.result_done_event.is_set():
@@ -1437,7 +1435,8 @@ class ProcessAllImagesTask2(Task):
 
             # Start processing:
             self.logger.debug("{0} apply async proc {1}".format(self, ind))
-            self.pool.apply_async(self.work_func, kwds=kwargs, callback=self.pool_callback)
+            with self.lock:
+                self.pool.apply_async(self.work_func, kwds=kwargs, callback=self.pool_callback)
 
             if self.mem_ind_queue.qsize() > 0:
                 try:
@@ -1514,6 +1513,7 @@ class ProcessAllImagesTask2(Task):
                          "    Total time: {2:.2f} ms\n"
                          "---------------------------------------------------\n"
                          "".format(self, (self.prepare_time-self.start_time)*1e3, (tot_time)*1e3))
+        self.watchdog_timer.cancel()
         self.result_done_event.set()
         with self.lock:
             # self.quad_scan_data = self.quad_scan_data._replace(proc_images=self.processed_image_list)
@@ -1525,6 +1525,11 @@ class ProcessAllImagesTask2(Task):
 
     def cancel(self):
         # self.image_processor.cancel()
+        while True:
+            try:
+                self.job_queue.get_nowait()
+            except Queue.Empty:
+                break
         Task.cancel(self)
 
     def create_pool(self):
@@ -1573,6 +1578,15 @@ class ProcessAllImagesTask2(Task):
 
         self.logger.info("{0}: Processes stopped".format(self))
 
+    def restart_processes(self):
+        self.logger.info("{0}: Watchdog timeout, restating processes".format(self))
+        while True:
+            try:
+                self.job_queue.get_nowait()
+            except Queue.Empty:
+                break
+        self.processing_done()
+        self.create_pool()
 
 
 class TangoScanTask(Task):
