@@ -106,6 +106,7 @@ class QuadScanGui(QtGui.QWidget):
     load_done_signal = QtCore.Signal(object)
     update_fit_signal = QtCore.Signal()
     update_camera_signal = QtCore.Signal(object)
+    update_proc_image_signal = QtCore.Signal(object)
 
     def __init__(self, parent=None):
         root.debug("Init")
@@ -369,6 +370,7 @@ class QuadScanGui(QtGui.QWidget):
 
         self.update_fit_signal.connect(self.plot_sigma_data)
         self.update_camera_signal.connect(self.update_camera_image)
+        self.update_proc_image_signal.connect(self.update_image_selection)
 
         # self.controller.image_done_signal.connect(self.update_fit_data)
 
@@ -504,6 +506,8 @@ class QuadScanGui(QtGui.QWidget):
         """
         root.info("Loading data from disk")
         filedialog = OpenScanFileDialog(self.last_load_dir)
+        g = self.geometry()
+        filedialog.setGeometry(g.left()+20, g.top()+20, 1000, 700)
         res = filedialog.exec_()
         root.debug("Load dir return value: {0}".format(res))
         if res != QtGui.QDialog.Accepted:
@@ -983,7 +987,8 @@ class QuadScanGui(QtGui.QWidget):
                 # root.debug("Im 0 thr: {0}".format(proc_image_list[0].threshold))
                 if len(proc_image_list) > 0:
                     self.quad_scan_data_analysis = self.quad_scan_data_analysis._replace(proc_images=proc_image_list)
-                    self.update_image_selection(None)
+                    self.update_proc_image_signal.emit(None)
+                    # self.update_image_selection(None)
                 self.start_fit()
 
     def update_image_selection(self, image=None, auto_levels=False, auto_range=False):

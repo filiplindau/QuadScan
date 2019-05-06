@@ -96,8 +96,8 @@ class OpenScanFileDialog(QtGui.QDialog):
         self.ui.file_treeview.sortByColumn(0)
         self.ui.file_treeview.setAnimated(False)
         self.ui.file_treeview.setIndentation(20)
-        self.ui.file_treeview.setColumnWidth(0, self.settings.value("filename_col", 200, type=int))
-        self.logger.debug("Column width: {0}".format(self.settings.value("filename_col", 200, type=int)))
+        self.ui.file_treeview.setColumnWidth(0, self.settings.value("filename_col", 400, type=int))
+        self.logger.debug("Column width: {0}".format(self.settings.value("filename_col", 400, type=int)))
         self.ui.file_treeview.selectionModel().selectionChanged.connect(self.update_selection_from_tree)
 
         self.ui.cancel_button.clicked.connect(self.reject)
