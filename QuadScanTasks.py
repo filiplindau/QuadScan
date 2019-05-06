@@ -1189,6 +1189,8 @@ def work_func_shared2(mem_ind, im_ind, im_size, threshold, roi_cent, roi_dim,
             n_bins = np.unique(pic_roi.flatten()).shape[0]
         else:
             n_bins = int(pic_roi.max())
+        if n_bins < 1:
+            n_bins = 1
         h = np.histogram(pic_roi, n_bins)
         hq = (h[0]*h[1][:-1]).cumsum()
         hq = hq / np.float(hq.max())
@@ -1463,12 +1465,16 @@ class ProcessAllImagesTask2(Task):
 
                 quad_image = self.quad_scan_data.images[im_ind]
 
-                if self.enabled_list is None:
-                    if not self.quad_scan_data.proc_images[im_ind].enabled:
-                        enabled = False
-                else:
-                    if not self.enabled_list[im_ind]:
-                        enabled = False
+                try:
+                    if self.enabled_list is None:
+                        if not self.quad_scan_data.proc_images[im_ind].enabled:
+                            enabled = False
+                    else:
+                        if not self.enabled_list[im_ind]:
+                            enabled = False
+                except IndexError:
+                    self.logger.warning("{0} Enabled list index error".format(self))
+                    enabled = False
 
                 acc_params = self.quad_scan_data.acc_params     # type: AcceleratorParameters
                 roi_d = [int(acc_params.roi_dim[0]), int(acc_params.roi_dim[1])]
