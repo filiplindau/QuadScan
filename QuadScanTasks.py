@@ -68,11 +68,12 @@ class TangoDeviceConnectTask(Task):
 
 class TangoReadAttributeTask(Task):
     def __init__(self, attribute_name, device_name, device_handler, name=None, timeout=None,
-                 trigger_dict=dict(), callback_list=list()):
+                 trigger_dict=dict(), callback_list=list(), ignore_tango_error=True):
         Task.__init__(self, name, timeout=timeout, trigger_dict=trigger_dict, callback_list=callback_list)
         self.device_name = device_name
         self.attribute_name = attribute_name
         self.device_handler = device_handler
+        self.ignore_tango_error = ignore_tango_error
 
         self.logger.setLevel(logging.WARNING)
 
@@ -85,24 +86,30 @@ class TangoReadAttributeTask(Task):
             self.result = e
             self.cancel()
             return
-        try:
-            attr = dev.read_attribute(self.attribute_name)
-        except AttributeError as e:
-            self.logger.exception("{0}: Attribute error reading {1} on {2}: ".format(self,
+        retries = 0
+        while retries < 3:
+            try:
+                attr = dev.read_attribute(self.attribute_name)
+                break
+            except AttributeError as e:
+                self.logger.exception("{0}: Attribute error reading {1} on {2}: ".format(self,
+                                                                                         self.attribute_name,
+                                                                                         self.device_name))
+                attr = None
+                self.result = e
+                self.cancel()
+                return
+            except pt.DevFailed as e:
+                self.logger.exception("{0}: Tango error reading {1} on {2}: ".format(self,
                                                                                      self.attribute_name,
                                                                                      self.device_name))
-            attr = None
-            self.result = e
-            self.cancel()
-            return
-        except pt.DevFailed as e:
-            self.logger.exception("{0}: Tango error reading {1} on {2}: ".format(self,
-                                                                                 self.attribute_name,
-                                                                                 self.device_name))
-            attr = None
-            self.result = e
-            self.cancel()
-            return
+                attr = None
+                self.result = e
+                if not self.ignore_tango_error:
+                    self.cancel()
+                    return
+
+            retries += 1
         self.result = attr
 
 
@@ -1711,7 +1718,16 @@ class TangoScanTask(Task):
         timestamp_list = list()
         meas_list = list()
         next_pos = self.scan_param.scan_start_pos
+
+        failed_steps = 0
+
+        # Loop through the scan
         while self.get_done_event().is_set() is False:
+
+            # Prepare set of tasks for this scan position.
+            # - Write new pos
+            # - Wait until arrived at new pos (monitor attribute)
+            # - Read a set of measurements
             write_pos_task = TangoWriteAttributeTask(self.scan_param.scan_attr_name,
                                                      self.scan_param.scan_device_name,
                                                      self.device_handler,
@@ -1750,8 +1766,10 @@ class TangoScanTask(Task):
             step_sequence_task.start()
             step_result = step_sequence_task.get_result(wait=True, timeout=self.timeout)
             if step_sequence_task.is_cancelled() is True:
-                self.cancel()
-                return
+                failed_steps += 1
+                if failed_steps > 3:
+                    self.cancel()
+                    return
             if self.is_cancelled() is True:
                 return
             pos_list.append(step_result[1].value)

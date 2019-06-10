@@ -37,11 +37,11 @@ except ImportError:
         pass
 
 
-class MultiQuadScanTask(Task):
-    def __init__(self, scan_param, device_handler, name=None, timeout=None, trigger_dict=dict(), callback_list=list(),
+class MultiQuadScanTask(object):
+    def __init__(self, scan_param=None, device_handler=None, name=None, timeout=None, trigger_dict=dict(), callback_list=list(),
                  read_callback=None):
         # type: (ScanParam) -> None
-        Task.__init__(self, name, timeout=timeout, trigger_dict=trigger_dict, callback_list=callback_list)
+        # Task.__init__(self, name, timeout=timeout, trigger_dict=trigger_dict, callback_list=callback_list)
         self.scan_param = scan_param
         self.device_handler = device_handler
         self.scan_result = None
@@ -180,3 +180,30 @@ class MultiQuadScanTask(Task):
     def write_quads(self):
         pass
 
+    def calc_ellipse(self, alpha, beta, eps, sigma):
+        my = sigma**2 / eps
+        gamma = (1 + alpha**2) / beta
+        try:
+            theta = np.arctan(2*alpha / (gamma - beta))     # Ellipse angle
+        except ZeroDivisionError:
+            theta = np.pi/2
+        m11 = my * beta
+        m12 = -my * alpha
+        m22 = my * gamma
+        l1 = ((m11 + m22) + np.sqrt((m11 - m22) ** 2 + 4 * m12 **2 )) / 2
+        l2 = ((m11 + m22) - np.sqrt((m11 - m22) ** 2 + 4 * m12 ** 2)) / 2
+        r_minor = 1.0 / np.sqrt(l1)
+        r_major = 1.0 / np.sqrt(l2)
+        return theta, r_major, r_minor
+
+
+if __name__ == "__main__":
+    mq = MultiQuadScanTask()
+
+    # MS1
+    Q1 = SectionQuad("QB1", )
+    mq.quad_list
+    alpha = -0.7
+    beta = 9.67
+    eps = 1.67e-6
+    sigma = 100e-6
