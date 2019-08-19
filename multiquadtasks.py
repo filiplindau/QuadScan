@@ -37,11 +37,11 @@ except ImportError:
         pass
 
 
-class MultiQuadScanTask(object):
-    def __init__(self, scan_param=None, device_handler=None, name=None, timeout=None, trigger_dict=dict(), callback_list=list(),
-                 read_callback=None):
+class MultiQuadScanTask(Task):
+    def __init__(self, scan_param=None, device_handler=None, name=None, timeout=None, trigger_dict=dict(),
+                 callback_list=list(), read_callback=None):
         # type: (ScanParam) -> None
-        # Task.__init__(self, name, timeout=timeout, trigger_dict=trigger_dict, callback_list=callback_list)
+        Task.__init__(self, name, timeout=timeout, trigger_dict=trigger_dict, callback_list=callback_list)
         self.scan_param = scan_param
         self.device_handler = device_handler
         self.scan_result = None
@@ -50,7 +50,7 @@ class MultiQuadScanTask(object):
 
         self.quad_list = list()
         self.quad_strength_list = list()
-        self.screen = SectionScreen()
+        self.screen = None
         self.current_fit = None
         self.ab_list = list()
         self.algo = "const_size"
@@ -58,6 +58,7 @@ class MultiQuadScanTask(object):
 
         self.logger.debug("{0}: Scan parameters: {1}".format(self, scan_param))
         self.logger.debug("{0}: read_callback {1}".format(self, read_callback))
+        self.logger.setLevel(logging.INFO)
 
     def action(self):
         self.logger.info("{0} starting scan of {1} from {2} to {3}. ".format(self, self.scan_param.scan_attr_name,
@@ -147,23 +148,33 @@ class MultiQuadScanTask(object):
         self.logger.info("{0}: Solving new quad strengts for target a,b = {1:.2f}, {2:.2f}".format(self,
                                                                                                    target_a,
                                                                                                    target_b))
+        x0 = self.quad_strength_list
+        res = minimize(self.opt_fun, x0=x0, args=[target_a, target_b], bounds=((-2, 2), (-2, 2), (-2, 2), (-2, 2)))
+        return res
 
-    def calc_response_matrix(self):
-        self.logger.info("{0}: Calculating new response matrix".format(self))
-        s = self.quad_list[0].position
+    def opt_fun(self, x, target_ab):
+        M = self.calc_response_matrix(x, self.quad_list, self.screen.position)
+        y = (M[0, 0] - target_ab[0])**2 + (M[0, 1] - target_ab[1])**2
+        return y
+
+    def calc_response_matrix(self, quad_strengths, quad_list, screen_position):
+        self.logger.debug("{0}: Calculating new response matrix".format(self))
+        s = quad_list[0].position
         M = np.identity(2)
-        for ind, quad in enumerate(self.quad_list):
+        for ind, quad in enumerate(quad_list):
+            # self.logger.debug("Position s: {0} m".format(s))
             drift = quad.position - s
             M_d = np.array([[1.0, drift], [0.0, 1.0]])
             M = np.matmul(M, M_d)
             L = quad.length
-            k = self.quad_strength_list[ind]
+            k = quad_strengths[ind]
             k_sqrt = np.sqrt(k*(1+0j))
-            M_q = np.real(np.array([[np.cos(k_sqrt * L),            np.sin(k_sqrt * L) / k_sqrt],
+
+            M_q = np.real(np.array([[np.cos(k_sqrt * L),            np.sinc(k_sqrt * L) * L],
                                     [-k_sqrt * np.sin(k_sqrt * L),  np.cos(k_sqrt * L)]]))
             M = np.matmul(M, M_q)
             s = quad.position
-        drift = self.screen.position - s
+        drift = screen_position - s
         M_d = np.array([[1.0, drift], [0.0, 1.0]])
         M = np.matmul(M, M_d)
         return M
@@ -201,8 +212,15 @@ if __name__ == "__main__":
     mq = MultiQuadScanTask()
 
     # MS1
-    Q1 = SectionQuad("QB1", )
-    mq.quad_list
+    Q1 = SectionQuad("QB1", 13.55, 0.2, "i-ms1/mag/qb-01", "i-ms1/mag/crq-01", 1)
+    Q2 = SectionQuad("QB2", 14.45, 0.2, "i-ms1/mag/qb-02", "i-ms1/mag/crq-02", 1)
+    Q3 = SectionQuad("QB3", 17.75, 0.2, "i-ms1/mag/qb-03", "i-ms1/mag/crq-03", 1)
+    Q4 = SectionQuad("QB4", 18.65, 0.2, "i-ms1/mag/qb-04", "i-ms1/mag/crq-04", 1)
+    screen = SectionScreen("SCRN-01", 19.223, "lima/liveviewer/i-ms1-dia-scrn-01",
+                           "lima/beamviewer/i-ms1-dia-scrn-01", "lima/limaccd/i-ms1-dia-scrn-01", "i-ms1/dia/scrn-01")
+    mq.quad_list = [Q1, Q2, Q3, Q4]
+    mq.quad_strength_list = [0, 0, 0, 0]
+    mq.screen = screen
     alpha = -0.7
     beta = 9.67
     eps = 1.67e-6

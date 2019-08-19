@@ -84,14 +84,13 @@ class OpenScanFileDialog(QtGui.QDialog):
         self.model.setRootPath(QtCore.QDir.rootPath())
         self.model.directoryLoaded.connect(self.dir_loaded)
         self.model.setFilter(QtCore.QDir.AllDirs | QtCore.QDir.NoDotAndDotDot)
+        self.logger.debug("File selection model {0}".format(self.model))
 
         self.target_path_index = None
         self.target_path_list = None
 
-        self.logger.info("Current path: {0}".format(start_dir))
-        self.expand_to_path(start_dir)
-
         self.ui.file_treeview.setModel(self.model)
+        self.logger.debug("UI model {0}".format(self.ui.file_treeview.selectionModel()))
         self.ui.file_treeview.setSortingEnabled(True)
         self.ui.file_treeview.sortByColumn(0)
         self.ui.file_treeview.setAnimated(False)
@@ -99,6 +98,9 @@ class OpenScanFileDialog(QtGui.QDialog):
         self.ui.file_treeview.setColumnWidth(0, self.settings.value("filename_col", 400, type=int))
         self.logger.debug("Column width: {0}".format(self.settings.value("filename_col", 400, type=int)))
         self.ui.file_treeview.selectionModel().selectionChanged.connect(self.update_selection_from_tree)
+
+        self.logger.info("Current path: {0}".format(start_dir))
+        self.expand_to_path(start_dir)
 
         self.ui.cancel_button.clicked.connect(self.reject)
         self.ui.select_button.clicked.connect(self.accept)
@@ -142,6 +144,8 @@ class OpenScanFileDialog(QtGui.QDialog):
             self.ui.file_treeview.expand(ind)
             self.ui.file_treeview.entered.emit(ind)
             self.target_path_index += 1
+            self.logger.debug("Selection self.model {0}, ui model {1}".format(self.model,
+                                                                              self.ui.file_treeview.selectionModel()))
             if self.target_path_index < len(self.target_path_list):
                 self.logger.debug("Fetch more from {0}".format(ind))
                 if self.model.rowCount(ind) == 0:
