@@ -1670,7 +1670,7 @@ class ProcessAllImagesTask2(Task):
         self.finish_process_event.set()
 
     def stop_processes(self, terminate=True):
-        self.logger.info("{0}: Stopping processes".format(self))
+        self.logger.info("{0}: Stopping processes, terminate {1}".format(self, terminate))
         self.result_done_event.set()
         try:
             if terminate:

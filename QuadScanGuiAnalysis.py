@@ -143,19 +143,53 @@ class QuadScanGui(QtGui.QWidget):
         self.gui_lock = threading.Lock()
         self.image_lock = threading.Lock()
 
+        self.image_processor = None         # type: ProcessAllImagesTask2
+
         self.ui = Ui_QuadScanDialog()
         self.ui.setupUi(self)
 
         self.setup_layout()
 
-        self.image_processor = ProcessAllImagesTask2(image_size=[2000, 2000], name="gui_image_proc",
-                                                     callback_list=[self.update_image_processing])
-        self.image_processor.start()
+        self.init_processing()
 
         root.info("Exit gui init")
 
     def init_processing(self):
-        root.info("Initialzing image processor")
+        root.info("Initializing data structures")
+        self.current_state = "unknown"
+        # self.last_load_dir = "."
+        # self.data_base_dir = "."
+        self.load_init_flag = False     # Set when staring new load from disk
+
+        self.load_image_max = 0.0
+        self.scan_image_max = 0.0
+        self.user_enable_list = list()
+
+        self.quad_scan_data_analysis = QuadScanData(acc_params=None, images=None, proc_images=None)
+        self.quad_scan_data_scan = QuadScanData(acc_params=None, images=None, proc_images=None)
+        self.fit_result = FitResult(poly=None, alpha=None, beta=None, eps=None, eps_n=None,
+                                    gamma_e=None, fit_data=None, residual=None)
+        self.processing_tasks = list()
+
+        if self.image_processor is not None:
+            self.image_processor.finish_processing()
+        self.image_processor = ProcessAllImagesTask2(image_size=[2000, 2000], name="gui_image_proc",
+                                                     callback_list=[self.update_image_processing])
+        self.image_processor.start()
+
+        self.ui.p_electron_energy_label.setText("--- MeV")
+        self.ui.p_quad_length_label.setText("-.-- m")
+        self.ui.p_quad_screen_dist_label.setText("-.-- m")
+        self.ui.p_k_value_label.setText(u"k = -.-- 1/m\u00B2")
+        self.ui.p_k_ind_label.setText("k index 0/0")
+        self.ui.p_image_label.setText("image 0/0")
+        self.ui.data_source_label.setText("--- No data loaded ---")
+        self.ui.p_image_index_slider.setMaximum(0)
+        self.ui.p_image_index_slider.setValue(0)
+        self.ui.p_image_index_slider.update()
+        self.update_image_selection(np.random.random((64, 64)), auto_levels=True, auto_range=True)
+        self.update_fit_result()
+        self.append_status_message("Init data structures")
 
     def setup_layout(self):
         """
@@ -306,9 +340,9 @@ class QuadScanGui(QtGui.QWidget):
         :return:
         """
         self.image_processor.clear_callback_list()
-        root.debug("Stop image processor")
+        root.info("Stop image processor")
         self.image_processor.finish_processing()
-        root.debug("Command sent.")
+        root.info("Command sent.")
         self.settings.setValue("load_path", self.last_load_dir)
 
         self.settings.setValue('window_size_w', np.int(self.size().width()))
@@ -330,7 +364,14 @@ class QuadScanGui(QtGui.QWidget):
         else:
             algo = "thin lens"
         self.settings.setValue("fit_algo", algo)
-        root.debug("Settings done.")
+        root.info("Settings done.")
+        t0 = time.time()
+        while not self.image_processor.is_done():
+            time.sleep(0.1)
+            if time.time() - t0 > 3:
+                root.warning("Timeout waiting for image processes to finish")
+                break
+        event.accept()
 
     def set_roi(self):
         root.info("Set roi from spinboxes")
@@ -722,6 +763,16 @@ class QuadScanGui(QtGui.QWidget):
                     self.update_fit_signal.emit()
                 else:
                     root.error("Fit result NONE")
+        else:
+            self.ui.eps_label.setText("-- mm x mmrad")
+            self.ui.beta_label.setText("-- m")
+            self.ui.alpha_label.setText("--")
+            self.fit_result = None
+            self.fit_x_plot.setData(x=[], y=[])
+            self.sigma_x_plot.setData(x=[], y=[])
+            self.charge_plot.setData(x=[], y=[])
+            self.ui.fit_widget.update()
+            self.ui.charge_widget.update()
 
     def plot_sigma_data(self):
         root.info("Plotting sigma data")
