@@ -187,7 +187,7 @@ class QuadScanGui(QtGui.QWidget):
         self.ui.p_image_index_slider.setMaximum(0)
         self.ui.p_image_index_slider.setValue(0)
         self.ui.p_image_index_slider.update()
-        self.update_image_selection(np.random.random((64, 64)), auto_levels=True, auto_range=True)
+        self.update_image_selection(np.random.random((64, 64)), auto_levels=False, auto_range=True)
         self.update_fit_result()
         self.append_status_message("Init data structures")
 
@@ -672,6 +672,7 @@ class QuadScanGui(QtGui.QWidget):
                 self.start_fit()
 
     def update_image_selection(self, image=None, auto_levels=False, auto_range=False):
+        root.info("Updating selected image, autolevels {0}, autorange {1}".format(auto_levels, auto_range))
         if image is None or isinstance(image, int):
             im_ind = self.ui.p_image_index_slider.value()
             if self.ui.p_raw_image_radio.isChecked():
