@@ -165,18 +165,18 @@ class MultiQuadScanTask(Task):
             # self.logger.debug("Position s: {0} m".format(s))
             drift = quad.position - s
             M_d = np.array([[1.0, drift], [0.0, 1.0]])
-            M = np.matmul(M, M_d)
+            M = np.matmul(M_d, M)
             L = quad.length
             k = quad_strengths[ind]
             k_sqrt = np.sqrt(k*(1+0j))
 
             M_q = np.real(np.array([[np.cos(k_sqrt * L),            np.sinc(k_sqrt * L) * L],
                                     [-k_sqrt * np.sin(k_sqrt * L),  np.cos(k_sqrt * L)]]))
-            M = np.matmul(M, M_q)
+            M = np.matmul(M_q, M)
             s = quad.position
         drift = screen_position - s
         M_d = np.array([[1.0, drift], [0.0, 1.0]])
-        M = np.matmul(M, M_d)
+        M = np.matmul(M_d, M)
         return M
 
     def process_image(self, image):

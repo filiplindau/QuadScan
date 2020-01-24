@@ -1288,16 +1288,17 @@ def work_func_local2(image, im_ind, threshold, roi_cent, roi_dim,
         # Filter out charge:
         if normalize:
             n_bins = np.unique(pic_roi.flatten()).shape[0]
+            # Number of bins in histogram: number of unique pixel values
         else:
             n_bins = int(pic_roi.max())
         if n_bins < 1:
             n_bins = 1
         h = np.histogram(pic_roi, n_bins)
-        hq = (h[0]*h[1][:-1]).cumsum()
+        hq = (h[0]*h[1][:-1]).cumsum()      # Scale number of pixels with pixel value to get total charge for this value
         hq = hq / np.float(hq.max())
-        # hq = (hq.astype(np.float) / hq.max()).cumsum()
         th_ind = np.searchsorted(hq, 1-keep_charge_ratio)
-        d = (h[1][1] - h[1][0])/2.0
+        # d = (h[1][1] - h[1][0])/2.0
+        d = 0
         th_q = h[1][th_ind] - d
         pic_roi[pic_roi < th_q] = 0.0
         # logger.debug("Pic_roi max: {0}, threshold index: {1}, threshold: {2}, ch ratio: {3}\n"
@@ -2060,6 +2061,7 @@ class FitQuadDataTask(Task):
 
         k_sqrt = np.sqrt(k[ind]*(1+0j))
         # self.logger.debug("k_sqrt = {0}".format(k_sqrt))
+        # Matrix elements for single quad + drift:
         A = np.real(np.cos(k_sqrt * L) - d * k_sqrt * np.sin(k_sqrt * L))
         B = np.real(1 / k_sqrt * np.sin(k_sqrt * L) + d * np.cos(k_sqrt * L))
         M = np.vstack((A*A, -2*A*B, B*B)).transpose()

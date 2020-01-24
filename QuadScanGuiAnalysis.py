@@ -677,50 +677,56 @@ class QuadScanGui(QtGui.QWidget):
             im_ind = self.ui.p_image_index_slider.value()
             if self.ui.p_raw_image_radio.isChecked():
                 # Raw image selected
-                try:
-                    with self.image_lock:
-                        image_struct = self.quad_scan_data_analysis.images[im_ind]
-                        image = np.copy(image_struct.image)
-                except IndexError:
-                    time_str = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(time.time()))
-                    msg = "Index {0} out of range, len {1}.".format(im_ind,
-                                                                    len(self.quad_scan_data_analysis.images))
-                    self.ui.status_textedit.append("\n---------------------------\n"
-                                                   "{0}:\n"
-                                                   "{1}\n".format(time_str, msg))
-                    root.error(msg)
+                if self.quad_scan_data_analysis is not None:
+                    try:
+                        with self.image_lock:
+                            image_struct = self.quad_scan_data_analysis.images[im_ind]
+                            image = np.copy(image_struct.image)
+                    except IndexError:
+                        time_str = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(time.time()))
+                        msg = "Index {0} out of range, len {1}.".format(im_ind,
+                                                                        len(self.quad_scan_data_analysis.images))
+                        self.ui.status_textedit.append("\n---------------------------\n"
+                                                       "{0}:\n"
+                                                       "{1}\n".format(time_str, msg))
+                        root.error(msg)
 
+                        return
+                    try:
+
+                        self.ui.process_image_widget.setImage(np.transpose(image), autoRange=auto_range, autoLevels=auto_levels)
+                        self.ui.process_image_widget.roi.show()
+                        self.ui.process_image_widget.update()
+                    except TypeError as e:
+                        root.error("Error setting image: {0}".format(e))
+                else:
+                    root.debug("No data, can't update image")
                     return
-                try:
-
-                    self.ui.process_image_widget.setImage(np.transpose(image), autoRange=auto_range, autoLevels=auto_levels)
-                    self.ui.process_image_widget.roi.show()
-                    self.ui.process_image_widget.update()
-                except TypeError as e:
-                    root.error("Error setting image: {0}".format(e))
-
             else:
                 # Filtered image selected
-                try:
-                    with self.image_lock:
-                        image_struct = self.quad_scan_data_analysis.proc_images[im_ind]    # type: ProcessedImage
-                        image = np.copy(image_struct.pic_roi)
-                except IndexError:
-                    time_str = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(time.time()))
-                    msg = "Index {0} out of range, len {1}.".format(im_ind,
-                                                                    len(self.quad_scan_data_analysis.proc_images))
-                    self.ui.status_textedit.append("\n---------------------------\n"
-                                                   "{0}:\n"
-                                                   "{1}\n".format(time_str, msg))
-                    root.error(msg)
+                if self.quad_scan_data_analysis is not None:
+                    try:
+                        with self.image_lock:
+                            image_struct = self.quad_scan_data_analysis.proc_images[im_ind]    # type: ProcessedImage
+                            image = np.copy(image_struct.pic_roi)
+                    except IndexError:
+                        time_str = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(time.time()))
+                        msg = "Index {0} out of range, len {1}.".format(im_ind,
+                                                                        len(self.quad_scan_data_analysis.proc_images))
+                        self.ui.status_textedit.append("\n---------------------------\n"
+                                                       "{0}:\n"
+                                                       "{1}\n".format(time_str, msg))
+                        root.error(msg)
+                        return
+
+                    try:
+                        self.ui.process_image_widget.roi.hide()
+                        self.ui.process_image_widget.setImage(np.transpose(image), autoRange=False, autoLevels=auto_levels)
+                    except TypeError as e:
+                        root.error("Error setting image: {0}".format(e))
+                else:
+                    root.debug("No data, can't update image")
                     return
-
-                try:
-                    self.ui.process_image_widget.roi.hide()
-                    self.ui.process_image_widget.setImage(np.transpose(image), autoRange=False, autoLevels=auto_levels)
-                except TypeError as e:
-                    root.error("Error setting image: {0}".format(e))
-
             self.ui.p_k_value_label.setText(u"k = {0:.3f} 1/m\u00B2".format(image_struct.k_value))
             self.ui.p_k_ind_label.setText("k index {0}/{1}".format(image_struct.k_ind,
                                                                    self.quad_scan_data_analysis.acc_params.num_k - 1))
