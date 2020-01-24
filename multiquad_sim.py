@@ -261,6 +261,20 @@ class MultiQuad(object):
         r_major = 1.0 / np.sqrt(l2)
         return theta, r_major, r_minor
 
+    def get_missing_twiss(self, sigma, M, alpha=None, beta=None, eps=None):
+        a = M[0, 0]
+        b = M[0, 1]
+        sigma
+        # sigma = np.sqrt(self.eps * (self.beta * a**2 - 2.0 * self.alpha * a * b + (1.0 + self.alpha**2) / self.beta * b**2))
+        if eps is None:
+            res = sigma**2 / (beta * a**2 - 2.0 * alpha * a * b + (1.0 + alpha**2) / beta * b**2)
+        elif beta is None:
+            p = b * alpha / a + sigma**2 / (2 * eps * a**2)
+            res = p + np.sqrt(p**2 - b**2 * (1 + alpha**2) / a**2)
+        else:
+            res = a * beta / b + np.sqrt(sigma**2 * beta / (b**2 * eps) - 1)
+        return res
+
     def __repr__(self):
         s = "{0} {1}".format(type(self), self.name)
         return s
