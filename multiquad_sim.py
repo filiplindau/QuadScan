@@ -150,8 +150,10 @@ class MultiQuad(object):
     def __init__(self):
         self.name = "QuadSimulator"
         self.logger = logging.getLogger("Sim.{0}".format(self.name.upper()))
-        self.logger.setLevel(logging.INFO)
 
+        self.gamma_energy = 241e6 / 0.511e6
+
+        # self.sim = QuadSimulator(36.0, 69.0, 3e-6 * self.gamma_energy)  # MS-1 QB-01, SCRN-01
         self.sim = QuadSimulator(36.0, 69.0, 3e-6)  # MS-1 QB-01, SCRN-01
         self.sim.add_quad(SectionQuad("QB-01", 13.55, 0.2, "MAG-01", "CRQ-01", True))
         self.sim.add_quad(SectionQuad("QB-02", 14.45, 0.2, "MAG-02", "CRQ-02", True))
@@ -164,6 +166,7 @@ class MultiQuad(object):
         self.quad_list.append(SectionQuad("QB-02", 14.45, 0.2, "MAG-02", "CRQ-02", True))
         self.quad_list.append(SectionQuad("QB-03", 17.75, 0.2, "MAG-03", "CRQ-03", True))
         self.quad_list.append(SectionQuad("QB-04", 18.65, 0.2, "MAG-04", "CRQ-04", True))
+
 
         # Starting guess
         self.quad_strength_list = [-1.0, 0.0, 1.5, 1.5]
@@ -179,39 +182,88 @@ class MultiQuad(object):
         self.x_list = list()
         self.psi_target = None
 
+        self.alpha_list = list()
+        self.beta_list = list()
+        self.eps_list = list()
+        self.theta_list = list()
+        self.r_maj_list = list()
+        self.r_min_list = list()
+
+        self.logger.setLevel(logging.DEBUG)
+
+        self.scan()
+
     def scan(self):
         M0 = self.calc_response_matrix(self.quad_strength_list, self.quad_list, self.screen.position)
         a0 = M0[0, 0]
         b0 = M0[0, 1]
-        psi0 = np.arctan(b0 / a0)
+        sigma0 = self.sim.get_screen_beamsize(self.quad_strength_list)
+        alpha0 = 0.0
+        eps0 = 3e-6
+        beta0 = self.get_missing_twiss(sigma0, M0, alpha0, None, eps0)
+        theta, r_maj, r_min = self.calc_ellipse(alpha0, beta0, eps0, sigma0)
+        psi0 = np.arcsin(a0 / np.sqrt(a0**2 + b0**2)) - theta
+
+        self.logger.info("Scan starting. Initial parameters: th={0:.3f}, r_maj={1:.3f}, r_min={2:.3f}, "
+                         "a0={3:.3f}, b0={4:.3f}".format(theta, r_maj, r_min, a0, b0))
 
         n_steps = 50
         self.psi_target = np.linspace(0, 1, n_steps) * 2 * np.pi / n_steps + psi0
-        for step in range(n_steps):
-            psi = self.psi_target[k]
-            self.scan_step()
+
+        # for step in range(n_steps-1):
+        for step in range(5):
+            psi = self.psi_target[step + 1]
+            a, b = self.set_target_ab(psi, theta, r_maj, r_min)
+            sigma = self.scan_step(a, b)
+            alpha, beta, eps = self.calc_twiss(np.array(self.a_list), np.array(self.b_list), np.array(self.x_list))
+            theta, r_maj, r_min = self.calc_ellipse(alpha, beta, eps, sigma)
+            self.alpha_list.append(alpha)
+            self.beta_list.append(beta)
+            self.eps_list.append(eps)
+            self.theta_list.append(theta)
+            self.r_maj_list.append(r_maj)
+            self.r_min_list.append(r_min)
 
     def scan_step(self, a, b):
-        self.logger.info("{0} Scan step {1}, {2}".format(self, a, b))
+        self.logger.info("{0} Scan step {1:.3f}, {2:.3f}".format(self, a, b))
         r = self.solve_quads(a, b)
         self.k_list.append(r.x)
         M = self.calc_response_matrix(r.x, self.quad_list, self.screen.position)
         self.a_list.append(M[0, 0])
         self.b_list.append(M[0, 1])
-        self.x_list.append(self.sim.get_screen_beamsize())
+        sigma = self.sim.get_screen_beamsize(r.x)
+        self.x_list.append(sigma)
+        return sigma
 
-    def set_target_ab(self):
+    def calc_twiss(self, a, b, sigma):
+        M = np.vstack((a*a, -2*a*b, b*b)).transpose()
+        try:
+            l_data = np.linalg.lstsq(M, sigma**2, rcond=-1)
+            x = l_data[0]
+            res = l_data[1]
+        except Exception as e:
+            self.logger.error("Error when fitting lstsqr: {0}".format(e))
+            return e
+        self.logger.debug("Fit coefficients: {0}".format(x[0]))
+        eps = np.sqrt(x[2] * x[0] - x[1]**2)
+        eps_n = eps * self.gamma_energy
+        beta = x[0] / eps
+        alpha = x[1] / eps
+        return alpha, beta, eps
+
+    def set_target_ab(self, psi, theta, r_maj, r_min):
         self.logger.info("{0}: Determine new target a,b for algo {1}".format(self, self.algo))
         if self.algo == "const_size":
-            target_a = 1
-            target_b = 6
+            target_a = r_maj * np.cos(psi) * np.cos(theta) - r_min * np.sin(psi) * np.sin(theta)
+            target_b = r_maj * np.cos(psi) * np.sin(theta) + r_min * np.sin(psi) * np.cos(theta)
         else:
             target_a = 1
             target_b = 0
+        self.logger.debug("Target a, b = {0:.3f}, {1:.3f}".format(target_a, target_b))
         return target_a, target_b
 
     def solve_quads(self, target_a, target_b):
-        self.logger.info("{0}: Solving new quad strengts for target a,b = {1:.2f}, {2:.2f}".format(self,
+        self.logger.info("{0}: Solving new quad strengths for target a,b = {1:.2f}, {2:.2f}".format(self,
                                                                                                    target_a,
                                                                                                    target_b))
         x0 = self.quad_strength_list
@@ -224,7 +276,7 @@ class MultiQuad(object):
         return y
 
     def calc_response_matrix(self, quad_strengths, quad_list, screen_position):
-        self.logger.debug("{0}: Calculating new response matrix".format(self))
+        # self.logger.debug("{0}: Calculating new response matrix".format(self))
         s = quad_list[0].position
         M = np.identity(2)
         for ind, quad in enumerate(quad_list):
@@ -246,25 +298,25 @@ class MultiQuad(object):
         return M
 
     def calc_ellipse(self, alpha, beta, eps, sigma):
-        my = sigma**2 / eps
-        gamma = (1 + alpha**2) / beta
+        my = sigma**2.0 / eps
+        gamma = (1.0 + alpha**2) / beta
         try:
-            theta = np.arctan(2*alpha / (gamma - beta))     # Ellipse angle
+            theta = np.arctan(2.0 * alpha / (gamma - beta)) / 2.0    # Ellipse angle
         except ZeroDivisionError:
             theta = np.pi/2
-        m11 = my * beta
-        m12 = -my * alpha
-        m22 = my * gamma
-        l1 = ((m11 + m22) + np.sqrt((m11 - m22) ** 2 + 4 * m12 **2 )) / 2
-        l2 = ((m11 + m22) - np.sqrt((m11 - m22) ** 2 + 4 * m12 ** 2)) / 2
-        r_minor = 1.0 / np.sqrt(l1)
-        r_major = 1.0 / np.sqrt(l2)
+        m11 = beta
+        m12 = -alpha
+        m22 = gamma
+        l1 = ((m11 + m22) + np.sqrt((m11 - m22) ** 2 + 4.0 * m12 ** 2)) / 2
+        l2 = ((m11 + m22) - np.sqrt((m11 - m22) ** 2 + 4.0 * m12 ** 2)) / 2
+        r_minor = np.sqrt(my / l1)
+        r_major = np.sqrt(my / l2)
+        theta = np.arctan((l1 - gamma) / alpha)
         return theta, r_major, r_minor
 
     def get_missing_twiss(self, sigma, M, alpha=None, beta=None, eps=None):
         a = M[0, 0]
         b = M[0, 1]
-        sigma
         # sigma = np.sqrt(self.eps * (self.beta * a**2 - 2.0 * self.alpha * a * b + (1.0 + self.alpha**2) / self.beta * b**2))
         if eps is None:
             res = sigma**2 / (beta * a**2 - 2.0 * alpha * a * b + (1.0 + alpha**2) / beta * b**2)
@@ -272,7 +324,7 @@ class MultiQuad(object):
             p = b * alpha / a + sigma**2 / (2 * eps * a**2)
             res = p + np.sqrt(p**2 - b**2 * (1 + alpha**2) / a**2)
         else:
-            res = a * beta / b + np.sqrt(sigma**2 * beta / (b**2 * eps) - 1)
+            res = a * beta / b - np.sqrt(sigma**2 * beta / (b**2 * eps) - 1)
         return res
 
     def __repr__(self):
@@ -306,15 +358,15 @@ if __name__ == "__main__":
 
     print("Beam size: {0}".format(sim.get_screen_beamsize()))
 
-    k = np.linspace(-5, 5, 5000)
-    sigma = list()
-    t0 = time.time()
-    for kp in k:
-        sim.set_quad_strength([kp, 0, 0, 0])
-        sigma.append(sim.get_screen_beamsize())
-    t1 = time.time()
-    sigma = np.array(sigma)
-    logger.info("Time spent: {0}".format(t1-t0))
+    # k = np.linspace(-5, 5, 5000)
+    # sigma = list()
+    # t0 = time.time()
+    # for kp in k:
+    #     sim.set_quad_strength([kp, 0, 0, 0])
+    #     sigma.append(sim.get_screen_beamsize())
+    # t1 = time.time()
+    # sigma = np.array(sigma)
+    # logger.info("Time spent: {0}".format(t1-t0))
 
     mq = MultiQuad()
 
