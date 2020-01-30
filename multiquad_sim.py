@@ -182,7 +182,7 @@ class MultiQuad(object):
 
 
         # Starting guess
-        self.quad_strength_list = [-1.5, 0.0, 0.5, 0.5]
+        self.quad_strength_list = [1.0, -1.1, 1.9, 4.0]
 
         self.screen = SectionScreen("screen", 19.223, "liveviewer", "beamviewer", "limaccd", "screen")
 
@@ -210,19 +210,20 @@ class MultiQuad(object):
         a0 = M0[0, 0]
         b0 = M0[0, 1]
         sigma0 = self.sim.get_screen_beamsize(self.quad_strength_list)
-        alpha0 = 0.0
+        alpha0 = 5.0
         eps0 = 3e-6 * self.gamma_energy
         beta0 = self.get_missing_twiss(sigma0, M0, alpha0, None, eps0)
         if np.isnan(beta0):
             beta0 = 50.0
         # alpha0 = 36.0
-        # beta0 = 69.0
+        beta0 = 50.0
         theta, r_maj, r_min = self.calc_ellipse(alpha0, beta0, eps0, sigma0)
         # psi0 = np.arcsin(a0 / np.sqrt(a0**2 + b0**2)) - theta
         psi0 = np.arccos((a0 + b0 * np.tan(theta)) * np.cos(theta) / r_maj)
 
         self.logger.info("Scan starting. Initial parameters: th={0:.3f}, r_maj={1:.3f}, r_min={2:.3f}, "
-                         "a0={3:.3f}, b0={4:.3f}".format(theta, r_maj, r_min, a0, b0))
+                         "a0={3:.3f}, b0={4:.3f}, sigma0={5:.3f}, beta0={6:.3f}".format(theta, r_maj, r_min, a0, b0,
+                                                                                        sigma0, beta0))
 
         n_steps = 16
         self.psi_target = np.linspace(0, 1, n_steps) * 2 * np.pi + psi0
@@ -369,7 +370,7 @@ class MultiQuad(object):
             res = sigma**2 / (beta * a**2 - 2.0 * alpha * a * b + (1.0 + alpha**2) / beta * b**2)
         elif beta is None:
             p = b * alpha / a + sigma**2 / (2 * eps * a**2)
-            res = p + np.sqrt(p**2 - b**2 * (1 + alpha**2) / a**2)
+            res = p - np.sqrt(p**2 - b**2 * (1 + alpha**2) / a**2)
         else:
             res = a * beta / b - np.sqrt(sigma**2 * beta / (b**2 * eps) - 1)
         return res
@@ -443,7 +444,7 @@ if __name__ == "__main__":
     # sigma = np.array(sigma)
     # logger.info("Time spent: {0}".format(t1-t0))
 
-    alpha = 0.0
+    alpha = 10.0
     beta = 69.0
     eps = 2e-6
     sigma_target = 0.005
