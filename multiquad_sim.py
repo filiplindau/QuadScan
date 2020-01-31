@@ -22,6 +22,7 @@ import pprint
 import traceback
 from scipy.signal import medfilt2d
 from scipy.optimize import minimize
+from scipy.optimize import lsq_linear
 from QuadScanTasks import TangoReadAttributeTask, TangoMonitorAttributeTask, TangoWriteAttributeTask, work_func_local2
 import logging
 from operator import attrgetter
@@ -227,6 +228,9 @@ class MultiQuad(object):
 
         n_steps = 16
         self.psi_target = np.linspace(0, 1, n_steps) * 2 * np.pi + psi0
+        self.psi_target[1] = psi0 + 0.025
+        self.psi_target[2] = psi0 + 0.05
+        self.k_list = [self.quad_strength_list]
 
         # for step in range(n_steps-1):
         alpha = alpha0
@@ -236,7 +240,7 @@ class MultiQuad(object):
             self.alpha_list.append(alpha)
             self.beta_list.append(beta)
             self.eps_list.append(eps)
-            self.eps_n_list.append(eps * self.gamma_energy)
+            self.eps_n_list.append(eps / self.gamma_energy)
             self.theta_list.append(theta)
             self.r_maj_list.append(r_maj)
             self.r_min_list.append(r_min)
@@ -280,6 +284,20 @@ class MultiQuad(object):
         #     beta = -c2 / (2 * c1) + np.sqrt(c2**2 / (4 * c1**2) - c3 / c1)
         #     eps = sigma[0]**2 / (beta * a1**2 - 2 * a1 * b1 * alpha + (1 + alpha**2) / beta * b1**2)
         if M.shape[0] < 3:
+            # alpha0 = [self.alpha_list[0] - 10.0, self.alpha_list[0] + 10.0]
+            # beta0 = [np.maximum(self.beta_list[0] - 10.0, 0), self.beta_list[0] + 10.0]
+            # eps0 = [self.eps_list[0] * 0.8, self.eps_list[0] * 1.2]
+            # bounds = ([beta0[0]*eps0[0], alpha0[0]*eps0[0], (1 + alpha0[1]**2) * eps0[0]**2 / (beta0[1] * eps0[1])],
+            #           [beta0[1]*eps0[1], alpha0[1]*eps0[1], (1 + alpha0[1]**2) * eps0[1]**2 / (beta0[0] * eps0[0])])
+            # l_data = lsq_linear(M, sigma**2, bounds=bounds)
+            # x = l_data.x
+            # self.logger.debug("Bounds: {0}\n result: {1}".format(bounds, l_data))
+            # eps = np.sqrt(x[2] * x[0] - x[1]**2)
+            # if np.isnan(eps):
+            #     eps = self.eps_list[-1]
+            # eps_n = eps / self.gamma_energy
+            # beta = x[0] / eps
+            # alpha = x[1] / eps
             alpha = self.alpha_list[-1]
             beta = self.beta_list[-1]
             eps = self.eps_list[-1]
@@ -293,7 +311,7 @@ class MultiQuad(object):
                 return e
             self.logger.debug("Fit coefficients: {0}".format(x[0]))
             eps = np.sqrt(x[2] * x[0] - x[1]**2)
-            eps_n = eps * self.gamma_energy
+            eps_n = eps / self.gamma_energy
             beta = x[0] / eps
             alpha = x[1] / eps
         return alpha, beta, eps
@@ -314,6 +332,7 @@ class MultiQuad(object):
                                                                                                    target_a,
                                                                                                    target_b))
         x0 = self.quad_strength_list
+        # x0 = self.k_list[-1]
         b = (-self.max_k, self.max_k)
         res = minimize(self.opt_fun, x0=x0, args=[target_a, target_b], bounds=(b, b, b, b))
         self.logger.debug("Found quad strengths: {0}".format(res.x))
@@ -322,7 +341,8 @@ class MultiQuad(object):
     def opt_fun(self, x, target_ab):
         M = self.calc_response_matrix(x, self.quad_list, self.screen.position)
         y = (M[0, 0] - target_ab[0])**2 + (M[0, 1] - target_ab[1])**2
-        return y
+        w = np.sum(x**2) * 0.000
+        return y + w
 
     def calc_response_matrix(self, quad_strengths, quad_list, screen_position):
         # self.logger.debug("{0}: Calculating new response matrix".format(self))
@@ -444,9 +464,9 @@ if __name__ == "__main__":
     # sigma = np.array(sigma)
     # logger.info("Time spent: {0}".format(t1-t0))
 
-    alpha = 10.0
-    beta = 69.0
-    eps = 2e-6
+    alpha = 2.0
+    beta = 7.0
+    eps = 1e-6
     sigma_target = 0.005
 
     q_i = [1.87, -1.30, -0.24, 2.61]
