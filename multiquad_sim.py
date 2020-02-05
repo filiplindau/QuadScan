@@ -21,7 +21,7 @@ from collections import namedtuple
 import pprint
 import traceback
 from scipy.signal import medfilt2d
-from scipy.optimize import minimize
+from scipy.optimize import minimize, BFGS
 from scipy.optimize import lsq_linear
 from QuadScanTasks import TangoReadAttributeTask, TangoMonitorAttributeTask, TangoWriteAttributeTask, work_func_local2
 import logging
@@ -117,12 +117,15 @@ class QuadSimulator(object):
             M = np.matmul(M_d, M)
             L = quad.length
             k = quad_strengths[ind]
-            k_sqrt = np.sqrt(k*(1+0j))
+            if k != 0:
+                k_sqrt = np.sqrt(k*(1+0j))
 
-            M_q = np.real(np.array([[np.cos(k_sqrt * L),            np.sinc(k_sqrt * L) * L],
-                                    [-k_sqrt * np.sin(k_sqrt * L),  np.cos(k_sqrt * L)]]))
+                M_q = np.real(np.array([[np.cos(k_sqrt * L),            np.sin(k_sqrt * L) / k_sqrt],
+                                        [-k_sqrt * np.sin(k_sqrt * L),  np.cos(k_sqrt * L)]]))
+            else:
+                M_q = np.array([[1, L], [0, 1]])
             M = np.matmul(M_q, M)
-            s = quad.position
+            s = quad.position + L
         drift = self.screen.position - s
         M_d = np.array([[1.0, drift], [0.0, 1.0]])
         M = np.matmul(M_d, M)
@@ -153,7 +156,7 @@ class QuadSimulator(object):
             s = self.get_screen_beamsize(x)
             return (s-target_s)**2
 
-        res = minimize(opt_fun, x0=x0, args=(target_s, ))
+        res = minimize(opt_fun, x0=x0, method="Nelder-Mead", args=(target_s, ), tol=target_s*0.1)
         return res
 
 
@@ -183,7 +186,8 @@ class MultiQuad(object):
 
 
         # Starting guess
-        self.quad_strength_list = [1.0, -1.1, 1.9, 4.0]
+        # self.quad_strength_list = [1.0, -1.1, 1.9, 4.0]
+        self.quad_strength_list = [-7.14248646, -1.57912629,  4.05855788,  4.97507142]
 
         self.screen = SectionScreen("screen", 19.223, "liveviewer", "beamviewer", "limaccd", "screen")
 
@@ -335,6 +339,31 @@ class MultiQuad(object):
         # x0 = self.k_list[-1]
         b = (-self.max_k, self.max_k)
         res = minimize(self.opt_fun, x0=x0, args=[target_a, target_b], bounds=(b, b, b, b))
+
+        bfgs = BFGS()
+        constraints = list()
+
+        def constr_fun(x, target, a, u):
+            M = self.calc_response_matrix(x, self.quad_list, self.screen.position)
+            if a:
+                comp = M[0, 0]
+            else:
+                comp = M[0, 1]
+            if u:
+                y = (target - 0.02) - comp
+            else:
+                y = comp - (target - 0.02)
+            return y
+
+        def constr_fun2(x):
+            return (np.abs(x) - 5.0).sum()
+
+        constraints.append({"type": "ineq", "fun": constr_fun, "args": [target_a, True, True]})
+        constraints.append({"type": "ineq", "fun": constr_fun, "args": [target_a, True, False]})
+        constraints.append({"type": "ineq", "fun": constr_fun, "args": [target_b, False, True]})
+        constraints.append({"type": "ineq", "fun": constr_fun, "args": [target_b, False, False]})
+        constraints.append({"type": "ineq", "fun": constr_fun2})
+        # res = minimize(self.opt_fun2, x0=x0, method="COBYLA", jac="2-point", hess=bfgs, constraints=constraints)
         self.logger.debug("Found quad strengths: {0}".format(res.x))
         return res
 
@@ -343,6 +372,10 @@ class MultiQuad(object):
         y = (M[0, 0] - target_ab[0])**2 + (M[0, 1] - target_ab[1])**2
         w = np.sum(x**2) * 0.000
         return y + w
+
+    def opt_fun2(self, x):
+        w = np.sum(x**2)
+        return w
 
     def calc_response_matrix(self, quad_strengths, quad_list, screen_position):
         # self.logger.debug("{0}: Calculating new response matrix".format(self))
@@ -355,12 +388,15 @@ class MultiQuad(object):
             M = np.matmul(M_d, M)
             L = quad.length
             k = quad_strengths[ind]
-            k_sqrt = np.sqrt(k*(1+0j))
+            if k != 0:
+                k_sqrt = np.sqrt(k*(1+0j))
 
-            M_q = np.real(np.array([[np.cos(k_sqrt * L),            np.sinc(k_sqrt * L) * L],
-                                    [-k_sqrt * np.sin(k_sqrt * L),  np.cos(k_sqrt * L)]]))
+                M_q = np.real(np.array([[np.cos(k_sqrt * L),            np.sin(k_sqrt * L) / k_sqrt],
+                                        [-k_sqrt * np.sin(k_sqrt * L),  np.cos(k_sqrt * L)]]))
+            else:
+                M_q = np.array([[1, L], [0, 1]])
             M = np.matmul(M_q, M)
-            s = quad.position
+            s = quad.position + L
         drift = screen_position - s
         M_d = np.array([[1.0, drift], [0.0, 1.0]])
         M = np.matmul(M_d, M)
@@ -467,7 +503,7 @@ if __name__ == "__main__":
     alpha = 2.0
     beta = 7.0
     eps = 1e-6
-    sigma_target = 0.005
+    sigma_target = 0.001
 
     q_i = [1.87, -1.30, -0.24, 2.61]
     mq = MultiQuad(alpha, beta, eps)
