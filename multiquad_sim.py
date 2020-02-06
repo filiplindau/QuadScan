@@ -171,7 +171,7 @@ class MultiQuad(object):
         self.max_k = 5.0
 
         # self.sim = QuadSimulator(36.0, 69.0, 3e-6 * self.gamma_energy)  # MS-1 QB-01, SCRN-01
-        self.sim = QuadSimulator(alpha, beta, eps_n * self.gamma_energy)  # MS-1 QB-01, SCRN-01
+        self.sim = QuadSimulator(alpha, beta, eps_n / self.gamma_energy)  # MS-1 QB-01, SCRN-01
         self.sim.add_quad(SectionQuad("QB-01", 13.55, 0.2, "MAG-01", "CRQ-01", True))
         self.sim.add_quad(SectionQuad("QB-02", 14.45, 0.2, "MAG-02", "CRQ-02", True))
         self.sim.add_quad(SectionQuad("QB-03", 17.75, 0.2, "MAG-03", "CRQ-03", True))
@@ -187,7 +187,8 @@ class MultiQuad(object):
 
         # Starting guess
         # self.quad_strength_list = [1.0, -1.1, 1.9, 4.0]
-        self.quad_strength_list = [-7.14248646, -1.57912629,  4.05855788,  4.97507142]
+        # self.quad_strength_list = [-7.14248646, -1.57912629,  4.05855788,  4.97507142]
+        self.quad_strength_list = [2.0, -2.9, 1.7, -0.8]
 
         self.screen = SectionScreen("screen", 19.223, "liveviewer", "beamviewer", "limaccd", "screen")
 
@@ -216,12 +217,12 @@ class MultiQuad(object):
         b0 = M0[0, 1]
         sigma0 = self.sim.get_screen_beamsize(self.quad_strength_list)
         alpha0 = 5.0
-        eps0 = 3e-6 * self.gamma_energy
+        eps0 = 3e-6 / self.gamma_energy
         beta0 = self.get_missing_twiss(sigma0, M0, alpha0, None, eps0)
         if np.isnan(beta0):
             beta0 = 50.0
         # alpha0 = 36.0
-        beta0 = 50.0
+        beta0 = 40.0
         theta, r_maj, r_min = self.calc_ellipse(alpha0, beta0, eps0, sigma0)
         # psi0 = np.arcsin(a0 / np.sqrt(a0**2 + b0**2)) - theta
         psi0 = np.arccos((a0 + b0 * np.tan(theta)) * np.cos(theta) / r_maj)
@@ -500,16 +501,16 @@ if __name__ == "__main__":
     # sigma = np.array(sigma)
     # logger.info("Time spent: {0}".format(t1-t0))
 
-    alpha = 2.0
-    beta = 7.0
+    alpha = 14.0
+    beta = 39.0
     eps = 1e-6
-    sigma_target = 0.001
+    sigma_target = 0.0005
 
     q_i = [1.87, -1.30, -0.24, 2.61]
     mq = MultiQuad(alpha, beta, eps)
     # mq.quad_strength_list = q_i
     mq.scan(sigma_target)
-    theta, r_maj, r_min = mq.calc_ellipse(alpha, beta, eps * mq.gamma_energy, sigma_target)
+    theta, r_maj, r_min = mq.calc_ellipse(alpha, beta, eps / mq.gamma_energy, sigma_target)
     psi_v = np.linspace(0, 2 * np.pi, 1000)
     a, b = mq.set_target_ab(psi_v, theta, r_maj, r_min)
 
