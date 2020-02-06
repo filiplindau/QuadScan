@@ -21,8 +21,75 @@
      </property>
      <item>
       <layout class="QGridLayout" name="gridLayout">
-       <item row="0" column="1">
-        <widget class="QDoubleSpinBox" name="alpha_min_spinbox">
+       <item row="6" column="2">
+        <widget class="QSlider" name="k1_slider">
+         <property name="value">
+          <number>50</number>
+         </property>
+         <property name="orientation">
+          <enum>Qt::Horizontal</enum>
+         </property>
+        </widget>
+       </item>
+       <item row="9" column="3">
+        <widget class="QDoubleSpinBox" name="k4_max_spinbox">
+         <property name="minimum">
+          <double>-10.000000000000000</double>
+         </property>
+         <property name="maximum">
+          <double>10.000000000000000</double>
+         </property>
+         <property name="value">
+          <double>5.000000000000000</double>
+         </property>
+        </widget>
+       </item>
+       <item row="10" column="3">
+        <widget class="QDoubleSpinBox" name="screen_max_spinbox">
+         <property name="value">
+          <double>2.000000000000000</double>
+         </property>
+        </widget>
+       </item>
+       <item row="9" column="2">
+        <widget class="QSlider" name="k4_slider">
+         <property name="value">
+          <number>50</number>
+         </property>
+         <property name="orientation">
+          <enum>Qt::Horizontal</enum>
+         </property>
+        </widget>
+       </item>
+       <item row="2" column="0">
+        <widget class="QLabel" name="label_3">
+         <property name="text">
+          <string>eps / umrad</string>
+         </property>
+        </widget>
+       </item>
+       <item row="0" column="0">
+        <widget class="QLabel" name="label">
+         <property name="text">
+          <string>alpha</string>
+         </property>
+        </widget>
+       </item>
+       <item row="6" column="3">
+        <widget class="QDoubleSpinBox" name="k1_max_spinbox">
+         <property name="minimum">
+          <double>-10.000000000000000</double>
+         </property>
+         <property name="maximum">
+          <double>10.000000000000000</double>
+         </property>
+         <property name="value">
+          <double>5.000000000000000</double>
+         </property>
+        </widget>
+       </item>
+       <item row="0" column="3">
+        <widget class="QDoubleSpinBox" name="alpha_max_spinbox">
          <property name="minimum">
           <double>-10000.000000000000000</double>
          </property>
@@ -30,14 +97,7 @@
           <double>10000.000000000000000</double>
          </property>
          <property name="value">
-          <double>-50.000000000000000</double>
-         </property>
-        </widget>
-       </item>
-       <item row="1" column="1">
-        <widget class="QDoubleSpinBox" name="beta_min_spinbox">
-         <property name="maximum">
-          <double>10000.000000000000000</double>
+          <double>50.000000000000000</double>
          </property>
         </widget>
        </item>
@@ -69,8 +129,15 @@
          </property>
         </widget>
        </item>
-       <item row="0" column="3">
-        <widget class="QDoubleSpinBox" name="alpha_max_spinbox">
+       <item row="1" column="1">
+        <widget class="QDoubleSpinBox" name="beta_min_spinbox">
+         <property name="maximum">
+          <double>10000.000000000000000</double>
+         </property>
+        </widget>
+       </item>
+       <item row="0" column="1">
+        <widget class="QDoubleSpinBox" name="alpha_min_spinbox">
          <property name="minimum">
           <double>-10000.000000000000000</double>
          </property>
@@ -78,76 +145,56 @@
           <double>10000.000000000000000</double>
          </property>
          <property name="value">
-          <double>50.000000000000000</double>
+          <double>-50.000000000000000</double>
          </property>
         </widget>
-       </item>
-       <item row="7" column="1">
-        <widget class="QDoubleSpinBox" name="doubleSpinBox_2"/>
-       </item>
-       <item row="8" column="1">
-        <widget class="QDoubleSpinBox" name="doubleSpinBox_3"/>
-       </item>
-       <item row="6" column="3">
-        <widget class="QDoubleSpinBox" name="doubleSpinBox_6"/>
-       </item>
-       <item row="10" column="1">
-        <widget class="QDoubleSpinBox" name="doubleSpinBox_5"/>
-       </item>
-       <item row="10" column="3">
-        <widget class="QDoubleSpinBox" name="doubleSpinBox_10"/>
        </item>
        <item row="8" column="3">
-        <widget class="QDoubleSpinBox" name="doubleSpinBox_8"/>
-       </item>
-       <item row="7" column="2">
-        <widget class="QSlider" name="horizontalSlider_2">
-         <property name="orientation">
-          <enum>Qt::Horizontal</enum>
+        <widget class="QDoubleSpinBox" name="k3_max_spinbox">
+         <property name="minimum">
+          <double>-10.000000000000000</double>
+         </property>
+         <property name="maximum">
+          <double>10.000000000000000</double>
+         </property>
+         <property name="value">
+          <double>5.000000000000000</double>
          </property>
         </widget>
        </item>
-       <item row="6" column="2">
-        <widget class="QSlider" name="horizontalSlider">
-         <property name="orientation">
-          <enum>Qt::Horizontal</enum>
+       <item row="8" column="1">
+        <widget class="QDoubleSpinBox" name="k3_min_spinbox">
+         <property name="minimum">
+          <double>-10.000000000000000</double>
+         </property>
+         <property name="maximum">
+          <double>10.000000000000000</double>
+         </property>
+         <property name="value">
+          <double>-5.000000000000000</double>
          </property>
         </widget>
        </item>
        <item row="9" column="1">
-        <widget class="QDoubleSpinBox" name="doubleSpinBox_4"/>
-       </item>
-       <item row="9" column="3">
-        <widget class="QDoubleSpinBox" name="doubleSpinBox_9"/>
-       </item>
-       <item row="7" column="3">
-        <widget class="QDoubleSpinBox" name="doubleSpinBox_7"/>
-       </item>
-       <item row="9" column="2">
-        <widget class="QSlider" name="horizontalSlider_4">
-         <property name="orientation">
-          <enum>Qt::Horizontal</enum>
+        <widget class="QDoubleSpinBox" name="k4_min_spinbox">
+         <property name="minimum">
+          <double>-10.000000000000000</double>
          </property>
-        </widget>
-       </item>
-       <item row="10" column="2">
-        <widget class="QSlider" name="horizontalSlider_5">
-         <property name="orientation">
-          <enum>Qt::Horizontal</enum>
+         <property name="maximum">
+          <double>10.000000000000000</double>
+         </property>
+         <property name="value">
+          <double>-5.000000000000000</double>
          </property>
         </widget>
        </item>
        <item row="8" column="2">
-        <widget class="QSlider" name="horizontalSlider_3">
+        <widget class="QSlider" name="k3_slider">
+         <property name="value">
+          <number>50</number>
+         </property>
          <property name="orientation">
           <enum>Qt::Horizontal</enum>
-         </property>
-        </widget>
-       </item>
-       <item row="10" column="0">
-        <widget class="QLabel" name="label_10">
-         <property name="text">
-          <string>screen pos</string>
          </property>
         </widget>
        </item>
@@ -165,64 +212,66 @@
          </property>
         </widget>
        </item>
-       <item row="1" column="0">
-        <widget class="QLabel" name="label_2">
-         <property name="text">
-          <string>beta / m</string>
+       <item row="7" column="1">
+        <widget class="QDoubleSpinBox" name="k2_min_spinbox">
+         <property name="minimum">
+          <double>-10.000000000000000</double>
          </property>
-        </widget>
-       </item>
-       <item row="0" column="0">
-        <widget class="QLabel" name="label">
-         <property name="text">
-          <string>alpha</string>
-         </property>
-        </widget>
-       </item>
-       <item row="2" column="0">
-        <widget class="QLabel" name="label_3">
-         <property name="text">
-          <string>eps / umrad</string>
-         </property>
-        </widget>
-       </item>
-       <item row="2" column="2">
-        <widget class="QSlider" name="eps_slider">
          <property name="maximum">
-          <number>99</number>
+          <double>10.000000000000000</double>
          </property>
          <property name="value">
-          <number>30</number>
+          <double>-5.000000000000000</double>
+         </property>
+        </widget>
+       </item>
+       <item row="7" column="3">
+        <widget class="QDoubleSpinBox" name="k2_max_spinbox">
+         <property name="minimum">
+          <double>-10.000000000000000</double>
+         </property>
+         <property name="maximum">
+          <double>10.000000000000000</double>
+         </property>
+         <property name="value">
+          <double>5.000000000000000</double>
+         </property>
+        </widget>
+       </item>
+       <item row="10" column="1">
+        <widget class="QDoubleSpinBox" name="screen_min_spinbox"/>
+       </item>
+       <item row="7" column="2">
+        <widget class="QSlider" name="k2_slider">
+         <property name="value">
+          <number>50</number>
          </property>
          <property name="orientation">
           <enum>Qt::Horizontal</enum>
          </property>
         </widget>
        </item>
-       <item row="2" column="1">
-        <widget class="QDoubleSpinBox" name="eps_min_spinbox">
-         <property name="minimum">
-          <double>0.100000000000000</double>
-         </property>
-        </widget>
-       </item>
-       <item row="3" column="1">
-        <widget class="QDoubleSpinBox" name="sigma_min_spinbox"/>
-       </item>
-       <item row="1" column="3">
-        <widget class="QDoubleSpinBox" name="beta_max_spinbox">
-         <property name="maximum">
-          <double>10000.000000000000000</double>
-         </property>
+       <item row="10" column="2">
+        <widget class="QSlider" name="screen_slider">
          <property name="value">
-          <double>100.000000000000000</double>
+          <number>19</number>
+         </property>
+         <property name="orientation">
+          <enum>Qt::Horizontal</enum>
          </property>
         </widget>
        </item>
-       <item row="4" column="1">
-        <widget class="QDoubleSpinBox" name="energy_min_spinbox">
-         <property name="minimum">
-          <double>1.000000000000000</double>
+       <item row="10" column="0">
+        <widget class="QLabel" name="label_10">
+         <property name="text">
+          <string>screen pos</string>
+         </property>
+        </widget>
+       </item>
+       <item row="1" column="0">
+        <widget class="QLabel" name="label_2">
+         <property name="text">
+          <string>beta / m</string>
          </property>
         </widget>
        </item>
@@ -233,45 +282,8 @@
          </property>
         </widget>
        </item>
-       <item row="2" column="3">
-        <widget class="QDoubleSpinBox" name="eps_max_spinbox">
-         <property name="value">
-          <double>10.000000000000000</double>
-         </property>
-        </widget>
-       </item>
-       <item row="1" column="2">
-        <widget class="QSlider" name="beta_slider">
-         <property name="maximum">
-          <number>99</number>
-         </property>
-         <property name="value">
-          <number>50</number>
-         </property>
-         <property name="orientation">
-          <enum>Qt::Horizontal</enum>
-         </property>
-        </widget>
-       </item>
-       <item row="4" column="3">
-        <widget class="QDoubleSpinBox" name="energy_max_spinbox">
-         <property name="maximum">
-          <double>1000.000000000000000</double>
-         </property>
-         <property name="value">
-          <double>1000.000000000000000</double>
-         </property>
-        </widget>
-       </item>
-       <item row="4" column="2">
-        <widget class="QSlider" name="energy_slider">
-         <property name="value">
-          <number>25</number>
-         </property>
-         <property name="orientation">
-          <enum>Qt::Horizontal</enum>
-         </property>
-        </widget>
+       <item row="3" column="1">
+        <widget class="QDoubleSpinBox" name="sigma_min_spinbox"/>
        </item>
        <item row="3" column="2">
         <widget class="QSlider" name="sigma_slider">
@@ -290,27 +302,13 @@
          </property>
         </widget>
        </item>
-       <item row="8" column="0">
-        <widget class="QLabel" name="label_8">
-         <property name="text">
-          <string>k3</string>
+       <item row="4" column="2">
+        <widget class="QSlider" name="energy_slider">
+         <property name="value">
+          <number>25</number>
          </property>
-        </widget>
-       </item>
-       <item row="9" column="0">
-        <widget class="QLabel" name="label_7">
-         <property name="text">
-          <string>k4</string>
-         </property>
-        </widget>
-       </item>
-       <item row="6" column="1">
-        <widget class="QDoubleSpinBox" name="doubleSpinBox"/>
-       </item>
-       <item row="7" column="0">
-        <widget class="QLabel" name="label_9">
-         <property name="text">
-          <string>k2</string>
+         <property name="orientation">
+          <enum>Qt::Horizontal</enum>
          </property>
         </widget>
        </item>
@@ -326,6 +324,19 @@
           </size>
          </property>
         </spacer>
+       </item>
+       <item row="1" column="2">
+        <widget class="QSlider" name="beta_slider">
+         <property name="maximum">
+          <number>99</number>
+         </property>
+         <property name="value">
+          <number>50</number>
+         </property>
+         <property name="orientation">
+          <enum>Qt::Horizontal</enum>
+         </property>
+        </widget>
        </item>
        <item row="0" column="4">
         <widget class="QDoubleSpinBox" name="alpha_spinbox">
@@ -343,10 +354,141 @@
          </property>
         </widget>
        </item>
+       <item row="9" column="4">
+        <widget class="QDoubleSpinBox" name="k4_spinbox">
+         <property name="minimum">
+          <double>-10.000000000000000</double>
+         </property>
+         <property name="maximum">
+          <double>10.000000000000000</double>
+         </property>
+        </widget>
+       </item>
+       <item row="10" column="4">
+        <widget class="QDoubleSpinBox" name="screen_spinbox">
+         <property name="value">
+          <double>0.000000000000000</double>
+         </property>
+        </widget>
+       </item>
+       <item row="3" column="4">
+        <widget class="QDoubleSpinBox" name="sigma_spinbox"/>
+       </item>
+       <item row="2" column="1">
+        <widget class="QDoubleSpinBox" name="eps_min_spinbox">
+         <property name="minimum">
+          <double>0.100000000000000</double>
+         </property>
+        </widget>
+       </item>
        <item row="1" column="4">
         <widget class="QDoubleSpinBox" name="beta_spinbox">
          <property name="maximum">
           <double>10000.000000000000000</double>
+         </property>
+        </widget>
+       </item>
+       <item row="7" column="0">
+        <widget class="QLabel" name="label_9">
+         <property name="text">
+          <string>k2</string>
+         </property>
+        </widget>
+       </item>
+       <item row="4" column="1">
+        <widget class="QDoubleSpinBox" name="energy_min_spinbox">
+         <property name="minimum">
+          <double>1.000000000000000</double>
+         </property>
+        </widget>
+       </item>
+       <item row="2" column="3">
+        <widget class="QDoubleSpinBox" name="eps_max_spinbox">
+         <property name="value">
+          <double>10.000000000000000</double>
+         </property>
+        </widget>
+       </item>
+       <item row="7" column="4">
+        <widget class="QDoubleSpinBox" name="k2_spinbox">
+         <property name="minimum">
+          <double>-10.000000000000000</double>
+         </property>
+         <property name="maximum">
+          <double>10.000000000000000</double>
+         </property>
+        </widget>
+       </item>
+       <item row="8" column="0">
+        <widget class="QLabel" name="label_8">
+         <property name="text">
+          <string>k3</string>
+         </property>
+        </widget>
+       </item>
+       <item row="1" column="3">
+        <widget class="QDoubleSpinBox" name="beta_max_spinbox">
+         <property name="maximum">
+          <double>10000.000000000000000</double>
+         </property>
+         <property name="value">
+          <double>100.000000000000000</double>
+         </property>
+        </widget>
+       </item>
+       <item row="8" column="4">
+        <widget class="QDoubleSpinBox" name="k3_spinbox">
+         <property name="minimum">
+          <double>-10.000000000000000</double>
+         </property>
+         <property name="maximum">
+          <double>10.000000000000000</double>
+         </property>
+        </widget>
+       </item>
+       <item row="2" column="2">
+        <widget class="QSlider" name="eps_slider">
+         <property name="maximum">
+          <number>99</number>
+         </property>
+         <property name="value">
+          <number>30</number>
+         </property>
+         <property name="orientation">
+          <enum>Qt::Horizontal</enum>
+         </property>
+        </widget>
+       </item>
+       <item row="4" column="3">
+        <widget class="QDoubleSpinBox" name="energy_max_spinbox">
+         <property name="maximum">
+          <double>1000.000000000000000</double>
+         </property>
+         <property name="value">
+          <double>1000.000000000000000</double>
+         </property>
+        </widget>
+       </item>
+       <item row="6" column="4">
+        <widget class="QDoubleSpinBox" name="k1_spinbox">
+         <property name="minimum">
+          <double>-10.000000000000000</double>
+         </property>
+         <property name="maximum">
+          <double>10.000000000000000</double>
+         </property>
+        </widget>
+       </item>
+       <item row="6" column="1">
+        <widget class="QDoubleSpinBox" name="k1_min_spinbox">
+         <property name="minimum">
+          <double>-10.000000000000000</double>
+         </property>
+         <property name="maximum">
+          <double>10.000000000000000</double>
+         </property>
+         <property name="value">
+          <double>-5.000000000000000</double>
          </property>
         </widget>
        </item>
@@ -357,9 +499,6 @@
          </property>
         </widget>
        </item>
-       <item row="3" column="4">
-        <widget class="QDoubleSpinBox" name="sigma_spinbox"/>
-       </item>
        <item row="4" column="4">
         <widget class="QDoubleSpinBox" name="energy_spinbox">
          <property name="maximum">
@@ -367,20 +506,33 @@
          </property>
         </widget>
        </item>
-       <item row="6" column="4">
-        <widget class="QDoubleSpinBox" name="doubleSpinBox_16"/>
+       <item row="9" column="0">
+        <widget class="QLabel" name="label_7">
+         <property name="text">
+          <string>k4</string>
+         </property>
+        </widget>
        </item>
-       <item row="7" column="4">
-        <widget class="QDoubleSpinBox" name="doubleSpinBox_17"/>
+       <item row="11" column="0">
+        <widget class="QLabel" name="label_11">
+         <property name="text">
+          <string/>
+         </property>
+        </widget>
        </item>
-       <item row="8" column="4">
-        <widget class="QDoubleSpinBox" name="doubleSpinBox_18"/>
+       <item row="12" column="0">
+        <widget class="QLabel" name="label_12">
+         <property name="text">
+          <string>sigma</string>
+         </property>
+        </widget>
        </item>
-       <item row="9" column="4">
-        <widget class="QDoubleSpinBox" name="doubleSpinBox_19"/>
-       </item>
-       <item row="10" column="4">
-        <widget class="QDoubleSpinBox" name="doubleSpinBox_20"/>
+       <item row="12" column="4">
+        <widget class="QLabel" name="sigma_label">
+         <property name="text">
+          <string>-.--</string>
+         </property>
+        </widget>
        </item>
       </layout>
      </item>
