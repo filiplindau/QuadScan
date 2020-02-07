@@ -254,7 +254,7 @@ class MultiQuad(object):
         self.b_list.append(M0[0, 1])
 
         for step in range(n_steps - 1):
-            psi = self.psi_target[step + 1]
+            # psi = self.psi_target[step + 1]
             a, b = self.set_target_ab(step, theta, r_maj, r_min)
             theta, r_maj, r_min = self.scan_step(a, b, target_sigma)
 
@@ -336,7 +336,7 @@ class MultiQuad(object):
     def set_target_ab(self, step, theta, r_maj, r_min):
         self.logger.debug("{0}: Determine new target a,b for algo {1}".format(self, self.algo))
         if self.algo == "const_size":
-            if step < 2:
+            if step < 20:
                 psi = self.psi_target[-1] - 0.025
             else:
                 # psi range given a and b range
@@ -480,6 +480,34 @@ class MultiQuad(object):
         b_max = mq.calc_response_matrix(res.x, self.quad_list, self.screen.position)[0, 1]
         return a_min, a_max, b_min, b_max
 
+    def get_a(self, b, theta, r_maj, r_min):
+        A = (r_maj * np.sin(theta))**2 + (r_min * np.cos(theta))**2
+        B = - 2 * b * r_maj * np.sin(theta)
+        C = b**2 - (r_min * np.cos(theta))**2
+        cos_psi0 = (-B + np.sqrt(B**2 - 4 * C * A)) / (2 * A)
+        cos_psi1 = (-B - np.sqrt(B ** 2 - 4 * C * A)) / (2 * A)
+        a0 = r_maj * cos_psi0 / np.cos(theta) - b * np.tan(theta)
+        a1 = r_maj * cos_psi1 / np.cos(theta) - b * np.tan(theta)
+        return a0, a1
+
+    def get_b(self, a, theta, r_maj, r_min):
+        A = (r_maj * np.cos(theta))**2 + (r_min * np.sin(theta))**2
+        B = - 2 * a * r_maj * np.cos(theta)
+        C = a**2 - (r_min * np.sin(theta))**2
+        cos_psi0 = (-B + np.sqrt(B**2 - 4 * C * A)) / (2 * A)
+        cos_psi1 = (-B - np.sqrt(B ** 2 - 4 * C * A)) / (2 * A)
+        b0 = r_maj * cos_psi0 / np.sin(theta) - a / np.tan(theta)
+        b1 = r_maj * cos_psi1 / np.sin(theta) - a / np.tan(theta)
+        return b0, b1
+
+    def get_psi(self, a, b, theta, r_maj, r_min):
+        return np.arccos((b * np.sin(theta) + a * np.cos(theta)) / r_maj)
+
+    def get_ab(self, psi, theta, r_maj, r_min):
+        a = r_maj * np.cos(psi) * np.cos(theta) - r_min * np.sin(psi) * np.sin(theta)
+        b = r_maj * np.cos(psi) * np.sin(theta) + r_min * np.sin(psi) * np.cos(theta)
+        return a, b
+
     def __repr__(self):
         s = "{0} {1}".format(type(self), self.name)
         return s
@@ -532,5 +560,5 @@ if __name__ == "__main__":
     mq.scan(sigma_target)
     theta, r_maj, r_min = mq.calc_ellipse(alpha, beta, eps / mq.gamma_energy, sigma_target)
     psi_v = np.linspace(0, 2 * np.pi, 1000)
-    a, b = mq.set_target_ab(psi_v, theta, r_maj, r_min)
+    a, b = mq.get_ab(psi_v, theta, r_maj, r_min)
 
