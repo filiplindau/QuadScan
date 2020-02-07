@@ -139,11 +139,14 @@ class QuadSimulator(object):
         beta = sigma2[0, 0] / eps
         return alpha, beta, eps
 
-    def get_screen_beamsize(self, quad_strengths=None):
+    def get_screen_beamsize(self, quad_strengths=None, axis="x"):
         if quad_strengths is None:
             M = self.calc_response_matrix(self.quad_strengths)
         else:
-            M = self.calc_response_matrix(quad_strengths)
+            if axis == "x":
+                M = self.calc_response_matrix(quad_strengths)
+            else:
+                M = self.calc_response_matrix(-np.array(quad_strengths))
         a = M[0, 0]
         b = M[0, 1]
         sigma = np.sqrt(self.eps * (self.beta * a**2 - 2.0 * self.alpha * a * b + (1.0 + self.alpha**2) / self.beta * b**2))
@@ -199,6 +202,7 @@ class MultiQuad(object):
         self.M_list = list()
         self.k_list = list()
         self.x_list = list()
+        self.y_list = list()
         self.psi_target = list()
 
         self.alpha_list = list()
@@ -212,13 +216,16 @@ class MultiQuad(object):
         self.a_range = None
         self.b_range = None
 
+        self.n_steps = 16
+
         self.logger.setLevel(logging.DEBUG)
 
-    def scan(self, target_sigma):
+    def scan(self, target_sigma, n_steps=16):
         M0 = self.calc_response_matrix(self.quad_strength_list, self.quad_list, self.screen.position)
         a0 = M0[0, 0]
         b0 = M0[0, 1]
         sigma0 = self.sim.get_screen_beamsize(self.quad_strength_list)
+        sigma_y0 = self.sim.get_screen_beamsize(self.quad_strength_list, axis="y")
         alpha0 = 0.0
         eps0 = 2e-6 / self.gamma_energy
         beta0 = self.get_missing_twiss(sigma0, M0, alpha0, None, eps0)
@@ -238,7 +245,7 @@ class MultiQuad(object):
                          "a0={3:.3f}, b0={4:.3f}, sigma0={5:.3f}, beta0={6:.3f}".format(theta, r_maj, r_min, a0, b0,
                                                                                         sigma0, beta0))
 
-        n_steps = 16
+        self.n_steps = n_steps
         # self.psi_target = np.linspace(0, 1, n_steps) * 2 * np.pi + psi0
         # self.psi_target[1] = psi0 - 0.025
         # self.psi_target[2] = psi0 - 0.05
@@ -248,12 +255,16 @@ class MultiQuad(object):
         self.alpha_list.append(alpha0)
         self.beta_list.append(beta0)
         self.eps_list.append(eps0)
-        self.eps_n_list.append(eps0 / self.gamma_energy)
+        self.eps_n_list.append(eps0 * self.gamma_energy)
         self.x_list.append(sigma0)
+        self.y_list.append(sigma_y0)
         self.a_list.append(M0[0, 0])
         self.b_list.append(M0[0, 1])
+        self.theta_list.append(theta)
+        self.r_maj_list.append(r_maj)
+        self.r_min_list.append(r_min)
 
-        for step in range(n_steps - 1):
+        for step in range(self.n_steps - 1):
             # psi = self.psi_target[step + 1]
             a, b = self.set_target_ab(step, theta, r_maj, r_min)
             theta, r_maj, r_min = self.scan_step(a, b, target_sigma)
@@ -266,6 +277,8 @@ class MultiQuad(object):
         self.b_list.append(M[0, 1])
         sigma = self.sim.get_screen_beamsize(r.x)
         self.x_list.append(sigma)
+        sigma_y = self.sim.get_screen_beamsize(r.x, axis="y")
+        self.y_list.append(sigma_y)
         res = self.calc_twiss(np.array(self.a_list), np.array(self.b_list), np.array(self.x_list))
         if res is not None:
             alpha = res[0]
@@ -276,7 +289,7 @@ class MultiQuad(object):
         self.alpha_list.append(alpha)
         self.beta_list.append(beta)
         self.eps_list.append(eps)
-        self.eps_n_list.append(eps / self.gamma_energy)
+        self.eps_n_list.append(eps * self.gamma_energy)
         self.theta_list.append(theta)
         self.r_maj_list.append(r_maj)
         self.r_min_list.append(r_min)
@@ -328,7 +341,7 @@ class MultiQuad(object):
                 return e
             self.logger.debug("Fit coefficients: {0}".format(x[0]))
             eps = np.sqrt(x[2] * x[0] - x[1]**2)
-            eps_n = eps / self.gamma_energy
+            eps_n = eps * self.gamma_energy
             beta = x[0] / eps
             alpha = x[1] / eps
         return alpha, beta, eps
@@ -336,15 +349,22 @@ class MultiQuad(object):
     def set_target_ab(self, step, theta, r_maj, r_min):
         self.logger.debug("{0}: Determine new target a,b for algo {1}".format(self, self.algo))
         if self.algo == "const_size":
-            if step < 20:
-                psi = self.psi_target[-1] - 0.025
+            if step < 2:
+                psi = self.psi_target[-1] - 0.01
+                target_a = r_maj * np.cos(psi) * np.cos(theta) - r_min * np.sin(psi) * np.sin(theta)
+                target_b = r_maj * np.cos(psi) * np.sin(theta) + r_min * np.sin(psi) * np.cos(theta)
             else:
-                # psi range given a and b range
-                # determine psi depending on number of steps
-                pass
+                a_min, a_max, b_min, b_max = self.get_ab_range(self.max_k)
+                psi_v = np.linspace(0, 2 * np.pi, 1000)
+                a, b = self.get_ab(psi_v, theta, r_maj, r_min)
+                ind = np.all([a < a_max, a > a_min, b < b_max, b > b_min], axis=0)
+                a_g = a[ind]
+                b_g = b[ind]
+                st = int(a_g.shape[0] / self.n_steps + 0.5)
+                target_a = a_g[::st][step]
+                target_b = b_g[::st][step]
+                psi = self.get_psi(target_a, target_b, theta, r_maj, r_min)
 
-            target_a = r_maj * np.cos(psi) * np.cos(theta) - r_min * np.sin(psi) * np.sin(theta)
-            target_b = r_maj * np.cos(psi) * np.sin(theta) + r_min * np.sin(psi) * np.cos(theta)
             self.psi_target.append(psi)
         else:
             target_a = 1
@@ -359,7 +379,7 @@ class MultiQuad(object):
         x0 = self.quad_strength_list
         # x0 = self.k_list[-1]
         b = (-self.max_k, self.max_k)
-        res = minimize(self.opt_fun, x0=x0, args=[target_a, target_b], bounds=(b, b, b, b))
+        res = minimize(self.opt_fun3, x0=x0, args=[target_a, target_b], bounds=(b, b, b, b))
 
         bfgs = BFGS()
         constraints = list()
@@ -394,14 +414,24 @@ class MultiQuad(object):
         w = np.sum(x**2) * 0.000
         return y + w
 
+    def opt_fun3(self, x, target_ab):
+        M_x = self.calc_response_matrix(x, self.quad_list, self.screen.position)
+        M_y = self.calc_response_matrix(x, self.quad_list, self.screen.position, axis="y")
+        s_x = (M_x[0, 0] - target_ab[0])**2 + (M_x[0, 1] - target_ab[1])**2
+        s_y = (M_y[0, 0] - target_ab[0]) ** 2 + (M_y[0, 1] - target_ab[1]) ** 2
+        w = np.sum(x**2) * 0.000
+        return s_x + s_y * 0.3
+
     def opt_fun2(self, x):
         w = np.sum(x**2)
         return w
 
-    def calc_response_matrix(self, quad_strengths, quad_list, screen_position):
+    def calc_response_matrix(self, quad_strengths, quad_list, screen_position, axis="x"):
         # self.logger.debug("{0}: Calculating new response matrix".format(self))
         s = quad_list[0].position
         M = np.identity(2)
+        if axis != "x":
+            quad_strengths = -np.array(quad_strengths)
         for ind, quad in enumerate(quad_list):
             # self.logger.debug("Position s: {0} m".format(s))
             drift = quad.position - s
@@ -549,8 +579,8 @@ if __name__ == "__main__":
     # sigma = np.array(sigma)
     # logger.info("Time spent: {0}".format(t1-t0))
 
-    alpha = 14.0
-    beta = 39.0
+    alpha = 35.0
+    beta = 69.0
     eps = 1e-6
     sigma_target = 0.0005
 
