@@ -234,9 +234,9 @@ class ABEllipseTester(QtWidgets.QWidget):
                 k_sqrt_y = np.sqrt(-k * (1 + 0j))
 
                 M_q_x = np.real(np.array([[np.cos(k_sqrt_x * L), np.sin(k_sqrt_x * L) / k_sqrt_x],
-                                        [-k_sqrt_x * np.sin(k_sqrt_x * L), np.cos(k_sqrt_x * L)]]))
+                                          [-k_sqrt_x * np.sin(k_sqrt_x * L), np.cos(k_sqrt_x * L)]]))
                 M_q_y = np.real(np.array([[np.cos(k_sqrt_y * L), np.sin(k_sqrt_y * L) / k_sqrt_y],
-                                        [-k_sqrt_y * np.sin(k_sqrt_y * L), np.cos(k_sqrt_y * L)]]))
+                                          [-k_sqrt_y * np.sin(k_sqrt_y * L), np.cos(k_sqrt_y * L)]]))
             else:
                 M_q_x = np.array([[1, L], [0, 1]])
                 M_q_y = np.array([[1, L], [0, 1]])

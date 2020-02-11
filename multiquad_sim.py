@@ -191,7 +191,8 @@ class MultiQuad(object):
         # Starting guess
         # self.quad_strength_list = [1.0, -1.1, 1.9, 4.0]
         # self.quad_strength_list = [-7.14248646, -1.57912629,  4.05855788,  4.97507142]
-        self.quad_strength_list = [2.0, -2.9, 1.7, -0.8]
+        self.quad_strength_list = [2.0, -2.9, 1.7, -0.8]    # 1.0 mm size
+        self.quad_strength_list = [-0.7, -0.3, -3.6, 2.3]    # 0.4 mm size
 
         self.screen = SectionScreen("screen", 19.223, "liveviewer", "beamviewer", "limaccd", "screen")
 
@@ -199,6 +200,8 @@ class MultiQuad(object):
 
         self.a_list = list()
         self.b_list = list()
+        self.target_a_list = list()
+        self.target_b_list = list()
         self.M_list = list()
         self.k_list = list()
         self.x_list = list()
@@ -224,7 +227,7 @@ class MultiQuad(object):
         M0 = self.calc_response_matrix(self.quad_strength_list, self.quad_list, self.screen.position)
         a0 = M0[0, 0]
         b0 = M0[0, 1]
-        sigma0 = self.sim.get_screen_beamsize(self.quad_strength_list)
+        sigma0 = self.sim.get_screen_beamsize(self.quad_strength_list, axis="x")
         sigma_y0 = self.sim.get_screen_beamsize(self.quad_strength_list, axis="y")
         target_sigma = sigma0
         alpha0 = 0.0
@@ -261,6 +264,8 @@ class MultiQuad(object):
         self.y_list.append(sigma_y0)
         self.a_list.append(M0[0, 0])
         self.b_list.append(M0[0, 1])
+        self.target_a_list.append(M0[0, 0])
+        self.target_b_list.append(M0[0, 1])
         self.theta_list.append(theta)
         self.r_maj_list.append(r_maj)
         self.r_min_list.append(r_min)
@@ -270,10 +275,12 @@ class MultiQuad(object):
             a, b = self.set_target_ab(step, theta, r_maj, r_min)
             res = self.scan_step(a, b, target_sigma)
             if res is not None:
-                self.logger.info("Step {0} FAILED".format(step))
+                self.logger.info("Step {0} SUCCEDED".format(step))
                 theta = res[0]
                 r_maj = res[1]
                 r_min = res[2]
+            else:
+                self.logger.info("Step {0} FAILED".format(step))
 
     def scan_step(self, a, b, target_sigma):
         self.logger.info("{0} Scan step {1}, {2}".format(self, a, b))
@@ -283,6 +290,8 @@ class MultiQuad(object):
         M = self.calc_response_matrix(r.x, self.quad_list, self.screen.position)
         self.a_list.append(M[0, 0])
         self.b_list.append(M[0, 1])
+        self.target_a_list.append(a)
+        self.target_b_list.append(b)
         sigma = self.sim.get_screen_beamsize(r.x)
         self.x_list.append(sigma)
         sigma_y = self.sim.get_screen_beamsize(r.x, axis="y")
@@ -414,23 +423,46 @@ class MultiQuad(object):
         constraints.append({"type": "ineq", "fun": constr_fun, "args": [target_b, False, False]})
         constraints.append({"type": "ineq", "fun": constr_fun2})
         # res = minimize(self.opt_fun2, x0=x0, method="COBYLA", jac="2-point", hess=bfgs, constraints=constraints)
-        res = minimize(self.opt_fun4, x0=x0, method="COBYLA", jac="2-point", hess=bfgs, constraints=constraints,
-                       args=(self.alpha_list[-1], self.beta_list[-1],
-                             self.eps_list[-1], self.x_list[0], self.y_list[0]))
+        # res = minimize(self.opt_fun4, x0=x0, method="COBYLA", jac="2-point", hess=bfgs, constraints=constraints,
+        #                args=(self.alpha_list[-1], self.beta_list[-1],
+        #                      self.eps_list[-1], self.x_list[0], self.y_list[0]))
 
         def tc_constr0(x):
             M = self.calc_response_matrix(x, self.quad_list, self.screen.position)
             y0 = (target_a - M[0, 0])**2
             y1 = (target_b - M[0, 1])**2
             return [y0, y1]
-        c0 = NonlinearConstraint(constr_fun, 0, 0.02, jac="2-point", hess=bfgs)
+
+        def tc_constr1(x):
+            M_x = self.calc_response_matrix(x, self.quad_list, self.screen.position, axis="x")
+            a_x = M_x[0, 0]
+            b_x = M_x[0, 1]
+            M_y = self.calc_response_matrix(x, self.quad_list, self.screen.position, axis="y")
+            a_y = M_y[0, 0]
+            b_y = M_y[0, 1]
+            alpha = self.alpha_list[-1]
+            beta = self.beta_list[-1]
+            eps = self.eps_list[-1]
+            sigma_x = self.x_list[0]
+            sigma_y = self.y_list[0]
+            s_x = eps * (a_x ** 2 * beta - 2 * a_x * b_x * alpha + b_x ** 2 * (1 + alpha ** 2) / beta)
+            s_y = eps * (a_y ** 2 * beta - 2 * a_y * b_y * alpha + b_y ** 2 * (1 + alpha ** 2) / beta)
+            # y0 = (s_x / sigma_x - 1) ** 2
+            # y1 = (s_y / sigma_y - 1) ** 2
+            s_t = (s_x * s_y - sigma_x * sigma_y) ** 2 / (sigma_x * sigma_y) ** 2
+            return [s_t]
+
+        c0 = NonlinearConstraint(tc_constr0, 0, 0.2, jac="2-point", hess=bfgs)
+        c1 = NonlinearConstraint(tc_constr1, 0, 0.02, jac="2-point", hess=bfgs)
         bounds = Bounds(-self.max_k, self.max_k)
-        res = minimize(self.opt_fun4, method="trust-constr", jac="2-point", hess=bfgs,
-                       constraints=[c0], options={"verbose": 1}, bounds=bounds)
+        options = {"xtol": 1e-8, "verbose": 1}
+        res = minimize(self.opt_fun4, x0=x0,  method="trust-constr", jac="2-point", hess=bfgs,
+                       args=(self.alpha_list[-1], self.beta_list[-1], self.eps_list[-1], self.x_list[0], self.y_list[0]),
+                       constraints=[c0], options=options, bounds=bounds)
 
         self.logger.debug("Found quad strengths: {0}".format(res.x))
         self.logger.debug("{0}".format(res))
-        if res.success:
+        if res.status in [1, 2]:
             self.logger.debug("-------SUCCESS------")
         else:
             self.logger.debug("-----EPIC FAIL------")
@@ -463,8 +495,8 @@ class MultiQuad(object):
         b_y = M_y[0, 1]
         s_x = eps*(a_x**2 * beta - 2 * a_x * b_x * alpha + b_x**2 * (1 + alpha**2) / beta)
         s_y = eps * (a_y ** 2 * beta - 2 * a_y * b_y * alpha + b_y ** 2 * (1 + alpha ** 2) / beta)
-        # s_t = 1e6*(s_x / sigma_x - 1) ** 2 + 1e6*(s_y / sigma_y - 1) ** 2
-        s_t = (s_x * s_y - sigma_x * sigma_y)**2
+        s_t = 1e6*(s_x / sigma_x - 1) ** 2 + 1e6*(s_y / sigma_y - 1) ** 2
+        # s_t = (s_x * s_y - sigma_x * sigma_y)**2
         # self.logger.debug("s_x {0}, s_y {1}".format(s_x, s_y))
         return s_t
 
@@ -545,7 +577,8 @@ class MultiQuad(object):
                     return -self.calc_response_matrix(x, self.quad_list, self.screen.position)[0, 1]
                 else:
                     return self.calc_response_matrix(x, self.quad_list, self.screen.position)[0, 1]
-        mag_r = (-max_k, max_k)
+        c = 0.8
+        mag_r = (-c * max_k, c * max_k)
         res = minimize(ab_fun, x0=self.quad_strength_list, args=(True, False), bounds=(mag_r, mag_r, mag_r, mag_r))
         a_min = mq.calc_response_matrix(res.x, self.quad_list, self.screen.position)[0, 0]
         res = minimize(ab_fun, x0=self.quad_strength_list, args=(True, True), bounds=(mag_r, mag_r, mag_r, mag_r))
@@ -577,7 +610,13 @@ class MultiQuad(object):
         return b0, b1
 
     def get_psi(self, a, b, theta, r_maj, r_min):
-        return np.arccos((b * np.sin(theta) + a * np.cos(theta)) / r_maj)
+        p1 = (b * np.sin(theta) + a * np.cos(theta)) / r_maj
+        p2 = (b * np.cos(theta) - a * np.sin(theta)) / r_min
+        if abs(p1) < 0.5:
+            psi = np.arccos(p1)
+        else:
+            psi = np.arcsin(p2)
+        return psi
 
     def get_ab(self, psi, theta, r_maj, r_min):
         a = r_maj * np.cos(psi) * np.cos(theta) - r_min * np.sin(psi) * np.sin(theta)
@@ -632,6 +671,7 @@ if __name__ == "__main__":
 
     q_i = [1.87, -1.30, -0.24, 2.61]
     mq = MultiQuad(alpha, beta, eps)
+    sigma_target = mq.sim.get_screen_beamsize(mq.quad_strength_list)
     # mq.quad_strength_list = q_i
     mq.scan(sigma_target)
     theta, r_maj, r_min = mq.calc_ellipse(alpha, beta, eps / mq.gamma_energy, sigma_target)
