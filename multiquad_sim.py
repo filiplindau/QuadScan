@@ -21,7 +21,7 @@ from collections import namedtuple
 import pprint
 import traceback
 from scipy.signal import medfilt2d
-from scipy.optimize import minimize, BFGS
+from scipy.optimize import minimize, BFGS, NonlinearConstraint
 from scipy.optimize import lsq_linear
 from QuadScanTasks import TangoReadAttributeTask, TangoMonitorAttributeTask, TangoWriteAttributeTask, work_func_local2
 import logging
@@ -226,6 +226,7 @@ class MultiQuad(object):
         b0 = M0[0, 1]
         sigma0 = self.sim.get_screen_beamsize(self.quad_strength_list)
         sigma_y0 = self.sim.get_screen_beamsize(self.quad_strength_list, axis="y")
+        target_sigma = sigma0
         alpha0 = 0.0
         eps0 = 2e-6 / self.gamma_energy
         beta0 = self.get_missing_twiss(sigma0, M0, alpha0, None, eps0)
@@ -267,11 +268,18 @@ class MultiQuad(object):
         for step in range(self.n_steps - 1):
             # psi = self.psi_target[step + 1]
             a, b = self.set_target_ab(step, theta, r_maj, r_min)
-            theta, r_maj, r_min = self.scan_step(a, b, target_sigma)
+            res = self.scan_step(a, b, target_sigma)
+            if res is not None:
+                self.logger.info("Step {0} FAILED".format(step))
+                theta = res[0]
+                r_maj = res[1]
+                r_min = res[2]
 
     def scan_step(self, a, b, target_sigma):
         self.logger.info("{0} Scan step {1}, {2}".format(self, a, b))
         r = self.solve_quads(a, b)
+        if r is None:
+            return None
         M = self.calc_response_matrix(r.x, self.quad_list, self.screen.position)
         self.a_list.append(M[0, 0])
         self.b_list.append(M[0, 1])
@@ -379,7 +387,8 @@ class MultiQuad(object):
         x0 = self.quad_strength_list
         # x0 = self.k_list[-1]
         b = (-self.max_k, self.max_k)
-        res = minimize(self.opt_fun3, x0=x0, args=[target_a, target_b], bounds=(b, b, b, b))
+        # res = minimize(self.opt_fun3, x0=x0, args=([target_a, target_b], self.alpha_list[-1], self.beta_list[-1],
+        #                                            self.eps_list[-1], self.y_list[0]), bounds=(b, b, b, b))
 
         bfgs = BFGS()
         constraints = list()
@@ -397,7 +406,7 @@ class MultiQuad(object):
             return y
 
         def constr_fun2(x):
-            return (np.abs(x) - 5.0).sum()
+            return -(np.abs(x) > 5.0).sum()
 
         constraints.append({"type": "ineq", "fun": constr_fun, "args": [target_a, True, True]})
         constraints.append({"type": "ineq", "fun": constr_fun, "args": [target_a, True, False]})
@@ -405,7 +414,19 @@ class MultiQuad(object):
         constraints.append({"type": "ineq", "fun": constr_fun, "args": [target_b, False, False]})
         constraints.append({"type": "ineq", "fun": constr_fun2})
         # res = minimize(self.opt_fun2, x0=x0, method="COBYLA", jac="2-point", hess=bfgs, constraints=constraints)
+        res = minimize(self.opt_fun4, x0=x0, method="COBYLA", jac="2-point", hess=bfgs, constraints=constraints,
+                       args=(self.alpha_list[-1], self.beta_list[-1],
+                             self.eps_list[-1], self.x_list[0], self.y_list[0]))
+
+        c0 = NonlinearConstraint(constr_fun)
+        res = minimize(self.opt_fun4, method="trust-constr", )
+
         self.logger.debug("Found quad strengths: {0}".format(res.x))
+        self.logger.debug("{0}".format(res))
+        if res.success:
+            self.logger.debug("-------SUCCESS------")
+        else:
+            self.logger.debug("-----EPIC FAIL------")
         return res
 
     def opt_fun(self, x, target_ab):
@@ -414,13 +435,31 @@ class MultiQuad(object):
         w = np.sum(x**2) * 0.000
         return y + w
 
-    def opt_fun3(self, x, target_ab):
+    def opt_fun3(self, x, target_ab, alpha, beta, eps, sigma_y):
         M_x = self.calc_response_matrix(x, self.quad_list, self.screen.position)
         M_y = self.calc_response_matrix(x, self.quad_list, self.screen.position, axis="y")
         s_x = (M_x[0, 0] - target_ab[0])**2 + (M_x[0, 1] - target_ab[1])**2
-        s_y = (M_y[0, 0] - target_ab[0]) ** 2 + (M_y[0, 1] - target_ab[1]) ** 2
+        a_y = M_y[0, 0]
+        b_y = M_y[0, 1]
+        s_y = (eps*(a_y**2 * beta - 2 * a_y * b_y * alpha + b_y**2 * (1 + alpha**2) / beta) - sigma_y)**2
+        # self.logger.debug("s_x {0}, s_y {1}".format(s_x, s_y))
         w = np.sum(x**2) * 0.000
-        return s_x + s_y * 0.3
+        w_y = 1e6
+        return s_x + s_y * w_y
+
+    def opt_fun4(self, x, alpha, beta, eps, sigma_x, sigma_y):
+        M_x = self.calc_response_matrix(x, self.quad_list, self.screen.position)
+        M_y = self.calc_response_matrix(x, self.quad_list, self.screen.position, axis="y")
+        a_x = M_x[0, 0]
+        b_x = M_x[0, 1]
+        a_y = M_y[0, 0]
+        b_y = M_y[0, 1]
+        s_x = eps*(a_x**2 * beta - 2 * a_x * b_x * alpha + b_x**2 * (1 + alpha**2) / beta)
+        s_y = eps * (a_y ** 2 * beta - 2 * a_y * b_y * alpha + b_y ** 2 * (1 + alpha ** 2) / beta)
+        # s_t = 1e6*(s_x / sigma_x - 1) ** 2 + 1e6*(s_y / sigma_y - 1) ** 2
+        s_t = (s_x * s_y - sigma_x * sigma_y)**2
+        # self.logger.debug("s_x {0}, s_y {1}".format(s_x, s_y))
+        return s_t
 
     def opt_fun2(self, x):
         w = np.sum(x**2)
