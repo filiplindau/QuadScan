@@ -21,7 +21,7 @@ from collections import namedtuple
 import pprint
 import traceback
 from scipy.signal import medfilt2d
-from scipy.optimize import minimize, BFGS, NonlinearConstraint
+from scipy.optimize import minimize, BFGS, NonlinearConstraint, Bounds
 from scipy.optimize import lsq_linear
 from QuadScanTasks import TangoReadAttributeTask, TangoMonitorAttributeTask, TangoWriteAttributeTask, work_func_local2
 import logging
@@ -418,8 +418,15 @@ class MultiQuad(object):
                        args=(self.alpha_list[-1], self.beta_list[-1],
                              self.eps_list[-1], self.x_list[0], self.y_list[0]))
 
-        c0 = NonlinearConstraint(constr_fun)
-        res = minimize(self.opt_fun4, method="trust-constr", )
+        def tc_constr0(x):
+            M = self.calc_response_matrix(x, self.quad_list, self.screen.position)
+            y0 = (target_a - M[0, 0])**2
+            y1 = (target_b - M[0, 1])**2
+            return [y0, y1]
+        c0 = NonlinearConstraint(constr_fun, 0, 0.02, jac="2-point", hess=bfgs)
+        bounds = Bounds(-self.max_k, self.max_k)
+        res = minimize(self.opt_fun4, method="trust-constr", jac="2-point", hess=bfgs,
+                       constraints=[c0], options={"verbose": 1}, bounds=bounds)
 
         self.logger.debug("Found quad strengths: {0}".format(res.x))
         self.logger.debug("{0}".format(res))
