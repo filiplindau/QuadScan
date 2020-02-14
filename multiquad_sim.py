@@ -68,6 +68,9 @@ class QuadSimulator(object):
         self.eps_y = None
         self.sigma1_y = None
 
+        self.add_noise = True
+        self.noise_factors = {"alpha": 0.01, "beta": 0.01, "eps": 0.0, "sigma": 0.01, "quad": 0.02}
+
         self.set_start_twiss_params(alpha, beta, eps, alpha_y, beta_y, eps_y)
 
         self.quad_list = list()
@@ -199,17 +202,36 @@ class QuadSimulator(object):
 
     def get_screen_beamsize(self, quad_strengths=None, axis="x"):
         if quad_strengths is None:
-            M = self.calc_response_matrix(self.quad_strengths, axis)
+            q = np.array(self.quad_strengths)
         else:
-            M = self.calc_response_matrix(quad_strengths, axis)
+            q = np.array(quad_strengths)
+        # if self.add_noise:
+        #     for k in range(len(q)):
+        #         q[k] *= np.random.normal(0, self.noise_factors["quad"])
+        M = self.calc_response_matrix(q, axis)
         a = M[0, 0]
         b = M[0, 1]
         if axis == "x":
-            sigma = np.sqrt(self.eps * (
-                    self.beta * a**2 - 2.0 * self.alpha * a * b + (1.0 + self.alpha**2) / self.beta * b**2))
+            if self.add_noise:
+                alpha = self.alpha * (1 + np.random.normal(0, self.noise_factors["alpha"]))
+                beta = self.beta * (1 + np.random.normal(0, self.noise_factors["beta"]))
+                eps = self.eps * (1 + np.random.normal(0, self.noise_factors["eps"]))
+                self.logger.debug("Noisy twiss: {0}, {1}, {2}".format(alpha, beta, eps))
+                sigma = np.sqrt(eps * (beta * a**2 - 2.0 * alpha * a * b + (1.0 + alpha**2) / beta * b**2)) * \
+                        (1 + self.noise_factors["sigma"])
+            else:
+                sigma = np.sqrt(self.eps * (
+                        self.beta * a**2 - 2.0 * self.alpha * a * b + (1.0 + self.alpha**2) / self.beta * b**2))
         else:
-            sigma = np.sqrt(self.eps_y * (
-                    self.beta_y * a ** 2 - 2.0 * self.alpha_y * a * b + (1.0 + self.alpha_y ** 2) / self.beta_y * b ** 2))
+            if self.add_noise:
+                alpha = self.alpha * (1 + np.random.normal(0, self.noise_factors["alpha"]))
+                beta = self.beta * (1 + np.random.normal(0, self.noise_factors["beta"]))
+                eps = self.eps * (1 + np.random.normal(0, self.noise_factors["eps"]))
+                sigma = np.sqrt(eps * (beta * a ** 2 - 2.0 * alpha * a * b + (1.0 + alpha ** 2) / beta * b ** 2)) * \
+                        (1 + self.noise_factors["sigma"])
+            else:
+                sigma = np.sqrt(self.eps_y * (
+                        self.beta_y * a ** 2 - 2.0 * self.alpha_y * a * b + (1.0 + self.alpha_y ** 2) / self.beta_y * b ** 2))
         return sigma
 
     def target_beamsize(self, target_s):
@@ -310,7 +332,7 @@ class MultiQuad(object):
 
         self.logger.info("Scan starting. Initial parameters: th={0:.3f}, r_maj={1:.3f}, r_min={2:.3f}, "
                          "a0={3:.3f}, b0={4:.3f}, sigma0={5:.3f}, beta0={6:.3f}".format(theta, r_maj, r_min, a0, b0,
-                                                                                        sigma0, beta0))
+                                                                                        1e3 * sigma0, beta0))
 
         self.n_steps = n_steps
         # self.psi_target = np.linspace(0, 1, n_steps) * 2 * np.pi + psi0
@@ -426,7 +448,11 @@ class MultiQuad(object):
                 self.logger.error("Error when fitting lstsqr: {0}".format(e))
                 return e
             self.logger.debug("Fit coefficients: {0}".format(x[0]))
-            eps = np.sqrt(x[2] * x[0] - x[1]**2)
+            sq = x[2] * x[0] - x[1]**2
+            if sq < 0:
+                eps = self.eps_list[-1]
+            else:
+                eps = np.sqrt(sq)
             eps_n = eps * self.gamma_energy
             beta = x[0] / eps
             alpha = x[1] / eps
@@ -462,37 +488,8 @@ class MultiQuad(object):
         self.logger.info("{0}: Solving new quad strengths for target a,b = {1}, {2}".format(self, target_a, target_b))
         # x0 = self.quad_strength_list
         x0 = self.k_list[-1]
-        b = (-self.max_k, self.max_k)
-        # res = minimize(self.opt_fun3, x0=x0, args=([target_a, target_b], self.alpha_list[-1], self.beta_list[-1],
-        #                                            self.eps_list[-1], self.y_list[0]), bounds=(b, b, b, b))
 
         bfgs = BFGS()
-        constraints = list()
-
-        def constr_fun(x, target, a, u):
-            M = self.calc_response_matrix(x, self.quad_list, self.screen.position)
-            if a:
-                comp = M[0, 0]
-            else:
-                comp = M[0, 1]
-            if u:
-                y = (target - 0.02) - comp
-            else:
-                y = comp - (target - 0.02)
-            return y
-
-        def constr_fun2(x):
-            return -(np.abs(x) > 5.0).sum()
-
-        constraints.append({"type": "ineq", "fun": constr_fun, "args": [target_a, True, True]})
-        constraints.append({"type": "ineq", "fun": constr_fun, "args": [target_a, True, False]})
-        constraints.append({"type": "ineq", "fun": constr_fun, "args": [target_b, False, True]})
-        constraints.append({"type": "ineq", "fun": constr_fun, "args": [target_b, False, False]})
-        constraints.append({"type": "ineq", "fun": constr_fun2})
-        # res = minimize(self.opt_fun2, x0=x0, method="COBYLA", jac="2-point", hess=bfgs, constraints=constraints)
-        # res = minimize(self.opt_fun4, x0=x0, method="COBYLA", jac="2-point", hess=bfgs, constraints=constraints,
-        #                args=(self.alpha_list[-1], self.beta_list[-1],
-        #                      self.eps_list[-1], self.x_list[0], self.y_list[0]))
 
         def tc_constr0(x):
             M = self.calc_response_matrix(x, self.quad_list, self.screen.position)
@@ -528,39 +525,29 @@ class MultiQuad(object):
             s_t = (target_psi - psi_x) ** 2
             return [s_t]
 
-        # c0 = NonlinearConstraint(tc_constr0, 0, 0.2, jac="2-point", hess=bfgs)
-        # c1 = NonlinearConstraint(tc_constr1, 0, 0.02, jac="2-point", hess=bfgs)
-        # bounds = Bounds(-self.max_k, self.max_k)
-        # options = {"xtol": 1e-8, "verbose": 1}
-        # res = minimize(self.opt_fun4, x0=x0,  method="trust-constr", jac="2-point", hess=bfgs,
-        #                args=(self.alpha_list[-1], self.beta_list[-1], self.eps_list[-1], self.x_list[0], self.y_list[0]),
-        #                constraints=[c0], options=options, bounds=bounds)
+        def opt_fun(x, alpha, beta, eps, sigma_x, sigma_y):
+            M_x = self.calc_response_matrix(x, self.quad_list, self.screen.position)
+            M_y = self.calc_response_matrix(x, self.quad_list, self.screen.position, axis="y")
+            a_x = M_x[0, 0]
+            b_x = M_x[0, 1]
+            a_y = M_y[0, 0]
+            b_y = M_y[0, 1]
+            s_x = np.sqrt(eps * (a_x ** 2 * beta - 2 * a_x * b_x * alpha + b_x ** 2 * (1 + alpha ** 2) / beta))
+            s_y = np.sqrt(eps * (a_y ** 2 * beta - 2 * a_y * b_y * alpha + b_y ** 2 * (1 + alpha ** 2) / beta))
+            s_t = (s_x * s_y - sigma_x * sigma_y) ** 2
+            return s_t
 
-        # c0 = NonlinearConstraint(tc_constr0, 0, 0.2, jac="2-point", hess=bfgs)
-        # c1 = NonlinearConstraint(tc_constr1, 0, 0.02, jac="2-point", hess=bfgs)
-        # bounds = Bounds(-self.max_k, self.max_k)
-        # options = {"xtol": 1e-8, "verbose": 1}
-        # target_psi = self.get_psi(target_a, target_b, self.theta_list[-1], self.r_maj_list[-1], self.r_min_list[-1])
-        # res = minimize(self.opt_fun5, x0=x0,  method="trust-constr", jac="2-point", hess=bfgs,
-        #                args=(target_psi, self.theta_list[-1], self.r_maj_list[-1], self.r_min_list[-1]),
-        #                constraints=[c1], options=options, bounds=bounds)
-
-        c0 = NonlinearConstraint(tc_constr0, 0, 0.2, jac="2-point", hess=bfgs)
+        c0 = NonlinearConstraint(tc_constr0, 0, 0.1, jac="2-point", hess=bfgs)
         c1 = NonlinearConstraint(tc_constr1, 0, 0.02, jac="2-point", hess=bfgs)
-        c2 = NonlinearConstraint(tc_constr2, 0, 0.02, jac="2-point", hess=bfgs)
+        c2 = NonlinearConstraint(tc_constr2, 0, 0.0001, jac="2-point", hess=bfgs)
         bounds = Bounds(-self.max_k, self.max_k)
-        options = {"xtol": 1e-8, "verbose": 1}
-        target_psi = self.get_psi(target_a, target_b, self.theta_list[-1], self.r_maj_list[-1], self.r_min_list[-1])
-        self.logger.debug("Target psi: {0}".format(target_psi))
-        # res = minimize(self.opt_fun6, x0=x0,  method="trust-constr", jac="2-point", hess=bfgs,
-        #                args=(self.alpha_list[-1], self.beta_list[-1], self.eps_list[-1], self.x_list[0], self.y_list[0]),
-        #                constraints=[c2], options=options, bounds=bounds)
-        res = minimize(self.opt_fun5, x0=x0,  method="trust-constr", jac="2-point", hess=bfgs,
-                       args=(target_psi, self.theta_list[-1], self.r_maj_list[-1], self.r_min_list[-1]),
-                       constraints=[c1], options=options, bounds=bounds)
+        options = {"xtol": 1e-8, "verbose": 1, "initial_constr_penalty": 100}
+        res = minimize(opt_fun, x0=x0,  method="trust-constr", jac="2-point", hess=bfgs,
+                       args=(self.alpha_list[-1], self.beta_list[-1], self.eps_list[-1], self.x_list[0], self.y_list[0]),
+                       constraints=[c0], options=options, bounds=bounds)
 
         self.logger.debug("Found quad strengths: {0}".format(res.x))
-        self.logger.debug("{0}".format(res))
+        # self.logger.debug("{0}".format(res))
         if res.status in [1, 2]:
             self.logger.debug("-------SUCCESS------")
         else:
@@ -654,6 +641,7 @@ class MultiQuad(object):
         return M
 
     def calc_ellipse(self, alpha, beta, eps, sigma):
+        self.logger.debug("Twiss indata: {0}, {1}, {2}, {3}".format(alpha, beta, eps, sigma))
         my = sigma**2.0 / eps
         gamma = (1.0 + alpha**2) / beta
         try:
@@ -668,6 +656,7 @@ class MultiQuad(object):
         r_minor = np.sqrt(my / l1)
         r_major = np.sqrt(my / l2)
         theta = np.arctan((l1 - gamma) / alpha)
+        self.logger.debug("Result: {0}, {1}, {2}".format(theta, r_major, r_minor))
         return theta, r_major, r_minor
 
     def get_missing_twiss(self, sigma, M, alpha=None, beta=None, eps=None):
