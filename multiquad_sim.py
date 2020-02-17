@@ -392,6 +392,12 @@ class MultiQuad(object):
             beta = res[1]
             eps = res[2]
         theta, r_maj, r_min = self.calc_ellipse(alpha, beta, eps, target_sigma)
+        if np.isnan(theta):
+            theta = self.theta_list[-1]
+        if np.isnan(r_maj):
+            r_maj = self.r_maj_list[-1]
+        if np.isnan(r_min):
+            r_min = self.r_min_list[-1]
         self.psi_list.append(self.get_psi(M[0, 0], M[0, 1], theta, r_maj, r_min))
         self.k_list.append(r.x)
         self.alpha_list.append(alpha)
@@ -532,9 +538,9 @@ class MultiQuad(object):
             b_x = M_x[0, 1]
             a_y = M_y[0, 0]
             b_y = M_y[0, 1]
-            s_x = np.sqrt(eps * (a_x ** 2 * beta - 2 * a_x * b_x * alpha + b_x ** 2 * (1 + alpha ** 2) / beta))
-            s_y = np.sqrt(eps * (a_y ** 2 * beta - 2 * a_y * b_y * alpha + b_y ** 2 * (1 + alpha ** 2) / beta))
-            s_t = (s_x * s_y - sigma_x * sigma_y) ** 2
+            s_x = (eps * (a_x ** 2 * beta - 2 * a_x * b_x * alpha + b_x ** 2 * (1 + alpha ** 2) / beta))
+            s_y = (eps * (a_y ** 2 * beta - 2 * a_y * b_y * alpha + b_y ** 2 * (1 + alpha ** 2) / beta))
+            s_t = (s_x * s_y - sigma_x ** 2 * sigma_y ** 2) ** 2
             return s_t
 
         c0 = NonlinearConstraint(tc_constr0, 0, 0.1, jac="2-point", hess=bfgs)
