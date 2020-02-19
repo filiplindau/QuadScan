@@ -21,7 +21,7 @@ from collections import namedtuple
 import pprint
 import traceback
 from scipy.signal import medfilt2d
-from scipy.optimize import minimize, BFGS, NonlinearConstraint, Bounds
+from scipy.optimize import minimize, BFGS, NonlinearConstraint, Bounds, least_squares
 from scipy.optimize import lsq_linear
 from QuadScanTasks import TangoReadAttributeTask, TangoMonitorAttributeTask, TangoWriteAttributeTask, work_func_local2
 import logging
@@ -54,7 +54,7 @@ except ImportError:
 
 
 class QuadSimulator(object):
-    def __init__(self, alpha, beta, eps, alpha_y=None, beta_y=None, eps_y=None):
+    def __init__(self, alpha, beta, eps, alpha_y=None, beta_y=None, eps_y=None, add_noise=True):
         self.name = "QuadSimulator"
         self.logger = logging.getLogger("Sim.{0}".format(self.name.upper()))
         self.logger.setLevel(logging.INFO)
@@ -68,8 +68,12 @@ class QuadSimulator(object):
         self.eps_y = None
         self.sigma1_y = None
 
-        self.add_noise = True
-        self.noise_factors = {"alpha": 0.01, "beta": 0.01, "eps": 0.0, "sigma": 0.01, "quad": 0.02}
+        self.add_noise = add_noise
+        # Shot-to-shot errors
+        self.noise_factors = {"alpha": 0.00, "beta": 0.000, "eps": 0.00, "sigma": 0.05, "quad": 0.00}
+        # Systematic errors:
+        self.pos_error = np.random.normal(0, 0.001, 6)
+        self.quad_cal_error = np.random.normal(0, 0.001, 6)
 
         self.set_start_twiss_params(alpha, beta, eps, alpha_y, beta_y, eps_y)
 
@@ -129,11 +133,17 @@ class QuadSimulator(object):
 
     def calc_response_matrix(self, quad_strengths, axis="x"):
         # self.logger.debug("{0}: Calculating new response matrix".format(self))
-        s = self.quad_list[0].position
+        if self.add_noise:
+            s = self.quad_list[0].position + self.pos_error[0]
+        else:
+            s = self.quad_list[0].position
         M = np.identity(2)
         for ind, quad in enumerate(self.quad_list):
             # self.logger.debug("Position s: {0} m".format(s))
-            drift = quad.position - s
+            if self.add_noise:
+                drift = quad.position + self.pos_error[ind] - s
+            else:
+                drift = quad.position - s
             M_d = np.array([[1.0, drift], [0.0, 1.0]])
             M = np.matmul(M_d, M)
             L = quad.length
@@ -141,7 +151,10 @@ class QuadSimulator(object):
                 k = quad_strengths[ind]
             else:
                 k = -quad_strengths[ind]
-            k_sqrt = np.sqrt(k * (1 + 0j))
+            if self.add_noise:
+                k_sqrt = np.sqrt(k * (1 + self.quad_cal_error[ind] + 0j))
+            else:
+                k_sqrt = np.sqrt(k * (1 + 0j))
 
             M_q = np.real(np.array([[np.cos(k_sqrt * L), np.sinc(k_sqrt * (L / np.pi)) * L],
                                     [-k_sqrt * np.sin(k_sqrt * L), np.cos(k_sqrt * L)]]))
@@ -205,9 +218,9 @@ class QuadSimulator(object):
             q = np.array(self.quad_strengths)
         else:
             q = np.array(quad_strengths)
-        # if self.add_noise:
-        #     for k in range(len(q)):
-        #         q[k] *= np.random.normal(0, self.noise_factors["quad"])
+        if self.add_noise:
+            for k in range(len(q)):
+                q[k] *= (1 + np.random.normal(0, self.noise_factors["quad"]))
         M = self.calc_response_matrix(q, axis)
         a = M[0, 0]
         b = M[0, 1]
@@ -224,9 +237,9 @@ class QuadSimulator(object):
                         self.beta * a**2 - 2.0 * self.alpha * a * b + (1.0 + self.alpha**2) / self.beta * b**2))
         else:
             if self.add_noise:
-                alpha = self.alpha * (1 + np.random.normal(0, self.noise_factors["alpha"]))
-                beta = self.beta * (1 + np.random.normal(0, self.noise_factors["beta"]))
-                eps = self.eps * (1 + np.random.normal(0, self.noise_factors["eps"]))
+                alpha = self.alpha_y * (1 + np.random.normal(0, self.noise_factors["alpha"]))
+                beta = self.beta_y * (1 + np.random.normal(0, self.noise_factors["beta"]))
+                eps = self.eps_y * (1 + np.random.normal(0, self.noise_factors["eps"]))
                 sigma = np.sqrt(eps * (beta * a ** 2 - 2.0 * alpha * a * b + (1.0 + alpha ** 2) / beta * b ** 2)) * \
                         (1 + self.noise_factors["sigma"])
             else:
@@ -250,33 +263,73 @@ class MultiQuad(object):
         self.name = "QuadSimulator"
         self.logger = logging.getLogger("Sim.{0}".format(self.name.upper()))
 
-        self.gamma_energy = 241e6 / 0.511e6
         self.max_quad_strength = 8.0    # T/m
         # self.max_k = 1.602e-19 * self.max_quad_strength / (self.gamma_energy * 9.11e-31 * 299792458.0)
         self.max_k = 5.0
 
         # self.sim = QuadSimulator(36.0, 69.0, 3e-6 * self.gamma_energy)  # MS-1 QB-01, SCRN-01
-        self.sim = QuadSimulator(alpha, beta, eps_n / self.gamma_energy)  # MS-1 QB-01, SCRN-01
-        self.sim.add_quad(SectionQuad("QB-01", 13.55, 0.2, "MAG-01", "CRQ-01", True))
-        self.sim.add_quad(SectionQuad("QB-02", 14.45, 0.2, "MAG-02", "CRQ-02", True))
-        self.sim.add_quad(SectionQuad("QB-03", 17.75, 0.2, "MAG-03", "CRQ-03", True))
-        self.sim.add_quad(SectionQuad("QB-04", 18.65, 0.2, "MAG-04", "CRQ-04", True))
-        self.sim.set_screen_position(19.223)
+        section = "MS3"
+        if section == "MS1":
+            self.gamma_energy = 241e6 / 0.511e6
+            self.sim = QuadSimulator(alpha, beta, eps_n / self.gamma_energy,
+                                     -5, 20, 2e-6 / self.gamma_energy, add_noise=True)  # MS-1 QB-01, SCRN-01
+            self.sim.add_quad(SectionQuad("QB-01", 13.55, 0.2, "MAG-01", "CRQ-01", True))
+            self.sim.add_quad(SectionQuad("QB-02", 14.45, 0.2, "MAG-02", "CRQ-02", True))
+            self.sim.add_quad(SectionQuad("QB-03", 17.75, 0.2, "MAG-03", "CRQ-03", True))
+            self.sim.add_quad(SectionQuad("QB-04", 18.65, 0.2, "MAG-04", "CRQ-04", True))
+            self.sim.set_screen_position(19.223)
 
-        self.quad_list = list()
-        self.quad_list.append(SectionQuad("QB-01", 13.55, 0.2, "MAG-01", "CRQ-01", True))
-        self.quad_list.append(SectionQuad("QB-02", 14.45, 0.2, "MAG-02", "CRQ-02", True))
-        self.quad_list.append(SectionQuad("QB-03", 17.75, 0.2, "MAG-03", "CRQ-03", True))
-        self.quad_list.append(SectionQuad("QB-04", 18.65, 0.2, "MAG-04", "CRQ-04", True))
+            self.quad_list = list()
+            self.quad_list.append(SectionQuad("QB-01", 13.55, 0.2, "MAG-01", "CRQ-01", True))
+            self.quad_list.append(SectionQuad("QB-02", 14.45, 0.2, "MAG-02", "CRQ-02", True))
+            self.quad_list.append(SectionQuad("QB-03", 17.75, 0.2, "MAG-03", "CRQ-03", True))
+            self.quad_list.append(SectionQuad("QB-04", 18.65, 0.2, "MAG-04", "CRQ-04", True))
 
+            self.screen = SectionScreen("screen", 19.223, "liveviewer", "beamviewer", "limaccd", "screen")
 
-        # Starting guess
-        # self.quad_strength_list = [1.0, -1.1, 1.9, 4.0]
-        # self.quad_strength_list = [-7.14248646, -1.57912629,  4.05855788,  4.97507142]
-        self.quad_strength_list = [2.0, -2.9, 1.7, -0.8]    # 1.0 mm size
-        self.quad_strength_list = [-0.7, -0.3, -3.6, 2.3]    # 0.4 mm size
+            self.quad_strength_list = [-0.7, -0.3, -3.6, 2.3]  # 0.4 mm size
 
-        self.screen = SectionScreen("screen", 19.223, "liveviewer", "beamviewer", "limaccd", "screen")
+        elif section == "MS2":
+            self.gamma_energy = 241e6 / 0.511e6
+            self.sim = QuadSimulator(alpha, beta, eps_n / self.gamma_energy,
+                                     -5, 20, 2e-6 / self.gamma_energy, add_noise=True)  # MS-1 QB-01, SCRN-01
+            self.sim.add_quad(SectionQuad("QB-01", 33.52, 0.2, "MAG-01", "CRQ-01", True))
+            self.sim.add_quad(SectionQuad("QB-02", 34.62, 0.2, "MAG-02", "CRQ-02", True))
+            self.sim.add_quad(SectionQuad("QB-03", 35.62, 0.2, "MAG-03", "CRQ-03", True))
+            self.sim.add_quad(SectionQuad("QB-04", 37.02, 0.2, "MAG-04", "CRQ-04", True))
+            self.sim.set_screen_position(38.445)
+
+            self.quad_list = list()
+            self.quad_list.append(SectionQuad("QB-01", 33.52, 0.2, "MAG-01", "CRQ-01", True))
+            self.quad_list.append(SectionQuad("QB-02", 34.62, 0.2, "MAG-02", "CRQ-02", True))
+            self.quad_list.append(SectionQuad("QB-03", 35.62, 0.2, "MAG-03", "CRQ-03", True))
+            self.quad_list.append(SectionQuad("QB-04", 37.02, 0.2, "MAG-04", "CRQ-04", True))
+            self.screen = SectionScreen("screen", 38.445, "liveviewer", "beamviewer", "limaccd", "screen")
+
+            self.quad_strength_list = [-0.7, -0.3, -3.6, 2.3]  # 0.4 mm size
+
+        elif section == "MS3":
+            self.gamma_energy = 3020e6 / 0.511e6
+            self.sim = QuadSimulator(alpha, beta, eps_n / self.gamma_energy,
+                                     -5, 20, 2e-6 / self.gamma_energy, add_noise=True)  # MS-1 QB-01, SCRN-01
+            self.sim.add_quad(SectionQuad("QF-01", 275.719, 0.2, "MAG-01", "CRQ-01", True))
+            self.sim.add_quad(SectionQuad("QF-02", 277.719, 0.2, "MAG-02", "CRQ-02", True))
+            self.sim.add_quad(SectionQuad("QF-03", 278.919, 0.2, "MAG-03", "CRQ-03", True))
+            self.sim.add_quad(SectionQuad("QF-04", 281.119, 0.2, "MAG-04", "CRQ-04", True))
+            self.sim.add_quad(SectionQuad("QF-05", 281.619, 0.2, "MAG-03", "CRQ-05", True))
+            self.sim.add_quad(SectionQuad("QF-06", 282.019, 0.2, "MAG-04", "CRQ-06", True))
+            self.sim.set_screen_position(282.456)
+
+            self.quad_list = list()
+            self.quad_list.append(SectionQuad("QF-01", 275.719, 0.2, "MAG-01", "CRQ-01", True))
+            self.quad_list.append(SectionQuad("QF-02", 277.719, 0.2, "MAG-02", "CRQ-02", True))
+            self.quad_list.append(SectionQuad("QF-03", 278.919, 0.2, "MAG-03", "CRQ-03", True))
+            self.quad_list.append(SectionQuad("QF-04", 281.119, 0.2, "MAG-04", "CRQ-04", True))
+            self.quad_list.append(SectionQuad("QF-03", 281.619, 0.2, "MAG-03", "CRQ-05", True))
+            self.quad_list.append(SectionQuad("QF-04", 282.019, 0.2, "MAG-04", "CRQ-06", True))
+            self.screen = SectionScreen("screen", 282.456, "liveviewer", "beamviewer", "limaccd", "screen")
+
+            self.quad_strength_list = [-0.7, -0.3, -3.6, 2.3, 1.0, 1.0]
 
         self.algo = "const_size"
 
@@ -297,6 +350,10 @@ class MultiQuad(object):
         self.beta_list = list()
         self.eps_list = list()
         self.eps_n_list = list()
+        self.alpha_y_list = list()
+        self.beta_y_list = list()
+        self.eps_y_list = list()
+        self.eps_n_y_list = list()
         self.theta_list = list()
         self.r_maj_list = list()
         self.r_min_list = list()
@@ -350,6 +407,9 @@ class MultiQuad(object):
         self.y_list.append(sigma_y0)
         self.a_list.append(M0[0, 0])
         self.b_list.append(M0[0, 1])
+        M0_y = self.calc_response_matrix(self.quad_strength_list, self.quad_list, self.screen.position, "y")
+        self.a_y_list.append(M0_y[0, 0])
+        self.b_y_list.append(M0_y[0, 1])
         self.target_a_list.append(M0[0, 0])
         self.target_b_list.append(M0[0, 1])
         self.theta_list.append(theta)
@@ -378,7 +438,7 @@ class MultiQuad(object):
         self.b_list.append(M[0, 1])
         self.target_a_list.append(a)
         self.target_b_list.append(b)
-        sigma = self.sim.get_screen_beamsize(r.x)
+        sigma = self.sim.get_screen_beamsize(r.x, axis="x")
         self.x_list.append(sigma)
 
         M_y = self.calc_response_matrix(r.x, self.quad_list, self.screen.position, axis="y")
@@ -407,6 +467,16 @@ class MultiQuad(object):
         self.theta_list.append(theta)
         self.r_maj_list.append(r_maj)
         self.r_min_list.append(r_min)
+        res_y = self.calc_twiss(np.array(self.a_y_list), np.array(self.b_y_list), np.array(self.y_list))
+        if res_y is not None:
+            alpha_y = res_y[0]
+            beta_y = res_y[1]
+            eps_y = res_y[2]
+        self.alpha_y_list.append(alpha_y)
+        self.beta_y_list.append(beta_y)
+        self.eps_y_list.append(eps_y)
+        self.eps_n_y_list.append(eps_y * self.gamma_energy)
+
         return theta, r_maj, r_min
 
     def calc_twiss(self, a, b, sigma):
@@ -442,26 +512,38 @@ class MultiQuad(object):
             # eps_n = eps / self.gamma_energy
             # beta = x[0] / eps
             # alpha = x[1] / eps
-            alpha = self.alpha_list[-1]
-            beta = self.beta_list[-1]
-            eps = self.eps_list[-1]
+            alpha = self.alpha_list[0]
+            beta = self.beta_list[0]
+            eps = self.eps_list[0]
         else:
-            try:
-                l_data = np.linalg.lstsq(M, sigma**2, rcond=-1)
-                x = l_data[0]
-                res = l_data[1]
-            except Exception as e:
-                self.logger.error("Error when fitting lstsqr: {0}".format(e))
-                return e
-            self.logger.debug("Fit coefficients: {0}".format(x[0]))
-            sq = x[2] * x[0] - x[1]**2
-            if sq < 0:
-                eps = self.eps_list[-1]
-            else:
-                eps = np.sqrt(sq)
-            eps_n = eps * self.gamma_energy
-            beta = x[0] / eps
-            alpha = x[1] / eps
+            def opt_fun(x, a, b, sigma):
+                return 1e6 * x[0] * (x[1] * a**2 - 2 * x[2] * a * b + (1 + x[2]**2) / x[1] * b**2) - (sigma * 1e3)**2
+
+            x0 = [self.eps_list[0], self.beta_list[0], self.alpha_list[0]]
+            # a = np.array(self.a_list)
+            # b = np.array(self.b_list)
+            # sigma = np.array(self.x_list)
+            ldata = least_squares(opt_fun, x0, jac="2-point", args=(a, b, sigma),
+                                  bounds=([0, 0, -np.inf], [np.inf, np.inf, np.inf]), gtol=1e-20, xtol=1e-20, ftol=1e-20)
+            eps = ldata.x[0]
+            beta = ldata.x[1]
+            alpha = ldata.x[2]
+            # try:
+            #     l_data = np.linalg.lstsq(M, sigma**2, rcond=-1)
+            #     x = l_data[0]
+            #     res = l_data[1]
+            # except Exception as e:
+            #     self.logger.error("Error when fitting lstsqr: {0}".format(e))
+            #     return e
+            # sq = x[2] * x[0] - x[1]**2
+            # self.logger.debug("eps**2: {0}".format(sq))
+            # if sq < 0:
+            #     eps = self.eps_list[-1]
+            # else:
+            #     eps = np.sqrt(sq)
+            # eps_n = eps * self.gamma_energy
+            # beta = x[0] / eps
+            # alpha = x[1] / eps
         return alpha, beta, eps
 
     def set_target_ab(self, step, theta, r_maj, r_min):
@@ -695,14 +777,14 @@ class MultiQuad(object):
                 else:
                     return self.calc_response_matrix(x, self.quad_list, self.screen.position)[0, 1]
         c = 0.8
-        mag_r = (-c * max_k, c * max_k)
-        res = minimize(ab_fun, x0=self.quad_strength_list, args=(True, False), bounds=(mag_r, mag_r, mag_r, mag_r))
+        mag_r = Bounds(-c * max_k, c * max_k)
+        res = minimize(ab_fun, x0=self.quad_strength_list, args=(True, False), bounds=mag_r)
         a_min = mq.calc_response_matrix(res.x, self.quad_list, self.screen.position)[0, 0]
-        res = minimize(ab_fun, x0=self.quad_strength_list, args=(True, True), bounds=(mag_r, mag_r, mag_r, mag_r))
+        res = minimize(ab_fun, x0=self.quad_strength_list, args=(True, True), bounds=mag_r)
         a_max = mq.calc_response_matrix(res.x, self.quad_list, self.screen.position)[0, 0]
-        res = minimize(ab_fun, x0=self.quad_strength_list, args=(False, False), bounds=(mag_r, mag_r, mag_r, mag_r))
+        res = minimize(ab_fun, x0=self.quad_strength_list, args=(False, False), bounds=mag_r)
         b_min = mq.calc_response_matrix(res.x, self.quad_list, self.screen.position)[0, 1]
-        res = minimize(ab_fun, x0=self.quad_strength_list, args=(False, True), bounds=(mag_r, mag_r, mag_r, mag_r))
+        res = minimize(ab_fun, x0=self.quad_strength_list, args=(False, True), bounds=mag_r)
         b_max = mq.calc_response_matrix(res.x, self.quad_list, self.screen.position)[0, 1]
         return a_min, a_max, b_min, b_max
 

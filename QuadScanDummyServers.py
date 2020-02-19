@@ -298,7 +298,8 @@ if __name__ == "__main__":
 
     p_list = list()
 
-    args_0 = args.copy()
+    import copy
+    args_0 = copy.copy(args)
     args_0.append("-dlist")
     args_0.append("ms1/mag/qb-01")
     args_0.append("-ORBendPoint")
@@ -308,7 +309,7 @@ if __name__ == "__main__":
     p_list.append(p)
 
     port0 += 1
-    args_0 = args.copy()
+    args_0 = copy.copy(args)
     args_0.append("-dlist")
     args_0.append("i-ms1/dia/scrn-01")
     args_0.append("-ORBendPoint")
@@ -318,7 +319,7 @@ if __name__ == "__main__":
     p_list.append(p)
 
     port0 += 1
-    args_0 = args.copy()
+    args_0 = copy.copy(args)
     args_0.append("-dlist")
     args_0.append("lima/beamviewer/i-ms1-dia-scrn-01")
     args_0.append("-ORBendPoint")
@@ -328,7 +329,7 @@ if __name__ == "__main__":
     p_list.append(p)
 
     port0 += 1
-    args_0 = args.copy()
+    args_0 = copy.copy(args)
     args_0.append("-dlist")
     args_0.append("lima/liveviewer/i-ms1-dia-scrn-01")
     args_0.append("-ORBendPoint")
@@ -338,12 +339,12 @@ if __name__ == "__main__":
     p_list.append(p)
 
     port0 += 1
-    args_0 = args.copy()
+    args_0 = copy.copy(args)
     args_0.append("-dlist")
     args_0.append("lima/limaccd/i-ms1-dia-scrn-01")
     args_0.append("-ORBendPoint")
     args_0.append("giop:tcp::10004")
-    p = multiprocessing.Process(target=run_class, args=[DummyLiveviewer, args_0])
+    p = multiprocessing.Process(target=run_class, args=[DummyLimaccd, args_0])
     p.start()
     p_list.append(p)
 
