@@ -75,7 +75,7 @@ class DummyMagnet(Device):
 
     def __init__(self, klass, name):
         self.mainfieldcomponent_data = 0.0
-        logger.info("In DummeMagnet: {0} {1}".format(klass, name))
+        logger.info("In DummyMagnet: {0} {1}".format(klass, name))
         Device.__init__(self, klass, name)
 
     def init_device(self):
@@ -86,7 +86,7 @@ class DummyMagnet(Device):
         self.debug_stream("init_device finished")
 
     def get_mainfieldcomponent(self):
-        return self.mainfieldcomponent_data + np.random.rand() * 0.01
+        return self.mainfieldcomponent_data + np.random.rand() * 0.001
 
     def set_mainfieldcomponent(self, k):
         self.mainfieldcomponent_data = k
@@ -299,11 +299,14 @@ if __name__ == "__main__":
     p_list = list()
 
     import copy
-    args_0 = copy.copy(args)
+    args_0 = list()
+    args_0.append("test")
+    args_0.append("-file=./QuadDummyServerConfig/i-ms1-mag-qb-01_config.txt")
     args_0.append("-dlist")
-    args_0.append("ms1/mag/qb-01")
+    args_0.append("i-ms1/mag/qb-01")
     args_0.append("-ORBendPoint")
     args_0.append("giop:tcp::10000")
+    args_0.append("-v4")
     p = multiprocessing.Process(target=run_class, args=[DummyMagnet, args_0])
     p.start()
     p_list.append(p)

@@ -1,0 +1,66 @@
+import PyTango as pt
+from PyTango.server import Device, DeviceMeta
+from PyTango.server import attribute, command
+from PyTango.server import device_property
+
+
+class DummyMagnet(Device):
+    __metaclass__ = DeviceMeta
+
+    # --- Operator attributes
+    #
+    mainfieldcomponent = attribute(label='mainfieldcomponent',
+                                   dtype=float,
+                                   access=pt.AttrWriteType.READ_WRITE,
+                                   unit="k",
+                                   format="%4.3f",
+                                   min_value=-100.0,
+                                   max_value=100.0,
+                                   fget="get_mainfieldcomponent",
+                                   fset="set_mainfieldcomponent",
+                                   memorized=False,
+                                   hw_memorized=False,
+                                   doc="Magnetic field", )
+
+    # --- Device properties
+    #
+    length = device_property(dtype=float,
+                             doc="Quad length",
+                             default_value=0.2)
+
+    polarity = device_property(dtype=int,
+                               doc="Polarity",
+                               default_value=1)
+
+    __si = device_property(dtype=float,
+                           doc="Position",
+                           default_value=5.0)
+
+    def __init__(self, klass, name):
+        self.mainfieldcomponent_data = 0.0
+        logger.info("In DummyMagnet: {0} {1}".format(klass, name))
+        Device.__init__(self, klass, name)
+
+    def init_device(self):
+        self.debug_stream("In init_device:")
+        Device.init_device(self)
+        self.set_state(pt.DevState.ON)
+
+        self.debug_stream("init_device finished")
+
+    def get_mainfieldcomponent(self):
+        return self.mainfieldcomponent_data + np.random.rand() * 0.001
+
+    def set_mainfieldcomponent(self, k):
+        self.mainfieldcomponent_data = k
+        return True
+
+    # def device_name_factory(self, list):
+    #     self.info_stream("Adding server MS1/MAG/QF01")
+    #     list.append("MS1/MAG/QF01")
+    #
+    #     return list
+
+
+if __name__ == "__main__":
+    pt.server.server_run((DummyMagnet,))
