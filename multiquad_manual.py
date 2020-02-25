@@ -431,7 +431,7 @@ class MultiQuadManual(object):
         # Determine quad settings to achieve these a-b values
         r = self.solve_quads(next_a, next_b)
         if r is None:
-            logger.error("Could not find quad settings to match desired a-b values")
+            self.logger.error("Could not find quad settings to match desired a-b values")
             self.k_list.pop()
             self.x_list.pop()
             self.a_list.pop()
@@ -461,10 +461,10 @@ class MultiQuadManual(object):
             "STEP {0}/{1} result:\n\n" \
             "alpha = {2:.3f}\n" \
             "beta  = {3:.3f}\n" \
-            "eps_n = {4:.4f}\n\n" \
+            "eps_n = {4:.3g}\n\n" \
             "Next step magnet settings:" \
             "{5}".format(self.current_step, self.n_steps, alpha, beta, eps * self.gamma_energy, next_k)
-        logger.info(s)
+        self.logger.info(s)
 
         return next_k
 
@@ -489,7 +489,7 @@ class MultiQuadManual(object):
     def set_target_ab(self, step, theta, r_maj, r_min):
         self.logger.debug("{0}: Determine new target a,b for algo {1}".format(self, self.algo))
         if self.algo == "const_size":
-            if step < 2:
+            if step < 3:
 
                 try:
                     psi = self.psi_target[-1] - 0.01
@@ -499,12 +499,13 @@ class MultiQuadManual(object):
                 target_b = r_maj * np.cos(psi) * np.sin(theta) + r_min * np.sin(psi) * np.cos(theta)
             else:
                 a_min, a_max, b_min, b_max = self.get_ab_range(self.max_k)
-                psi_v = np.linspace(0, 2 * np.pi, 1000)
+                psi_v = np.linspace(0, 2 * np.pi, 5000)
                 a, b = self.get_ab(psi_v, theta, r_maj, r_min)
                 ind = np.all([a < a_max, a > a_min, b < b_max, b > b_min], axis=0)
                 a_g = a[ind]
                 b_g = b[ind]
                 st = int(a_g.shape[0] / self.n_steps + 0.5)
+                self.logger.debug("Found {0} values in range. Using every {1} value".format(a_g.shape[0], st))
                 target_a = a_g[::st][step]
                 target_b = b_g[::st][step]
                 psi = self.get_psi(target_a, target_b, theta, r_maj, r_min)
@@ -629,7 +630,7 @@ class MultiQuadManual(object):
         r_minor = np.sqrt(my / l1)
         r_major = np.sqrt(my / l2)
         theta = np.arctan((l1 - gamma) / alpha)
-        self.logger.debug("Result: theta={0:.3f}, r_maj={1:.3f}, r_min{2:.3f}".format(theta, r_major, r_minor))
+        self.logger.debug("Result: theta={0:.3f}, r_maj={1:.3f}, r_min={2:.3f}".format(theta, r_major, r_minor))
         return theta, r_major, r_minor
 
     def get_missing_twiss(self, sigma, M, alpha=None, beta=None, eps=None):
