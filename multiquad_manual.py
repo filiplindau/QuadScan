@@ -479,8 +479,10 @@ class MultiQuadManual(object):
                 return 1e6 * x[0] * (x[1] * a**2 - 2 * x[2] * a * b + (1 + x[2]**2) / x[1] * b**2) - (sigma * 1e3)**2
 
             x0 = [self.eps_list[0], self.beta_list[0], self.alpha_list[0]]
+#            ldata = least_squares(opt_fun, x0, jac="2-point", args=(a, b, sigma),
+#                                  bounds=([0, 0, -np.inf], [np.inf, np.inf, np.inf]), gtol=1e-16, xtol=1e-16, ftol=1e-16)
             ldata = least_squares(opt_fun, x0, jac="2-point", args=(a, b, sigma),
-                                  bounds=([0, 0, -np.inf], [np.inf, np.inf, np.inf]), gtol=1e-20, xtol=1e-20, ftol=1e-20)
+                                  bounds=([0, 0, -np.inf], [np.inf, np.inf, np.inf]))
             eps = ldata.x[0]
             beta = ldata.x[1]
             alpha = ldata.x[2]
