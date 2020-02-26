@@ -247,6 +247,71 @@ class DummyLiveviewer(Device):
                          hw_memorized=True,
                          doc="Position in linac", )
 
+    noiselevel = attribute(label='noiselevel',
+                         dtype=float,
+                         access=pt.AttrWriteType.READ_WRITE,
+                         unit="counts",
+                         format="%4.3f",
+                         min_value=0.0,
+                         max_value=3000.0,
+                         fget="get_noiselevel",
+                         fset="set_noiselevel",
+                         memorized=True,
+                         hw_memorized=True,
+                         doc="Image background noise level", )
+
+    charge = attribute(label='charge',
+                         dtype=float,
+                         access=pt.AttrWriteType.READ_WRITE,
+                         unit="pC",
+                         format="%4.3f",
+                         min_value=-100.0,
+                         max_value=300.0,
+                         fget="get_charge",
+                         fset="set_charge",
+                         memorized=True,
+                         hw_memorized=True,
+                         doc="Beam total charge", )
+
+    alpha = attribute(label='alpha',
+                         dtype=float,
+                         access=pt.AttrWriteType.READ_WRITE,
+                         unit="",
+                         format="%4.3f",
+                         min_value=-100.0,
+                         max_value=300.0,
+                         fget="get_alpha",
+                         fset="set_alpha",
+                         memorized=True,
+                         hw_memorized=True,
+                         doc="Image background noise level", )
+
+    beta = attribute(label='beta',
+                         dtype=float,
+                         access=pt.AttrWriteType.READ_WRITE,
+                         unit="",
+                         format="%4.3f",
+                         min_value=-100000.0,
+                         max_value=3000000.0,
+                         fget="get_beta",
+                         fset="set_beta",
+                         memorized=True,
+                         hw_memorized=True,
+                         doc="Image background noise level", )
+
+    eps_n = attribute(label='eps_n',
+                         dtype=float,
+                         access=pt.AttrWriteType.READ_WRITE,
+                         unit="um",
+                         format="%4.3f",
+                         min_value=0.0,
+                         max_value=300.0,
+                         fget="get_eps",
+                         fset="set_eps",
+                         memorized=True,
+                         hw_memorized=True,
+                         doc="Image background noise level", )
+
 
     # --- Device properties
     #
@@ -259,20 +324,22 @@ class DummyLiveviewer(Device):
         self.width = 1280
         self.height = 1024
         self.px = 15e-6
-        self.intensity = 2000*(0.05e-3 * 0.05e-3)
+        self.charge_data = 100.0
         self.position_data = 0.0
         self.framerate_data = 2.0
         self.magnet_names = ["i-ms1/mag/qb-01", "i-ms1/mag/qb-02", "i-ms1/mag/qb-03", "i-ms1/mag/qb-04"]
         self.screen_name = "i-ms1/dia/scrn-01"
         self.gamma_energy = 233e6 / 0.511e6
-        alpha = 10.0
-        beta = 27.0
-        eps_n = 2e-6
-        alpha_y = -5.0
-        beta_y = 20.0
-        eps_n_y = 1.5e-6
-        self.sim = QuadSimulator(alpha, beta, eps_n / self.gamma_energy,
-                                 alpha_y, beta_y, eps_n_y / self.gamma_energy, add_noise=True)  # MS-1 QB-01, SCRN-01
+        self.alpha_data = 10.0
+        self.beta_data = 27.0
+        self.eps_n_data = 2
+        self.alpha_y_data = -5.0
+        self.beta_y_data = 20.0
+        self.eps_n_y_data = 1.5
+        self.noiselevel_data = 20.0
+        self.sim = QuadSimulator(self.alpha_data, self.beta_data, self.eps_n_data * 1e-6 / self.gamma_energy,
+                                 self.alpha_y_data, self.beta_y_data, self.eps_n_y_data * 1e-6/ self.gamma_energy,
+                                 add_noise=True)  # MS-1 QB-01, SCRN-01
         self.magnet_devices = list()
         self.screen_device = None
         Device.__init__(self, klass, name)
@@ -296,6 +363,14 @@ class DummyLiveviewer(Device):
 
         self.debug_stream("init_device finished")
 
+    def update_sim(self):
+        self.sim.alpha = self.alpha_data
+        self.sim.beta = self.beta_data
+        self.sim.eps = self.eps_n_data *1e-6 / self.gamma_energy
+        self.sim.alpha_y = self.alpha_y_data
+        self.sim.beta_y = self.beta_y_data
+        self.sim.eps_y = self.eps_n_y_data * 1e-6 / self.gamma_energy
+
     def get_image(self):
         k_list = list()
         for dev in self.magnet_devices:
@@ -306,8 +381,8 @@ class DummyLiveviewer(Device):
         y = self.px * (np.arange(self.height) - self.height / 2)
         X, Y = np.meshgrid(x, y)
         self.debug_stream("Beamsize: {0:.3f} x {1:.3f} mm".format(sigma_x * 1e3, sigma_y * 1e3))
-        beam_image = self.intensity / sigma_x / sigma_y * np.exp(-X**2/sigma_x**2) * np.exp(-Y**2/sigma_y**2)
-        self.image_data = (beam_image + 10 * np.random.random((self.height, self.width))).astype(np.uint16)
+        beam_image = 2e-7 * self.charge_data / sigma_x / sigma_y * np.exp(-X**2/sigma_x**2) * np.exp(-Y**2/sigma_y**2)
+        self.image_data = np.minimum((beam_image + self.noiselevel_data * np.random.random((self.height, self.width))).astype(np.uint16), 4096)
         return self.image_data
 
     def get_framerate(self):
@@ -319,6 +394,39 @@ class DummyLiveviewer(Device):
     def set_position(self, new_pos):
         self.info_stream("In set_position: New position {0} m".format(new_pos))
         self.position_data = new_pos
+
+    def get_noiselevel(self):
+        return self.noiselevel_data
+
+    def set_noiselevel(self, value):
+        self.noiselevel_data = value
+
+    def get_charge(self):
+        return self.charge_data
+
+    def set_charge(self, value):
+        self.charge_data = value
+
+    def get_alpha(self):
+        return self.alpha_data
+
+    def set_alpha(self, value):
+        self.alpha_data = value
+        self.update_sim()
+
+    def get_beta(self):
+        return self.beta_data
+
+    def set_beta(self, value):
+        self.beta_data = value
+        self.update_sim()
+
+    def get_eps(self):
+        return self.eps_n_data
+
+    def set_eps(self, value):
+        self.eps_n_data = value
+        self.update_sim()
 
 
 class DummyBeamviewer(Device):
