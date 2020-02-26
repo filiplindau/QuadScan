@@ -2,6 +2,8 @@ import PyTango as pt
 from PyTango.server import Device, DeviceMeta
 from PyTango.server import attribute, command
 from PyTango.server import device_property
+import sys
+import numpy as np
 
 
 class DummyMagnet(Device):
@@ -18,8 +20,8 @@ class DummyMagnet(Device):
                                    max_value=100.0,
                                    fget="get_mainfieldcomponent",
                                    fset="set_mainfieldcomponent",
-                                   memorized=False,
-                                   hw_memorized=False,
+                                   memorized=True,
+                                   hw_memorized=True,
                                    doc="Magnetic field", )
 
     # --- Device properties
@@ -38,7 +40,6 @@ class DummyMagnet(Device):
 
     def __init__(self, klass, name):
         self.mainfieldcomponent_data = 0.0
-        logger.info("In DummyMagnet: {0} {1}".format(klass, name))
         Device.__init__(self, klass, name)
 
     def init_device(self):
@@ -52,6 +53,7 @@ class DummyMagnet(Device):
         return self.mainfieldcomponent_data + np.random.rand() * 0.001
 
     def set_mainfieldcomponent(self, k):
+        self.info_stream("In set_mainfieldcomponent: New k={0:.3f}".format(k))
         self.mainfieldcomponent_data = k
         return True
 
@@ -63,4 +65,5 @@ class DummyMagnet(Device):
 
 
 if __name__ == "__main__":
-    pt.server.server_run((DummyMagnet,))
+    args = sys.argv
+    pt.server.server_run((DummyMagnet,),  args=args)

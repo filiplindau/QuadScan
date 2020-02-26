@@ -462,7 +462,7 @@ class MultiQuadManual(object):
             "alpha = {2:.3f}\n" \
             "beta  = {3:.3f}\n" \
             "eps_n = {4:.3g}\n\n" \
-            "Next step magnet settings:" \
+            "Next step magnet settings:\n" \
             "{5}".format(self.current_step, self.n_steps, alpha, beta, eps * self.gamma_energy, next_k)
         self.logger.info(s)
 
