@@ -715,7 +715,7 @@ class MultiQuadManual(object):
 
     def set_section(self, section):
         if section == "MS1":
-            self.gamma_energy = 241e6 / 0.511e6
+            self.gamma_energy = 233e6 / 0.511e6
             self.quad_list = list()
             self.quad_list.append(SectionQuad("QB-01", 13.55, 0.2, "MAG-01", "CRQ-01", True))
             self.quad_list.append(SectionQuad("QB-02", 14.45, 0.2, "MAG-02", "CRQ-02", True))
@@ -727,7 +727,7 @@ class MultiQuadManual(object):
             self.quad_strength_list = [-0.7, -0.3, -3.6, 2.3]  # 0.4 mm size
 
         elif section == "MS2":
-            self.gamma_energy = 241e6 / 0.511e6
+            self.gamma_energy = 233e6 / 0.511e6
 
             self.quad_list = list()
             self.quad_list.append(SectionQuad("QB-01", 33.52, 0.2, "MAG-01", "CRQ-01", True))

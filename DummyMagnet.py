@@ -24,6 +24,30 @@ class DummyMagnet(Device):
                                    hw_memorized=True,
                                    doc="Magnetic field", )
 
+    position = attribute(label='position',
+                         dtype=float,
+                         access=pt.AttrWriteType.READ,
+                         unit="m",
+                         format="%4.3f",
+                         min_value=-100.0,
+                         max_value=300.0,
+                         fget="get_position",
+                         memorized=False,
+                         hw_memorized=False,
+                         doc="Quad position in linac", )
+
+    ql = attribute(label='length',
+                   dtype=float,
+                   access=pt.AttrWriteType.READ,
+                   unit="m",
+                   format="%4.3f",
+                   min_value=-100.0,
+                   max_value=300.0,
+                   fget="get_ql",
+                   memorized=False,
+                   hw_memorized=False,
+                   doc="Quad length", )
+
     # --- Device properties
     #
     length = device_property(dtype=float,
@@ -56,6 +80,12 @@ class DummyMagnet(Device):
         self.info_stream("In set_mainfieldcomponent: New k={0:.3f}".format(k))
         self.mainfieldcomponent_data = k
         return True
+
+    def get_position(self):
+        return self.__si
+
+    def get_ql(self):
+        return self.length
 
     # def device_name_factory(self, list):
     #     self.info_stream("Adding server MS1/MAG/QF01")
