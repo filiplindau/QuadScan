@@ -14,7 +14,7 @@ import sys
 
 from tasks.GenericTasks import *
 from QuadScanDataStructs import *
-
+from multiquad_sim import QuadSimulator
 
 try:
     import PyTango as pt
@@ -55,9 +55,34 @@ class DummyMagnet(Device):
                                    max_value=100.0,
                                    fget="get_mainfieldcomponent",
                                    fset="set_mainfieldcomponent",
-                                   memorized=False,
-                                   hw_memorized=False,
+                                   memorized=True,
+                                   hw_memorized=True,
                                    doc="Magnetic field", )
+
+    position = attribute(label='position',
+                         dtype=float,
+                         access=pt.AttrWriteType.READ_WRITE,
+                         unit="m",
+                         format="%4.3f",
+                         min_value=-100.0,
+                         max_value=300.0,
+                         fget="get_position",
+                         fset="set_position",
+                         memorized=True,
+                         hw_memorized=True,
+                         doc="Quad position in linac", )
+
+    ql = attribute(label='length',
+                   dtype=float,
+                   access=pt.AttrWriteType.READ,
+                   unit="m",
+                   format="%4.3f",
+                   min_value=-100.0,
+                   max_value=300.0,
+                   fget="get_ql",
+                   memorized=False,
+                   hw_memorized=False,
+                   doc="Quad length", )
 
     # --- Device properties
     #
@@ -71,11 +96,11 @@ class DummyMagnet(Device):
 
     __si = device_property(dtype=float,
                            doc="Position",
-                           default_value=5.0)
+                           )
 
     def __init__(self, klass, name):
         self.mainfieldcomponent_data = 0.0
-        logger.info("In DummyMagnet: {0} {1}".format(klass, name))
+        self.position_data = 0.0
         Device.__init__(self, klass, name)
 
     def init_device(self):
@@ -89,14 +114,19 @@ class DummyMagnet(Device):
         return self.mainfieldcomponent_data + np.random.rand() * 0.001
 
     def set_mainfieldcomponent(self, k):
+        self.info_stream("In set_mainfieldcomponent: New k={0:.3f}".format(k))
         self.mainfieldcomponent_data = k
         return True
 
-    # def device_name_factory(self, list):
-    #     self.info_stream("Adding server MS1/MAG/QF01")
-    #     list.append("MS1/MAG/QF01")
-    #
-    #     return list
+    def get_position(self):
+        return self.position_data
+
+    def set_position(self, new_pos):
+        self.info_stream("In set_position: New position {0} m".format(new_pos))
+        self.position_data = new_pos
+
+    def get_ql(self):
+        return self.length
 
 
 class DummyScreen(Device):
@@ -128,8 +158,22 @@ class DummyScreen(Device):
                          hw_memorized=False,
                          doc="Screen out status", )
 
+    position = attribute(label='position',
+                         dtype=float,
+                         access=pt.AttrWriteType.READ_WRITE,
+                         unit="m",
+                         format="%4.3f",
+                         min_value=-100.0,
+                         max_value=300.0,
+                         fget="get_position",
+                         fset="set_position",
+                         memorized=True,
+                         hw_memorized=True,
+                         doc="Position in linac", )
+
     def __init__(self, klass, name):
         self.scr_in_state = False
+        self.position_data = 0.0
         Device.__init__(self, klass, name)
 
     def init_device(self):
@@ -157,6 +201,13 @@ class DummyScreen(Device):
     def get_statusout(self):
         return not self.scr_in_state
 
+    def get_position(self):
+        return self.position_data
+
+    def set_position(self, new_pos):
+        self.info_stream("In set_position: New position {0} m".format(new_pos))
+        self.position_data = new_pos
+
 
 class DummyLiveviewer(Device):
     __metaclass__ = DeviceMeta
@@ -164,24 +215,38 @@ class DummyLiveviewer(Device):
     # --- Operator attributes
     #
     image = attribute(label='image',
-                           dtype=[[np.double]],
-                           access=pt.AttrWriteType.READ,
-                           max_dim_x=2048,
-                           max_dim_y=2048,
-                           display_level=pt.DispLevel.OPERATOR,
-                           unit="a.u.",
-                           format="%5.2f",
-                           fget="get_image",
-                           doc="Camera image", )
+                      dtype=[[np.double]],
+                      access=pt.AttrWriteType.READ,
+                      max_dim_x=2048,
+                      max_dim_y=2048,
+                      display_level=pt.DispLevel.OPERATOR,
+                      unit="a.u.",
+                      format="%5.2f",
+                      fget="get_image",
+                      doc="Camera image", )
 
     framerate = attribute(label='framerate',
-                           dtype=float,
-                           access=pt.AttrWriteType.READ,
-                           display_level=pt.DispLevel.OPERATOR,
-                           unit="Hz",
-                           format="%5.2f",
-                           fget="get_framerate",
-                           doc="Camera framerate", )
+                          dtype=float,
+                          access=pt.AttrWriteType.READ,
+                          display_level=pt.DispLevel.OPERATOR,
+                          unit="Hz",
+                          format="%5.2f",
+                          fget="get_framerate",
+                          doc="Camera framerate", )
+
+    position = attribute(label='position',
+                         dtype=float,
+                         access=pt.AttrWriteType.READ_WRITE,
+                         unit="m",
+                         format="%4.3f",
+                         min_value=-100.0,
+                         max_value=300.0,
+                         fget="get_position",
+                         fset="set_position",
+                         memorized=True,
+                         hw_memorized=True,
+                         doc="Position in linac", )
+
 
     # --- Device properties
     #
@@ -191,7 +256,25 @@ class DummyLiveviewer(Device):
 
     def __init__(self, klass, name):
         self.image_data = np.zeros((1280, 1024))
+        self.width = 1280
+        self.height = 1024
+        self.px = 15e-6
+        self.intensity = 2000*(0.05e-3 * 0.05e-3)
+        self.position_data = 0.0
         self.framerate_data = 2.0
+        self.magnet_names = ["i-ms1/mag/qb-01", "i-ms1/mag/qb-02", "i-ms1/mag/qb-03", "i-ms1/mag/qb-04"]
+        self.screen_name = "i-ms1/dia/scrn-01"
+        self.gamma_energy = 233e6 / 0.511e6
+        alpha = 10.0
+        beta = 27.0
+        eps_n = 2e-6
+        alpha_y = -5.0
+        beta_y = 20.0
+        eps_n_y = 1.5e-6
+        self.sim = QuadSimulator(alpha, beta, eps_n / self.gamma_energy,
+                                 alpha_y, beta_y, eps_n_y / self.gamma_energy, add_noise=True)  # MS-1 QB-01, SCRN-01
+        self.magnet_devices = list()
+        self.screen_device = None
         Device.__init__(self, klass, name)
 
     def init_device(self):
@@ -199,14 +282,43 @@ class DummyLiveviewer(Device):
         Device.init_device(self)
         self.set_state(pt.DevState.ON)
 
+        for mag in self.magnet_names:
+            dev = pt.DeviceProxy("127.0.0.1:10000/{0}#dbase=no".format(mag))
+            self.magnet_devices.append(dev)
+            pos = dev.position
+            self.sim.add_quad(SectionQuad(mag, pos, 0.2, "MAG-01", "CRQ-01", False))
+            self.debug_stream("Connected to device {0}".format(mag))
+        self.screen_device = pt.DeviceProxy("127.0.0.1:10001/{0}#dbase=no".format(self.screen_name))
+        self.debug_stream("Connected to device {0}".format(self.screen_name))
+        self.info_stream("Attributes: {0}".format(self.screen_device.get_attribute_list()))
+        pos = self.screen_device.position
+        self.sim.set_screen_position(pos)
+
         self.debug_stream("init_device finished")
 
     def get_image(self):
-        self.image_data = np.random.random_integers(0, 2 ** 16, (800, 600)).astype(np.uint16)
+        k_list = list()
+        for dev in self.magnet_devices:
+            k_list.append(dev.mainfieldcomponent)
+        sigma_x = self.sim.get_screen_beamsize(k_list, "x")
+        sigma_y = self.sim.get_screen_beamsize(k_list, "y")
+        x = self.px * (np.arange(self.width) - self.width / 2)
+        y = self.px * (np.arange(self.height) - self.height / 2)
+        X, Y = np.meshgrid(x, y)
+        self.debug_stream("Beamsize: {0:.3f} x {1:.3f} mm".format(sigma_x * 1e3, sigma_y * 1e3))
+        beam_image = self.intensity / sigma_x / sigma_y * np.exp(-X**2/sigma_x**2) * np.exp(-Y**2/sigma_y**2)
+        self.image_data = (beam_image + 10 * np.random.random((self.height, self.width))).astype(np.uint16)
         return self.image_data
 
     def get_framerate(self):
         return self.framerate_data
+
+    def get_position(self):
+        return self.position_data
+
+    def set_position(self, new_pos):
+        self.info_stream("In set_position: New position {0} m".format(new_pos))
+        self.position_data = new_pos
 
 
 class DummyBeamviewer(Device):
@@ -225,14 +337,28 @@ class DummyBeamviewer(Device):
                                  doc="Measurement ruler", )
 
     measurementrulerwidth = attribute(label='measurementrulerwidth',
-                                 dtype=float,
-                                 access=pt.AttrWriteType.READ,
-                                 unit="",
-                                 format="%s",
-                                 fget="get_measurementrulerwidth",
-                                 memorized=False,
-                                 hw_memorized=False,
-                                 doc="Measurement ruler", )
+                                      dtype=float,
+                                      access=pt.AttrWriteType.READ,
+                                      unit="",
+                                      format="%s",
+                                      fget="get_measurementrulerwidth",
+                                      memorized=False,
+                                      hw_memorized=False,
+                                      doc="Measurement ruler", )
+
+    position = attribute(label='position',
+                         dtype=float,
+                         access=pt.AttrWriteType.READ_WRITE,
+                         unit="m",
+                         format="%4.3f",
+                         min_value=-100.0,
+                         max_value=300.0,
+                         fget="get_position",
+                         fset="set_position",
+                         memorized=True,
+                         hw_memorized=True,
+                         doc="Position in linac", )
+
 
     # --- Device properties
     #
@@ -241,8 +367,9 @@ class DummyBeamviewer(Device):
                            default_value=10.0)
 
     def __init__(self, klass, name):
-        self.cal = "{\"angle\": 0.0, \"pos\": [258.5, 48.57], \"size\": [688.13, 702.02]}"
-        self.width = 20.0
+        self.cal = "{\"angle\": 0.0, \"pos\": [258.5, 48.57], \"size\": [357.0, 357.0]}"
+        self.position_data = 0.0
+        self.width = 5.0
         logger.info("In DummyBeamViewer: {0} {1}".format(klass, name))
         Device.__init__(self, klass, name)
 
@@ -258,6 +385,13 @@ class DummyBeamviewer(Device):
 
     def get_measurementrulerwidth(self):
         return self.width
+
+    def get_position(self):
+        return self.position_data
+
+    def set_position(self, new_pos):
+        self.info_stream("In set_position: New position {0} m".format(new_pos))
+        self.position_data = new_pos
 
 
 class DummyLimaccd(Device):
@@ -299,11 +433,9 @@ if __name__ == "__main__":
     p_list = list()
 
     import copy
-    args_0 = list()
+    args_0 = copy.copy(args)
     args_0.append("test")
-    args_0.append("-file=./QuadDummyServerConfig/i-ms1-mag-qb-01_config.txt")
-    args_0.append("-dlist")
-    args_0.append("i-ms1/mag/qb-01")
+    args_0.append("-file=./DummyServerConfig/dummymagnet.cfg")
     args_0.append("-ORBendPoint")
     args_0.append("giop:tcp::10000")
     args_0.append("-v4")
@@ -313,43 +445,88 @@ if __name__ == "__main__":
 
     port0 += 1
     args_0 = copy.copy(args)
-    args_0.append("-dlist")
-    args_0.append("i-ms1/dia/scrn-01")
+    args_0.append("test")
+    args_0.append("-file=./DummyServerConfig/dummyscreen.cfg")
     args_0.append("-ORBendPoint")
     args_0.append("giop:tcp::10001")
+    args_0.append("-v4")
     p = multiprocessing.Process(target=run_class, args=[DummyScreen, args_0])
     p.start()
     p_list.append(p)
 
     port0 += 1
     args_0 = copy.copy(args)
-    args_0.append("-dlist")
-    args_0.append("lima/beamviewer/i-ms1-dia-scrn-01")
+    args_0.append("test")
+    args_0.append("-file=./DummyServerConfig/dummybeamviewer.cfg")
     args_0.append("-ORBendPoint")
-    args_0.append("giop:tcp::10002")
+    args_0.append("giop:tcp::10003")
+    args_0.append("-v4")
     p = multiprocessing.Process(target=run_class, args=[DummyBeamviewer, args_0])
     p.start()
     p_list.append(p)
 
     port0 += 1
     args_0 = copy.copy(args)
-    args_0.append("-dlist")
-    args_0.append("lima/liveviewer/i-ms1-dia-scrn-01")
+    args_0.append("test")
+    args_0.append("-file=./DummyServerConfig/dummylimaccd.cfg")
     args_0.append("-ORBendPoint")
-    args_0.append("giop:tcp::10003")
+    args_0.append("giop:tcp::10004")
+    args_0.append("-v4")
+    p = multiprocessing.Process(target=run_class, args=[DummyLimaccd, args_0])
+    p.start()
+    p_list.append(p)
+
+    time.sleep(0.5)
+    port0 += 1
+    args_0 = copy.copy(args)
+    args_0.append("test")
+    args_0.append("-file=./DummyServerConfig/dummyliveviewer.cfg")
+    args_0.append("-ORBendPoint")
+    args_0.append("giop:tcp::10002")
+    args_0.append("-v4")
     p = multiprocessing.Process(target=run_class, args=[DummyLiveviewer, args_0])
     p.start()
     p_list.append(p)
 
-    port0 += 1
-    args_0 = copy.copy(args)
-    args_0.append("-dlist")
-    args_0.append("lima/limaccd/i-ms1-dia-scrn-01")
-    args_0.append("-ORBendPoint")
-    args_0.append("giop:tcp::10004")
-    p = multiprocessing.Process(target=run_class, args=[DummyLimaccd, args_0])
-    p.start()
-    p_list.append(p)
+    # port0 += 1
+    # args_0 = copy.copy(args)
+    # args_0.append("-dlist")
+    # args_0.append("i-ms1/dia/scrn-01")
+    # args_0.append("-ORBendPoint")
+    # args_0.append("giop:tcp::10001")
+    # p = multiprocessing.Process(target=run_class, args=[DummyScreen, args_0])
+    # p.start()
+    # p_list.append(p)
+    #
+    # port0 += 1
+    # args_0 = copy.copy(args)
+    # args_0.append("-dlist")
+    # args_0.append("lima/beamviewer/i-ms1-dia-scrn-01")
+    # args_0.append("-ORBendPoint")
+    # args_0.append("giop:tcp::10002")
+    # p = multiprocessing.Process(target=run_class, args=[DummyBeamviewer, args_0])
+    # p.start()
+    # p_list.append(p)
+    #
+    # port0 += 1
+    # args_0 = copy.copy(args)
+    # args_0.append("-dlist")
+    # args_0.append("lima/liveviewer/i-ms1-dia-scrn-01")
+    # args_0.append("-ORBendPoint")
+    # args_0.append("giop:tcp::10003")
+    # p = multiprocessing.Process(target=run_class, args=[DummyLiveviewer, args_0])
+    # p.start()
+    # p_list.append(p)
+    #
+    # port0 += 1
+    # args_0 = copy.copy(args)
+    # args_0.append("-dlist")
+    # args_0.append("lima/limaccd/i-ms1-dia-scrn-01")
+    # args_0.append("-ORBendPoint")
+    # args_0.append("giop:tcp::10004")
+    # p = multiprocessing.Process(target=run_class, args=[DummyLimaccd, args_0])
+    # p.start()
+    # p_list.append(p)
 
     for p in p_list:
         p.join()

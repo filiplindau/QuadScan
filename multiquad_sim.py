@@ -70,7 +70,7 @@ class QuadSimulator(object):
 
         self.add_noise = add_noise
         # Shot-to-shot errors
-        self.noise_factors = {"alpha": 0.00, "beta": 0.000, "eps": 0.00, "sigma": 0.05, "quad": 0.00}
+        self.noise_factors = {"alpha": 0.00001, "beta": 0.00001, "eps": 0.00001, "sigma": 0.05, "quad": 0.00001}
         # Systematic errors:
         self.pos_error = np.random.normal(0, 0.001, 6)
         self.quad_cal_error = np.random.normal(0, 0.001, 6)

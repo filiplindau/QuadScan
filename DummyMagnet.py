@@ -26,14 +26,15 @@ class DummyMagnet(Device):
 
     position = attribute(label='position',
                          dtype=float,
-                         access=pt.AttrWriteType.READ,
+                         access=pt.AttrWriteType.READ_WRITE,
                          unit="m",
                          format="%4.3f",
                          min_value=-100.0,
                          max_value=300.0,
                          fget="get_position",
-                         memorized=False,
-                         hw_memorized=False,
+                         fset="set_position",
+                         memorized=True,
+                         hw_memorized=True,
                          doc="Quad position in linac", )
 
     ql = attribute(label='length',
@@ -60,10 +61,11 @@ class DummyMagnet(Device):
 
     __si = device_property(dtype=float,
                            doc="Position",
-                           default_value=5.0)
+                           )
 
     def __init__(self, klass, name):
         self.mainfieldcomponent_data = 0.0
+        self.position_data = 0.0
         Device.__init__(self, klass, name)
 
     def init_device(self):
@@ -82,7 +84,11 @@ class DummyMagnet(Device):
         return True
 
     def get_position(self):
-        return self.__si
+        return self.position_data
+
+    def set_position(self, new_pos):
+        self.info_stream("In set_position: New position {0} m".format(new_pos))
+        self.position_data = new_pos
 
     def get_ql(self):
         return self.length
@@ -96,4 +102,5 @@ class DummyMagnet(Device):
 
 if __name__ == "__main__":
     args = sys.argv
+    print("Args: {0}".format(args))
     pt.server.server_run((DummyMagnet,),  args=args)
