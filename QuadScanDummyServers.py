@@ -234,6 +234,15 @@ class DummyLiveviewer(Device):
                           fget="get_framerate",
                           doc="Camera framerate", )
 
+    pixel_cal = attribute(label='Pixel calibration',
+                          dtype=float,
+                          access=pt.AttrWriteType.READ,
+                          display_level=pt.DispLevel.OPERATOR,
+                          unit="m",
+                          format="%5.2f",
+                          fget="get_pixel_cal",
+                          doc="Resolution of camera pixel", )
+
     position = attribute(label='position',
                          dtype=float,
                          access=pt.AttrWriteType.READ_WRITE,
@@ -248,69 +257,82 @@ class DummyLiveviewer(Device):
                          doc="Position in linac", )
 
     noiselevel = attribute(label='noiselevel',
-                         dtype=float,
-                         access=pt.AttrWriteType.READ_WRITE,
-                         unit="counts",
-                         format="%4.3f",
-                         min_value=0.0,
-                         max_value=3000.0,
-                         fget="get_noiselevel",
-                         fset="set_noiselevel",
-                         memorized=True,
-                         hw_memorized=True,
-                         doc="Image background noise level", )
+                           dtype=float,
+                           access=pt.AttrWriteType.READ_WRITE,
+                           unit="counts",
+                           format="%4.3f",
+                           min_value=0.0,
+                           max_value=3000.0,
+                           fget="get_noiselevel",
+                           fset="set_noiselevel",
+                           memorized=True,
+                           hw_memorized=True,
+                           doc="Image background noise level", )
 
     charge = attribute(label='charge',
-                         dtype=float,
-                         access=pt.AttrWriteType.READ_WRITE,
-                         unit="pC",
-                         format="%4.3f",
-                         min_value=-100.0,
-                         max_value=300.0,
-                         fget="get_charge",
-                         fset="set_charge",
-                         memorized=True,
-                         hw_memorized=True,
-                         doc="Beam total charge", )
+                       dtype=float,
+                       access=pt.AttrWriteType.READ_WRITE,
+                       unit="pC",
+                       format="%4.3f",
+                       min_value=-100.0,
+                       max_value=300.0,
+                       fget="get_charge",
+                       fset="set_charge",
+                       memorized=True,
+                       hw_memorized=True,
+                       doc="Beam total charge", )
 
     alpha = attribute(label='alpha',
-                         dtype=float,
-                         access=pt.AttrWriteType.READ_WRITE,
-                         unit="",
-                         format="%4.3f",
-                         min_value=-100.0,
-                         max_value=300.0,
-                         fget="get_alpha",
-                         fset="set_alpha",
-                         memorized=True,
-                         hw_memorized=True,
-                         doc="Image background noise level", )
+                      dtype=float,
+                      access=pt.AttrWriteType.READ_WRITE,
+                      unit="",
+                      format="%4.3f",
+                      min_value=-1000.0,
+                      max_value=1000.0,
+                      fget="get_alpha",
+                      fset="set_alpha",
+                      memorized=True,
+                      hw_memorized=True,
+                      doc="Electron beam alpha", )
 
     beta = attribute(label='beta',
-                         dtype=float,
-                         access=pt.AttrWriteType.READ_WRITE,
-                         unit="",
-                         format="%4.3f",
-                         min_value=-100000.0,
-                         max_value=3000000.0,
-                         fget="get_beta",
-                         fset="set_beta",
-                         memorized=True,
-                         hw_memorized=True,
-                         doc="Image background noise level", )
+                     dtype=float,
+                     access=pt.AttrWriteType.READ_WRITE,
+                     unit="m",
+                     format="%4.3f",
+                     min_value=-100000.0,
+                     max_value=3000000.0,
+                     fget="get_beta",
+                     fset="set_beta",
+                     memorized=True,
+                     hw_memorized=True,
+                     doc="Electron beam beta", )
 
     eps_n = attribute(label='eps_n',
-                         dtype=float,
-                         access=pt.AttrWriteType.READ_WRITE,
-                         unit="um",
-                         format="%4.3f",
-                         min_value=0.0,
-                         max_value=300.0,
-                         fget="get_eps",
-                         fset="set_eps",
-                         memorized=True,
-                         hw_memorized=True,
-                         doc="Image background noise level", )
+                      dtype=float,
+                      access=pt.AttrWriteType.READ_WRITE,
+                      unit="um",
+                      format="%4.3f",
+                      min_value=0.0,
+                      max_value=1000.0,
+                      fget="get_eps",
+                      fset="set_eps",
+                      memorized=True,
+                      hw_memorized=True,
+                      doc="Electron beam emittance", )
+
+    beamenergy = attribute(label='beam energy',
+                      dtype=float,
+                      access=pt.AttrWriteType.READ_WRITE,
+                      unit="MeV",
+                      format="%4.3f",
+                      min_value=0.0,
+                      max_value=300.0,
+                      fget="get_beamenergy",
+                      fset="set_beamenergy",
+                      memorized=True,
+                      hw_memorized=True,
+                      doc="Electron beam energy", )
 
 
     # --- Device properties
@@ -366,7 +388,7 @@ class DummyLiveviewer(Device):
     def update_sim(self):
         self.sim.alpha = self.alpha_data
         self.sim.beta = self.beta_data
-        self.sim.eps = self.eps_n_data *1e-6 / self.gamma_energy
+        self.sim.eps = self.eps_n_data * 1e-6 / self.gamma_energy
         self.sim.alpha_y = self.alpha_y_data
         self.sim.beta_y = self.beta_y_data
         self.sim.eps_y = self.eps_n_y_data * 1e-6 / self.gamma_energy
@@ -381,12 +403,15 @@ class DummyLiveviewer(Device):
         y = self.px * (np.arange(self.height) - self.height / 2)
         X, Y = np.meshgrid(x, y)
         self.debug_stream("Beamsize: {0:.3f} x {1:.3f} mm".format(sigma_x * 1e3, sigma_y * 1e3))
-        beam_image = 2e-7 * self.charge_data / sigma_x / sigma_y * np.exp(-X**2/sigma_x**2) * np.exp(-Y**2/sigma_y**2)
+        beam_image = 2e-7 * self.charge_data / sigma_x / sigma_y * np.exp(-X**2/(2*sigma_x**2)) * np.exp(-Y**2/(2*sigma_y**2))
         self.image_data = np.minimum((beam_image + self.noiselevel_data * np.random.random((self.height, self.width))).astype(np.uint16), 4096)
         return self.image_data
 
     def get_framerate(self):
         return self.framerate_data
+
+    def get_pixel_cal(self):
+        return self.px
 
     def get_position(self):
         return self.position_data
@@ -426,6 +451,13 @@ class DummyLiveviewer(Device):
 
     def set_eps(self, value):
         self.eps_n_data = value
+        self.update_sim()
+
+    def get_beamenergy(self):
+        return self.gamma_energy * 0.511
+
+    def set_beamenergy(self, value):
+        self.gamma_energy = value / 0.511
         self.update_sim()
 
 

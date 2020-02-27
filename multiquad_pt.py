@@ -245,6 +245,7 @@ class QuadSimulator(object):
             else:
                 sigma = np.sqrt(self.eps_y * (
                         self.beta_y * a ** 2 - 2.0 * self.alpha_y * a * b + (1.0 + self.alpha_y ** 2) / self.beta_y * b ** 2))
+        self.logger.info("Beam size {0}: {1:.3f} mm".format(axis, sigma*1e3))
         return sigma
 
     def target_beamsize(self, target_s):
@@ -263,7 +264,7 @@ class MultiQuadManual(object):
         self.name = "MultiQuadScan"
         self.logger = logging.getLogger("Sim.{0}".format(self.name.upper()))
 
-        self.max_k = 5.0
+        self.max_k = 8.0
 
         self.algo = "const_size"
         self.gamma_energy = None
@@ -507,9 +508,15 @@ class MultiQuadManual(object):
                 a_g = a[ind]
                 b_g = b[ind]
                 st = int(a_g.shape[0] / self.n_steps + 0.5)
-                self.logger.debug("Found {0} values in range. Using every {1} value".format(a_g.shape[0], st))
-                target_a = a_g[::st][step]
-                target_b = b_g[::st][step]
+                self.logger.debug("Found {0} values in range. Using every {1} value.".format(a_g.shape[0], st))
+                self.logger.debug("Step {0} indexing a_g[::st] of length {1}.".format(step, a_g[::st].shape[0]))
+                try:
+                    target_a = a_g[::st][step]
+                    target_b = b_g[::st][step]
+                except IndexError as e:
+                    self.logger.warning(e)
+                    target_a = a_g[-1]
+                    target_b = b_g[-1]
                 psi = self.get_psi(target_a, target_b, theta, r_maj, r_min)
 
             self.psi_target.append(psi)
@@ -767,14 +774,74 @@ class MultiQuadManual(object):
         return s
 
 
+class MultiQuadTango(object):
+    def __init__(self):
+        self.name = "MultiQuadTango"
+        self.logger = logging.getLogger("Tango.{0}".format(self.name.upper()))
+        self.logger.setLevel(logging.INFO)
+
+        self.mq = MultiQuadManual()
+        self.magnet_names = ["i-ms1/mag/qb-01", "i-ms1/mag/qb-02", "i-ms1/mag/qb-03", "i-ms1/mag/qb-04"]
+        # self.screen_name = "i-ms1/dia/scrn-01"
+        self.camera_name = "lima/liveviewer/i-ms1-dia-scrn-01"
+        self.sigma_target = 400e-6
+        section = "MS1"
+        n_steps = 8
+        alpha0 = 0
+        beta0 = 40
+        eps_n_0 = 3e-6
+
+        self.alpha = -5.0
+        self.beta = 17.0
+        self.eps_n = 2e-6
+        self.beamenergy = 233.0e6
+
+        self.magnet_devices = list()
+        for mag in self.magnet_names:
+            dev = pt.DeviceProxy("127.0.0.1:10000/{0}#dbase=no".format(mag))
+            self.magnet_devices.append(dev)
+            pos = dev.position
+            self.logger.info("Connected to device {0}".format(mag))
+        self.camera_device = pt.DeviceProxy("127.0.0.1:10002/{0}#dbase=no".format(self.camera_name))
+        self.logger.info("Connected to device {0}".format(self.camera_name))
+        camera_pos = self.camera_device.position
+        self.px_cal = self.camera_device.pixel_cal
+        self.camera_device.alpha = self.alpha
+        self.camera_device.beta = self.beta
+        self.camera_device.eps_n = self.eps_n * 1e6
+        self.camera_device.beamenergy = self.beamenergy * 1e-6
+        self.mq.start_scan(self.sigma_target, section, n_steps, alpha0, beta0, eps_n_0)
+        self.current_step = 0
+
+    def do_step(self):
+        k_current = [dev.mainfieldcomponent for dev in self.magnet_devices]
+        image = self.camera_device.image
+        sigma_x, sigma_y = self.process_image(image)
+        self.logger.info("Step {0}: sigma_x={1:.3f} mm, sigma_y={2:.3f} mm".format(self.current_step,
+                                                                                   sigma_x*1e3, sigma_y*1e3))
+        k_next = self.mq.scan_step(sigma_x, sigma_y, k_current)
+        for ind, dev in enumerate(self.magnet_devices):
+            dev.mainfieldcomponent = k_next[ind]
+        self.current_step += 1
+
+    def process_image(self, image):
+        bkg = np.median(image) * 2.5
+        image_p = image.copy()
+        image_p[image_p < bkg] = 0
+        x_v = np.arange(image.shape[1])
+        y_v = np.arange(image.shape[0])
+        w0 = image_p.sum()
+        x0 = (image_p.sum(0) * x_v).sum() / w0
+        y0 = (image_p.sum(1) * y_v).sum() / w0
+        sigma_x = self.px_cal * np.sqrt((image_p.sum(0) * (x_v - x0)**2).sum() / w0)
+        sigma_y = self.px_cal * np.sqrt((image_p.sum(1) * (y_v - y0) ** 2).sum() / w0)
+        return sigma_x, sigma_y
+
+
 if __name__ == "__main__":
 
-    mq = MultiQuadManual()
-    sigma_target = 400e-6
-    section = "MS1"
-    n_steps = 8
-    alpha0 = 0
-    beta0 = 40
-    eps_n_0 = 2e-6
-    mq.start_scan(sigma_target, section, n_steps, alpha0, beta0, eps_n_0)
-    mq.scan_step(400e-6, 340e-6, [-0.7, -0.3, -3.6, 2.3])
+    mt = MultiQuadTango()
+    theta, r_maj, r_min = mt.mq.calc_ellipse(mt.alpha, mt.beta, mt.eps_n / (mt.beamenergy / 0.511e6), mt.sigma_target)
+    psi_v = np.linspace(0, 2 * np.pi, 1000)
+    a, b = mt.mq.get_ab(psi_v, theta, r_maj, r_min)
+
