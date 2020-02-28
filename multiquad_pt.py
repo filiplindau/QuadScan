@@ -793,8 +793,10 @@ class MultiQuadTango(object):
 
         self.alpha = -5.0
         self.beta = 17.0
-        self.eps_n = 2e-6
+        self.eps_n = 1e-6
         self.beamenergy = 233.0e6
+
+        k0 = [2.0, 1.3, -3.8, 0.3]
 
         self.magnet_devices = list()
         for mag in self.magnet_names:
@@ -810,6 +812,10 @@ class MultiQuadTango(object):
         self.camera_device.beta = self.beta
         self.camera_device.eps_n = self.eps_n * 1e6
         self.camera_device.beamenergy = self.beamenergy * 1e-6
+
+        for ind, dev in enumerate(self.magnet_devices):
+            dev.mainfieldcomponent = k0[ind]
+
         self.mq.start_scan(self.sigma_target, section, n_steps, alpha0, beta0, eps_n_0)
         self.current_step = 0
 

@@ -403,7 +403,7 @@ class DummyLiveviewer(Device):
         y = self.px * (np.arange(self.height) - self.height / 2)
         X, Y = np.meshgrid(x, y)
         self.debug_stream("Beamsize: {0:.3f} x {1:.3f} mm".format(sigma_x * 1e3, sigma_y * 1e3))
-        beam_image = 2e-7 * self.charge_data / sigma_x / sigma_y * np.exp(-X**2/(2*sigma_x**2)) * np.exp(-Y**2/(2*sigma_y**2))
+        beam_image = 2e-6 * self.charge_data / sigma_x / sigma_y * np.exp(-X**2/(2*sigma_x**2)) * np.exp(-Y**2/(2*sigma_y**2))
         self.image_data = np.minimum((beam_image + self.noiselevel_data * np.random.random((self.height, self.width))).astype(np.uint16), 4096)
         return self.image_data
 
