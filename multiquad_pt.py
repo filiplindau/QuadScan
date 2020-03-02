@@ -480,13 +480,22 @@ class MultiQuadManual(object):
                 return 1e6 * x[0] * (x[1] * a**2 - 2 * x[2] * a * b + (1 + x[2]**2) / x[1] * b**2) - (sigma * 1e3)**2
 
             x0 = [self.eps_list[0], self.beta_list[0], self.alpha_list[0]]
-#            ldata = least_squares(opt_fun, x0, jac="2-point", args=(a, b, sigma),
-#                                  bounds=([0, 0, -np.inf], [np.inf, np.inf, np.inf]), gtol=1e-16, xtol=1e-16, ftol=1e-16)
+            # ldata = least_squares(opt_fun, x0, jac="2-point", args=(a, b, sigma),
+            #                       bounds=([0, 0, -np.inf], [np.inf, np.inf, np.inf]), gtol=1e-16, xtol=1e-16, ftol=1e-16)
             ldata = least_squares(opt_fun, x0, jac="2-point", args=(a, b, sigma),
                                   bounds=([0, 0, -np.inf], [np.inf, np.inf, np.inf]))
             eps = ldata.x[0]
             beta = ldata.x[1]
             alpha = ldata.x[2]
+
+            # ldata = np.linalg.lstsq(M, sigma, rcond=-1)
+            # x = ldata[0]
+            # res = ldata[1]
+            # eps = np.sqrt(x[2] * x[0] - x[1] ** 2)
+            # eps_n = eps * self.gamma_energy
+            # beta = x[0] / eps
+            # alpha = x[1] / eps
+
         return alpha, beta, eps
 
     def set_target_ab(self, step, theta, r_maj, r_min):
@@ -775,6 +784,10 @@ class MultiQuadManual(object):
 
 
 class MultiQuadTango(object):
+    """
+    Class that connects to tango device servers for magnets and screen camera and uses them to
+    do a multi quad scan. The scan logic is from the MultiQuadManual class.
+    """
     def __init__(self):
         self.name = "MultiQuadTango"
         self.logger = logging.getLogger("Tango.{0}".format(self.name.upper()))
@@ -830,10 +843,21 @@ class MultiQuadTango(object):
             dev.mainfieldcomponent = k_next[ind]
         self.current_step += 1
 
-    def process_image(self, image):
-        bkg = np.median(image) * 2.5
-        image_p = image.copy()
+    def process_image(self, image, keep_charge_ratio=0.95):
+        image_p = medfilt2d(image, 5)
+        bkg = image_p[0:50, 0:50].max() * 2
         image_p[image_p < bkg] = 0
+        n_bins = np.unique(image_p.flatten()).shape[0]
+        if n_bins < 1:
+            n_bins = 1
+        h = np.histogram(image_p, n_bins)
+        hq = (h[0]*h[1][:-1]).cumsum()
+        hq = hq / np.float(hq.max())
+        th_ind = np.searchsorted(hq, 1-keep_charge_ratio)
+        d = (h[1][1] - h[1][0])/2.0
+        th_q = h[1][th_ind] - d
+        image_p[image_p < th_q] = 0.0
+
         x_v = np.arange(image.shape[1])
         y_v = np.arange(image.shape[0])
         w0 = image_p.sum()

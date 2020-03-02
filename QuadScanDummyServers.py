@@ -405,6 +405,11 @@ class DummyLiveviewer(Device):
         self.debug_stream("Beamsize: {0:.3f} x {1:.3f} mm".format(sigma_x * 1e3, sigma_y * 1e3))
         beam_image = 2e-6 * self.charge_data / sigma_x / sigma_y * np.exp(-X**2/(2*sigma_x**2)) * np.exp(-Y**2/(2*sigma_y**2))
         self.image_data = np.minimum((beam_image + self.noiselevel_data * np.random.random((self.height, self.width))).astype(np.uint16), 4096)
+        n_noise = np.maximum(0, 500 + self.noiselevel_data * np.random.normal(50, 25, 1)).astype(int)
+        xr = (self.width * np.random.random(n_noise)).astype(int)
+        yr = (self.height * np.random.random(n_noise)).astype(int)
+        ir = np.maximum(0, np.minimum(4096, np.random.normal(2560, 512, n_noise))).astype(np.uint16)
+        self.image_data[yr, xr] = ir
         return self.image_data
 
     def get_framerate(self):
