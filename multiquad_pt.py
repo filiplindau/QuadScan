@@ -471,10 +471,20 @@ class MultiQuadManual(object):
 
     def calc_twiss(self, a, b, sigma):
         M = np.vstack((a*a, -2*a*b, b*b)).transpose()
-        if M.shape[0] < 3:
-            alpha = self.guess_alpha
-            beta = self.guess_beta
-            eps = self.guess_eps_n / self.gamma_energy
+        if M.shape[0] == 1:
+            eps0 = self.guess_eps_n / self.gamma_energy
+            alpha0 = self.guess_alpha
+            beta0 = self.guess_beta
+            c = np.sqrt((sigma[-1]**2 / eps0 - b[-1]**2 / beta0) / (a[-1]**2 * beta0 - 2 * a[-1] * b[-1] * alpha0**2 +
+                                                                    b[-1]**2 * alpha0**2 / beta0))
+            alpha = c * alpha0
+            beta = c * beta0
+            eps = c * eps0
+        elif M.shape[0] == 2:
+            theta = np.arctan(b[-1] / a[-1])
+            alpha = self.alpha_list[-1]
+            beta = self.beta_list[-1]
+            eps = sigma[-1]**2 / (a[-1]**2 * beta - 2 * a[-1] * b[-1] * alpha**2 + b[-1]**2 * (1 + alpha**2) / beta)
         else:
             def opt_fun(x, a, b, sigma):
                 return 1e6 * x[0] * (x[1] * a**2 - 2 * x[2] * a * b + (1 + x[2]**2) / x[1] * b**2) - (sigma * 1e3)**2
@@ -529,20 +539,22 @@ class MultiQuadManual(object):
         if self.algo == "const_size":
             if step < 3:
 
-                try:
-                    psi = self.psi_target[-1] - 0.01
-                except IndexError:
-                    psi = np.arccos((self.a_list[0] + self.b_list[0] * np.tan(theta)) * np.cos(theta) / r_maj)
-                target_a = r_maj * np.cos(psi) * np.cos(theta) - r_min * np.sin(psi) * np.sin(theta)
-                target_b = r_maj * np.cos(psi) * np.sin(theta) + r_min * np.sin(psi) * np.cos(theta)
+                # try:
+                #     psi = self.psi_target[-1] - 0.01
+                # except IndexError:
+                #     psi = np.arccos((self.a_list[0] + self.b_list[0] * np.tan(theta)) * np.cos(theta) / r_maj)
+                # target_a = r_maj * np.cos(psi) * np.cos(theta) - r_min * np.sin(psi) * np.sin(theta)
+                # target_b = r_maj * np.cos(psi) * np.sin(theta) + r_min * np.sin(psi) * np.cos(theta)
 
+                c = self.x_list[-1] / self.target_sigma
                 d_psi = 0.01
-                psi = np.arccos((self.a_list[-1] + self.b_list[-1] * np.tan(theta)) * np.cos(theta) / r_maj)
-                a1 = r_maj * np.cos(psi + d_psi) * np.cos(theta) - r_min * np.sin(psi + d_psi) * np.sin(theta)
-                b1 = r_maj * np.cos(psi + d_psi) * np.sin(theta) + r_min * np.sin(psi + d_psi) * np.cos(theta)
+                # psi = np.arccos((self.a_list[-1] + self.b_list[-1] * np.tan(theta)) * np.cos(theta) / (c * r_maj))
+                psi = self.get_psi(self.a_list[-1], self.b_list[-1], theta, c * r_maj, c * r_min)
+                a1 = c * r_maj * np.cos(psi + d_psi) * np.cos(theta) - c * r_min * np.sin(psi + d_psi) * np.sin(theta)
+                b1 = c * r_maj * np.cos(psi + d_psi) * np.sin(theta) + c * r_min * np.sin(psi + d_psi) * np.cos(theta)
                 da = a1 - self.a_list[-1]
                 db = b1 - self.b_list[-1]
-                d_ab = 0.1
+                d_ab = 0.5
                 target_a = self.a_list[-1] + d_ab * da
                 target_b = self.b_list[-1] + d_ab * db
             else:
@@ -835,7 +847,7 @@ class MultiQuadTango(object):
         self.camera_name = "lima/liveviewer/i-ms1-dia-scrn-01"
         self.sigma_target = 400e-6
         section = "MS1"
-        n_steps = 8
+        n_steps = 32
         alpha0 = 0
         beta0 = 40
         eps_n_0 = 3e-6
@@ -861,6 +873,8 @@ class MultiQuadTango(object):
         self.camera_device.beta = self.beta
         self.camera_device.eps_n = self.eps_n * 1e6
         self.camera_device.beamenergy = self.beamenergy * 1e-6
+        sigma_x, sigma_y = self.process_image(self.camera_device.image)
+        self.sigma_target = sigma_x
 
         for ind, dev in enumerate(self.magnet_devices):
             dev.mainfieldcomponent = k0[ind]
