@@ -496,10 +496,36 @@ class MultiQuadManual(object):
             # beta = x[0] / eps
             # alpha = x[1] / eps
 
+            # bfgs = BFGS()
+            #
+            # def opt_fun2(x, M, sigma):
+            #     return np.sum((np.dot(M, x) - sigma**2)**2)
+            #
+            # def tc_constr0(x):
+            #     return [x[2] * x[0] - x[1]**2]
+            #
+            # x0_0 = self.beta_list[-1] * self.eps_list[-1]
+            # x0_1 = self.alpha_list[-1] * self.eps_list[-1]
+            # x0_2 = (self.eps_list[-1]**2 + x0_1**2) / x0_0
+            # x0 = [x0_0, x0_1, x0_2]
+            #
+            # c0 = NonlinearConstraint(tc_constr0, 0, np.inf, jac="2-point", hess=bfgs)
+            # bounds = Bounds([0, 0, -np.inf], [np.inf, np.inf, np.inf])
+            # options = {"xtol": 1e-8, "verbose": 1, "initial_constr_penalty": 1}
+            # res = minimize(opt_fun2, x0=x0, method="trust-constr", jac="2-point", hess=bfgs, args=(M, sigma), constraints=[c0], options=options)
+            #
+            # eps = np.sqrt(res.x[2] * res.x[0] - res.x[1] ** 2)
+            # eps_n = eps * self.gamma_energy
+            # beta = res.x[0] / eps
+            # alpha = res.x[1] / eps
+            self.logger.debug("Found twiss parameters:"
+                              "\n alpha={0:.3f}\n beta={1:.3f}\n eps_n={2:.3f}".format(alpha, beta,
+                                                                                       eps * self.gamma_energy * 1e6))
+
         return alpha, beta, eps
 
     def set_target_ab(self, step, theta, r_maj, r_min):
-        self.logger.debug("{0}: Determine new target a,b for algo {1}".format(self, self.algo))
+        self.logger.debug("{0}: Determine new target a,b for algo {1}, step {2}".format(self, self.algo, step))
         if self.algo == "const_size":
             if step < 3:
 
@@ -509,6 +535,16 @@ class MultiQuadManual(object):
                     psi = np.arccos((self.a_list[0] + self.b_list[0] * np.tan(theta)) * np.cos(theta) / r_maj)
                 target_a = r_maj * np.cos(psi) * np.cos(theta) - r_min * np.sin(psi) * np.sin(theta)
                 target_b = r_maj * np.cos(psi) * np.sin(theta) + r_min * np.sin(psi) * np.cos(theta)
+
+                d_psi = 0.01
+                psi = np.arccos((self.a_list[-1] + self.b_list[-1] * np.tan(theta)) * np.cos(theta) / r_maj)
+                a1 = r_maj * np.cos(psi + d_psi) * np.cos(theta) - r_min * np.sin(psi + d_psi) * np.sin(theta)
+                b1 = r_maj * np.cos(psi + d_psi) * np.sin(theta) + r_min * np.sin(psi + d_psi) * np.cos(theta)
+                da = a1 - self.a_list[-1]
+                db = b1 - self.b_list[-1]
+                d_ab = 0.1
+                target_a = self.a_list[-1] + d_ab * da
+                target_b = self.b_list[-1] + d_ab * db
             else:
                 a_min, a_max, b_min, b_max = self.get_ab_range(self.max_k)
                 psi_v = np.linspace(0, 2 * np.pi, 5000)
