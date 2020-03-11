@@ -446,8 +446,8 @@ class MultiQuadManual(object):
             r_min_y = self.r_min_y_list[-1]
 
         # Calculate next a-b values to target
-        next_a, next_b = self.set_target_ab(self.current_step, theta, r_maj, r_min)
-        next_a_y, next_b_y = self.set_target_ab(self.current_step, theta_y, r_maj_y, r_min_y)
+        next_a, next_b = self.set_target_ab(self.current_step, theta, r_maj, r_min, axis="x")
+        next_a_y, next_b_y = self.set_target_ab(self.current_step, theta_y, r_maj_y, r_min_y, axis="y")
 
         # Determine quad settings to achieve these a-b values
         r = self.solve_quads(next_a, next_b, next_a_y, next_b_y)
@@ -477,9 +477,9 @@ class MultiQuadManual(object):
         self.beta_y_list.append(beta_y)
         self.eps_y_list.append(eps_y)
         self.eps_n_y_list.append(eps_y * self.gamma_energy)
-        self.theta_y_list.append(theta)
-        self.r_maj_y_list.append(r_maj)
-        self.r_min_y_list.append(r_min)
+        self.theta_y_list.append(theta_y)
+        self.r_maj_y_list.append(r_maj_y)
+        self.r_min_y_list.append(r_min_y)
 
         s = "\n=================================\n" \
             "STEP {0}/{1} result:\n\n" \
@@ -558,7 +558,7 @@ class MultiQuadManual(object):
         return alpha, beta, eps
 
     def set_target_ab(self, step, theta, r_maj, r_min, axis="x"):
-        self.logger.debug("{0}: Determine new target a,b for algo {1}, step {2}".format(self, self.algo, step))
+        self.logger.debug("{0}: Determine new target a,b for axis {1}, step {2}".format(self, axis, step))
         if axis == "x":
             x_list = self.x_list
             target_sigma = self.target_sigma
@@ -588,6 +588,7 @@ class MultiQuadManual(object):
                 da = a1 - a_list[-1]
                 db = b1 - b_list[-1]
                 d_ab = 0.5
+                self.logger.debug("da: {0:.3f}, db: {1:.3f}".format(da, db))
                 target_a = a_list[-1] + d_ab * da
                 target_b = b_list[-1] + d_ab * db
             else:
@@ -617,7 +618,10 @@ class MultiQuadManual(object):
         return target_a, target_b
 
     def solve_quads(self, target_a, target_b, target_a_y, target_b_y):
-        self.logger.info("{0}: Solving new quad strengths for target a,b = {1:.3f}, {2:.3f}".format(self, target_a, target_b))
+        self.logger.info("{0}: Solving new quad strengths for \n"
+                         "Horizontal target a,b = {1:.3f}, {2:.3f}\n"
+                         "Vertical target a,b   = {3:.3f}, {4:.3f}".format(self, target_a, target_b,
+                                                                         target_a_y, target_b_y))
         # x0 = self.quad_strength_list
         x0 = self.k_list[-1]
 
@@ -735,7 +739,10 @@ class MultiQuadManual(object):
         l2 = ((m11 + m22) - np.sqrt((m11 - m22) ** 2 + 4.0 * m12 ** 2)) / 2
         r_minor = np.sqrt(my / l1)
         r_major = np.sqrt(my / l2)
-        theta = np.arctan((l1 - gamma) / alpha)
+        if alpha != 0:
+            theta = np.arctan((l1 - gamma) / alpha)
+        else:
+            theta = np.pi/2
         self.logger.debug("Result: theta={0:.3f}, r_maj={1:.3f}, r_min={2:.3f}".format(theta, r_major, r_minor))
         return theta, r_major, r_minor
 
@@ -896,6 +903,9 @@ class MultiQuadTango(object):
         self.alpha = -5.0
         self.beta = 17.0
         self.eps_n = 1e-6
+        self.alpha_y = 0.0
+        self.beta_y = 30.0
+        self.eps_n_y = 2e-6
         self.beamenergy = 233.0e6
 
         k0 = [2.0, 1.3, -3.8, 0.3]
@@ -915,6 +925,9 @@ class MultiQuadTango(object):
         self.camera_device.alpha = self.alpha
         self.camera_device.beta = self.beta
         self.camera_device.eps_n = self.eps_n * 1e6
+        self.camera_device.alpha_y = self.alpha_y
+        self.camera_device.beta_y = self.beta_y
+        self.camera_device.eps_n_y = self.eps_n_y * 1e6
         self.camera_device.beamenergy = self.beamenergy * 1e-6
         sigma_x, sigma_y = self.process_image(self.camera_device.image)
         self.sigma_target = sigma_x
@@ -922,7 +935,7 @@ class MultiQuadTango(object):
         for ind, dev in enumerate(self.magnet_devices):
             dev.mainfieldcomponent = k0[ind]
 
-        self.mq.start_scan(self.sigma_target, section, self.n_steps, alpha0, beta0, eps_n_0)
+        self.mq.start_scan(self.sigma_target, self.sigma_target, section, self.n_steps, alpha0, beta0, eps_n_0)
         self.current_step = 0
 
     def do_step(self):
@@ -970,6 +983,8 @@ if __name__ == "__main__":
 
     mt = MultiQuadTango()
     theta, r_maj, r_min = mt.mq.calc_ellipse(mt.alpha, mt.beta, mt.eps_n / (mt.beamenergy / 0.511e6), mt.sigma_target)
+    theta_y, r_maj_y, r_min_y = mt.mq.calc_ellipse(mt.alpha_y, mt.beta_y, mt.eps_n_y / (mt.beamenergy / 0.511e6), mt.sigma_target)
     psi_v = np.linspace(0, 2 * np.pi, 1000)
     a, b = mt.mq.get_ab(psi_v, theta, r_maj, r_min)
+    a_y, b_y = mt.mq.get_ab(psi_v, theta_y, r_maj_y, r_min_y)
 

@@ -321,18 +321,57 @@ class DummyLiveviewer(Device):
                       hw_memorized=True,
                       doc="Electron beam emittance", )
 
+    alpha_y = attribute(label='alpha y',
+                        dtype=float,
+                        access=pt.AttrWriteType.READ_WRITE,
+                        unit="",
+                        format="%4.3f",
+                        min_value=-1000.0,
+                        max_value=1000.0,
+                        fget="get_alpha_y",
+                        fset="set_alpha_y",
+                        memorized=True,
+                        hw_memorized=True,
+                        doc="Electron beam alpha vertical", )
+
+    beta_y = attribute(label='beta y',
+                       dtype=float,
+                       access=pt.AttrWriteType.READ_WRITE,
+                       unit="m",
+                       format="%4.3f",
+                       min_value=-100000.0,
+                       max_value=3000000.0,
+                       fget="get_beta_y",
+                       fset="set_beta_y",
+                       memorized=True,
+                       hw_memorized=True,
+                       doc="Electron beam beta vertical", )
+
+    eps_n_y = attribute(label='eps_n y',
+                        dtype=float,
+                        access=pt.AttrWriteType.READ_WRITE,
+                        unit="um",
+                        format="%4.3f",
+                        min_value=0.0,
+                        max_value=1000.0,
+                        fget="get_eps_y",
+                        fset="set_eps_y",
+                        memorized=True,
+                        hw_memorized=True,
+                        doc="Electron beam emittance vertical", )
+
     beamenergy = attribute(label='beam energy',
-                      dtype=float,
-                      access=pt.AttrWriteType.READ_WRITE,
-                      unit="MeV",
-                      format="%4.3f",
-                      min_value=0.0,
-                      max_value=300.0,
-                      fget="get_beamenergy",
-                      fset="set_beamenergy",
-                      memorized=True,
-                      hw_memorized=True,
-                      doc="Electron beam energy", )
+                           dtype=float,
+                           access=pt.AttrWriteType.READ_WRITE,
+                           unit="MeV",
+                           format="%4.3f",
+                           min_value=0.0,
+                           max_value=300.0,
+                           fget="get_beamenergy",
+                           fset="set_beamenergy",
+                           memorized=True,
+                           hw_memorized=True,
+                           doc="Electron beam energy", )
 
 
     # --- Device properties
@@ -456,6 +495,27 @@ class DummyLiveviewer(Device):
 
     def set_eps(self, value):
         self.eps_n_data = value
+        self.update_sim()
+
+    def get_alpha_y(self):
+        return self.alpha_y_data
+
+    def set_alpha_y(self, value):
+        self.alpha_y_data = value
+        self.update_sim()
+
+    def get_beta_y(self):
+        return self.beta_y_data
+
+    def set_beta_y(self, value):
+        self.beta_y_data = value
+        self.update_sim()
+
+    def get_eps_y(self):
+        return self.eps_n_y_data
+
+    def set_eps_y(self, value):
+        self.eps_n_y_data = value
         self.update_sim()
 
     def get_beamenergy(self):
