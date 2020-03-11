@@ -294,8 +294,11 @@ class MultiQuadManual(object):
         self.eps_y_list = list()
         self.eps_n_y_list = list()
         self.theta_list = list()
+        self.theta_y_list = list()
         self.r_maj_list = list()
+        self.r_maj_y_list = list()
         self.r_min_list = list()
+        self.r_min_y_list = list()
 
         self.a_range = None
         self.b_range = None
@@ -303,6 +306,7 @@ class MultiQuadManual(object):
         self.n_steps = 16
         self.current_step = 0
         self.target_sigma = None
+        self.target_sigma_y = None
 
         self.guess_alpha = None
         self.guess_beta = None
@@ -333,8 +337,11 @@ class MultiQuadManual(object):
         self.eps_y_list = list()
         self.eps_n_y_list = list()
         self.theta_list = list()
+        self.theta_y_list = list()
         self.r_maj_list = list()
+        self.r_maj_y_list = list()
         self.r_min_list = list()
+        self.r_min_y_list = list()
 
         self.a_range = None
         self.b_range = None
@@ -347,12 +354,14 @@ class MultiQuadManual(object):
         self.guess_beta = None
         self.guess_eps_n = None
 
-    def start_scan(self, current_sigma_x, section="MS1", n_steps=16, guess_alpha=0.0, guess_beta=40.0, guess_eps_n=2e-6):
+    def start_scan(self, current_sigma_x, current_sigma_y, section="MS1", n_steps=16,
+                   guess_alpha=0.0, guess_beta=40.0, guess_eps_n=2e-6):
         """
         Start a new multi-quad scan using current beam size as target beam size. Initial guess should be provided
         if known.
 
         :param current_sigma_x: Current horizontal beam size sigma, used as target beam size for scan
+        :param current_sigma_y: Current vertical beam size sigma, used as target beam size for scan
         :param section: MS1, MS2, MS3
         :param n_steps: Number of steps in scan. Determines spacing of a-b values on the ellipse
         :param guess_alpha: Staring guess of beam twiss parameter alpha. Used for first two steps.
@@ -363,6 +372,7 @@ class MultiQuadManual(object):
         self.reset_data()
         self.set_section(section)
         self.target_sigma = current_sigma_x
+        self.target_sigma_y = current_sigma_y
 
         self.guess_alpha = guess_alpha
         self.guess_beta = guess_beta
@@ -406,6 +416,15 @@ class MultiQuadManual(object):
         self.eps_list.append(eps)
         self.eps_n_list.append(eps * self.gamma_energy)
 
+        # Calculate new estimate of ellipse from the updated twiss parameters
+        theta, r_maj, r_min = self.calc_ellipse(alpha, beta, eps, self.target_sigma)
+        if np.isnan(theta):
+            theta = self.theta_list[-1]
+        if np.isnan(r_maj):
+            r_maj = self.r_maj_list[-1]
+        if np.isnan(r_min):
+            r_min = self.r_min_list[-1]
+
         M_y = self.calc_response_matrix(current_k_list, self.quad_list, self.screen.position, axis="y")
         self.a_y_list.append(M_y[0, 0])
         self.b_y_list.append(M_y[0, 1])
@@ -418,19 +437,20 @@ class MultiQuadManual(object):
             eps_y = res_y[2]
 
         # Calculate new estimate of ellipse from the updated twiss parameters
-        theta, r_maj, r_min = self.calc_ellipse(alpha, beta, eps, self.target_sigma)
-        if np.isnan(theta):
-            theta = self.theta_list[-1]
-        if np.isnan(r_maj):
-            r_maj = self.r_maj_list[-1]
-        if np.isnan(r_min):
-            r_min = self.r_min_list[-1]
+        theta_y, r_maj_y, r_min_y = self.calc_ellipse(alpha_y, beta_y, eps_y, self.target_sigma_y)
+        if np.isnan(theta_y):
+            theta_y = self.theta_y_list[-1]
+        if np.isnan(r_maj_y):
+            r_maj_y = self.r_maj_y_list[-1]
+        if np.isnan(r_min_y):
+            r_min_y = self.r_min_y_list[-1]
 
         # Calculate next a-b values to target
         next_a, next_b = self.set_target_ab(self.current_step, theta, r_maj, r_min)
+        next_a_y, next_b_y = self.set_target_ab(self.current_step, theta_y, r_maj_y, r_min_y)
 
         # Determine quad settings to achieve these a-b values
-        r = self.solve_quads(next_a, next_b)
+        r = self.solve_quads(next_a, next_b, next_a_y, next_b_y)
         if r is None:
             self.logger.error("Could not find quad settings to match desired a-b values")
             self.k_list.pop()
@@ -457,6 +477,9 @@ class MultiQuadManual(object):
         self.beta_y_list.append(beta_y)
         self.eps_y_list.append(eps_y)
         self.eps_n_y_list.append(eps_y * self.gamma_energy)
+        self.theta_y_list.append(theta)
+        self.r_maj_y_list.append(r_maj)
+        self.r_min_y_list.append(r_min)
 
         s = "\n=================================\n" \
             "STEP {0}/{1} result:\n\n" \
@@ -534,8 +557,18 @@ class MultiQuadManual(object):
 
         return alpha, beta, eps
 
-    def set_target_ab(self, step, theta, r_maj, r_min):
+    def set_target_ab(self, step, theta, r_maj, r_min, axis="x"):
         self.logger.debug("{0}: Determine new target a,b for algo {1}, step {2}".format(self, self.algo, step))
+        if axis == "x":
+            x_list = self.x_list
+            target_sigma = self.target_sigma
+            a_list = self.a_list
+            b_list = self.b_list
+        else:
+            x_list = self.y_list
+            target_sigma = self.target_sigma_y
+            a_list = self.a_y_list
+            b_list = self.b_y_list
         if self.algo == "const_size":
             if step < 3:
 
@@ -546,17 +579,17 @@ class MultiQuadManual(object):
                 # target_a = r_maj * np.cos(psi) * np.cos(theta) - r_min * np.sin(psi) * np.sin(theta)
                 # target_b = r_maj * np.cos(psi) * np.sin(theta) + r_min * np.sin(psi) * np.cos(theta)
 
-                c = self.x_list[-1] / self.target_sigma
+                c = x_list[-1] / target_sigma
                 d_psi = 0.01
                 # psi = np.arccos((self.a_list[-1] + self.b_list[-1] * np.tan(theta)) * np.cos(theta) / (c * r_maj))
-                psi = self.get_psi(self.a_list[-1], self.b_list[-1], theta, c * r_maj, c * r_min)
+                psi = self.get_psi(a_list[-1], b_list[-1], theta, c * r_maj, c * r_min)
                 a1 = c * r_maj * np.cos(psi + d_psi) * np.cos(theta) - c * r_min * np.sin(psi + d_psi) * np.sin(theta)
                 b1 = c * r_maj * np.cos(psi + d_psi) * np.sin(theta) + c * r_min * np.sin(psi + d_psi) * np.cos(theta)
-                da = a1 - self.a_list[-1]
-                db = b1 - self.b_list[-1]
+                da = a1 - a_list[-1]
+                db = b1 - b_list[-1]
                 d_ab = 0.5
-                target_a = self.a_list[-1] + d_ab * da
-                target_b = self.b_list[-1] + d_ab * db
+                target_a = a_list[-1] + d_ab * da
+                target_b = b_list[-1] + d_ab * db
             else:
                 a_min, a_max, b_min, b_max = self.get_ab_range(self.max_k)
                 psi_v = np.linspace(0, 2 * np.pi, 5000)
@@ -583,7 +616,7 @@ class MultiQuadManual(object):
         # self.logger.debug("Target a, b = {0:.3f}, {1:.3f}".format(target_a, target_b))
         return target_a, target_b
 
-    def solve_quads(self, target_a, target_b):
+    def solve_quads(self, target_a, target_b, target_a_y, target_b_y):
         self.logger.info("{0}: Solving new quad strengths for target a,b = {1:.3f}, {2:.3f}".format(self, target_a, target_b))
         # x0 = self.quad_strength_list
         x0 = self.k_list[-1]
@@ -594,6 +627,12 @@ class MultiQuadManual(object):
             M = self.calc_response_matrix(x, self.quad_list, self.screen.position)
             y0 = (target_a - M[0, 0])**2
             y1 = (target_b - M[0, 1])**2
+            return [y0, y1]
+
+        def tc_constr0y(x):
+            M = self.calc_response_matrix(x, self.quad_list, self.screen.position, axis="y")
+            y0 = (target_a_y - M[0, 0])**2
+            y1 = (target_b_y - M[0, 1])**2
             return [y0, y1]
 
         def tc_constr1(x):
@@ -633,17 +672,18 @@ class MultiQuadManual(object):
             b_y = M_y[0, 1]
             s_x = (eps * (a_x ** 2 * beta - 2 * a_x * b_x * alpha + b_x ** 2 * (1 + alpha ** 2) / beta))
             s_y = (eps * (a_y ** 2 * beta - 2 * a_y * b_y * alpha + b_y ** 2 * (1 + alpha ** 2) / beta))
-            s_t = (s_x * s_y - sigma_x ** 2 * sigma_y ** 2) ** 2
+            # s_t = (s_x * s_y - sigma_x ** 2 * sigma_y ** 2) ** 2
+            s_t = (s_x - sigma_x ** 2) ** 2 + (s_y - sigma_y ** 2) ** 2
             return s_t
 
         c0 = NonlinearConstraint(tc_constr0, 0, 0.1, jac="2-point", hess=bfgs)
-        c1 = NonlinearConstraint(tc_constr1, 0, 0.02, jac="2-point", hess=bfgs)
+        c1 = NonlinearConstraint(tc_constr0y, 0, 0.1, jac="2-point", hess=bfgs)
         c2 = NonlinearConstraint(tc_constr2, 0, 0.0001, jac="2-point", hess=bfgs)
         bounds = Bounds(-self.max_k, self.max_k)
         options = {"xtol": 1e-8, "verbose": 1, "initial_constr_penalty": 100}
         res = minimize(opt_fun, x0=x0,  method="trust-constr", jac="2-point", hess=bfgs,
                        args=(self.alpha_list[-1], self.beta_list[-1], self.eps_list[-1], self.x_list[0], self.y_list[0]),
-                       constraints=[c0], options=options, bounds=bounds)
+                       constraints=[c0, c1], options=options, bounds=bounds)
 
         self.logger.debug("Found quad strengths: {0}".format(res.x))
         # self.logger.debug("{0}".format(res))
@@ -711,32 +751,33 @@ class MultiQuadManual(object):
             res = a * beta / b - np.sqrt(sigma**2 * beta / (b**2 * eps) - 1)
         return res
 
-    def get_ab_range(self, max_k):
+    def get_ab_range(self, max_k, axis="x"):
         """
         Calculate range of a and b that is reachable given a maximum magnet k-value
         :param max_k: Magnet maximum k-value k = (-max_k, max_k)
         :return: Minimum a, maxmium a, minimum b, maximum b
         """
-        def ab_fun(x, a=True, maxmin=False):
+        def ab_fun(x, a=True, maxmin=False, axis="x"):
             if a:
                 if maxmin:
-                    return -self.calc_response_matrix(x, self.quad_list, self.screen.position)[0, 0]
+                    return -self.calc_response_matrix(x, self.quad_list, self.screen.position, axis)[0, 0]
                 else:
-                    return self.calc_response_matrix(x, self.quad_list, self.screen.position)[0, 0]
+                    return self.calc_response_matrix(x, self.quad_list, self.screen.position, axis)[0, 0]
             else:
                 if maxmin:
-                    return -self.calc_response_matrix(x, self.quad_list, self.screen.position)[0, 1]
+                    return -self.calc_response_matrix(x, self.quad_list, self.screen.position, axis)[0, 1]
                 else:
-                    return self.calc_response_matrix(x, self.quad_list, self.screen.position)[0, 1]
+                    return self.calc_response_matrix(x, self.quad_list, self.screen.position, axis)[0, 1]
         c = 0.8
         mag_r = Bounds(-c * max_k, c * max_k)
-        res = minimize(ab_fun, x0=self.quad_strength_list, args=(True, False), bounds=mag_r)
+        x0 = np.array(self.quad_strength_list)
+        res = minimize(ab_fun, x0=x0, args=(True, False, axis), bounds=mag_r)
         a_min = self.calc_response_matrix(res.x, self.quad_list, self.screen.position)[0, 0]
-        res = minimize(ab_fun, x0=self.quad_strength_list, args=(True, True), bounds=mag_r)
+        res = minimize(ab_fun, x0=x0, args=(True, True, axis), bounds=mag_r)
         a_max = self.calc_response_matrix(res.x, self.quad_list, self.screen.position)[0, 0]
-        res = minimize(ab_fun, x0=self.quad_strength_list, args=(False, False), bounds=mag_r)
+        res = minimize(ab_fun, x0=x0, args=(False, False, axis), bounds=mag_r)
         b_min = self.calc_response_matrix(res.x, self.quad_list, self.screen.position)[0, 1]
-        res = minimize(ab_fun, x0=self.quad_strength_list, args=(False, True), bounds=mag_r)
+        res = minimize(ab_fun, x0=x0, args=(False, True, axis), bounds=mag_r)
         b_max = self.calc_response_matrix(res.x, self.quad_list, self.screen.position)[0, 1]
         return a_min, a_max, b_min, b_max
 
@@ -836,7 +877,7 @@ class MultiQuadTango(object):
     Class that connects to tango device servers for magnets and screen camera and uses them to
     do a multi quad scan. The scan logic is from the MultiQuadManual class.
     """
-    def __init__(self):
+    def __init__(self, n_steps=32):
         self.name = "MultiQuadTango"
         self.logger = logging.getLogger("Tango.{0}".format(self.name.upper()))
         self.logger.setLevel(logging.INFO)
@@ -847,7 +888,7 @@ class MultiQuadTango(object):
         self.camera_name = "lima/liveviewer/i-ms1-dia-scrn-01"
         self.sigma_target = 400e-6
         section = "MS1"
-        n_steps = 32
+        self.n_steps = n_steps
         alpha0 = 0
         beta0 = 40
         eps_n_0 = 3e-6
@@ -858,6 +899,8 @@ class MultiQuadTango(object):
         self.beamenergy = 233.0e6
 
         k0 = [2.0, 1.3, -3.8, 0.3]
+
+        self.image_list = list()
 
         self.magnet_devices = list()
         for mag in self.magnet_names:
@@ -879,13 +922,14 @@ class MultiQuadTango(object):
         for ind, dev in enumerate(self.magnet_devices):
             dev.mainfieldcomponent = k0[ind]
 
-        self.mq.start_scan(self.sigma_target, section, n_steps, alpha0, beta0, eps_n_0)
+        self.mq.start_scan(self.sigma_target, section, self.n_steps, alpha0, beta0, eps_n_0)
         self.current_step = 0
 
     def do_step(self):
         k_current = [dev.mainfieldcomponent for dev in self.magnet_devices]
         image = self.camera_device.image
         sigma_x, sigma_y = self.process_image(image)
+        self.image_list.append(image)
         self.logger.info("Step {0}: sigma_x={1:.3f} mm, sigma_y={2:.3f} mm".format(self.current_step,
                                                                                    sigma_x*1e3, sigma_y*1e3))
         k_next = self.mq.scan_step(sigma_x, sigma_y, k_current)
@@ -916,6 +960,10 @@ class MultiQuadTango(object):
         sigma_x = self.px_cal * np.sqrt((image_p.sum(0) * (x_v - x0)**2).sum() / w0)
         sigma_y = self.px_cal * np.sqrt((image_p.sum(1) * (y_v - y0) ** 2).sum() / w0)
         return sigma_x, sigma_y
+
+    def do_scan(self):
+        for step in range(self.n_steps):
+            self.do_step()
 
 
 if __name__ == "__main__":
