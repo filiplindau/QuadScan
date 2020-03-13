@@ -1,15 +1,11 @@
 """
-Created 2020-01-22
+Created 2020-03-13
 
-Simulation of spot size for quad settings given transfer matrix and input twiss parameters
+Using a look-up table to find correct quad settings
 
 @author: Filip Lindau
 """
 
-import threading
-import multiprocessing
-import uuid
-import logging
 import time
 import ctypes
 import inspect
@@ -41,7 +37,7 @@ f = logging.Formatter("%(asctime)s - %(module)s.   %(funcName)s - %(levelname)s 
 fh = logging.StreamHandler()
 fh.setFormatter(f)
 logger.addHandler(fh)
-logger.setLevel(logging.DEBUG)
+logger.setLevel(logging.INFO)
 
 
 try:
@@ -51,6 +47,12 @@ except ImportError:
         import tango as pt
     except ModuleNotFoundError:
         pass
+
+
+def sinc(x):
+    y = np.sin(x) / x
+    y[np.isnan(y)] = 1.0
+    return y
 
 
 class QuadSimulator(object):
@@ -259,7 +261,7 @@ class QuadSimulator(object):
         return res
 
 
-class MultiQuadManual(object):
+class MultiQuadLookup(object):
     def __init__(self):
         self.name = "MultiQuadScan"
         self.logger = logging.getLogger("Sim.{0}".format(self.name.upper()))
@@ -303,6 +305,9 @@ class MultiQuadManual(object):
         self.a_range = None
         self.b_range = None
 
+        self.A_lu = None
+        self.k_lu = None
+
         self.n_steps = 16
         self.current_step = 0
         self.target_sigma = None
@@ -343,6 +348,9 @@ class MultiQuadManual(object):
         self.r_min_list = list()
         self.r_min_y_list = list()
 
+        self.A_lu = None
+        self.k_lu = None
+
         self.a_range = None
         self.b_range = None
 
@@ -353,6 +361,28 @@ class MultiQuadManual(object):
         self.guess_alpha = None
         self.guess_beta = None
         self.guess_eps_n = None
+
+    def generate_lookup(self):
+        self.logger.info("Generating lookup table for {0}".format(self.screen.screen))
+        quad_positions = np.array([q.position for q in self.quad_list])
+        screen_position = self.screen.position
+        q_v = np.linspace(-self.max_k, self.max_k, 40)
+        q1, q2, q3, q4 = np.meshgrid(q_v, q_v, q_v, q_v)
+        quad_strengths = np.stack((q1, q2, q3, q4), -1)
+        t0 = time.time()
+        M = self.calc_response_matrix_v(quad_strengths, quad_positions, screen_position, "x")
+        ax = M[..., 0, 0]
+        bx = M[..., 0, 1]
+        self.logger.debug("Time x: {0}".format(time.time() - t0))
+        t1 = time.time()
+        M = self.calc_response_matrix_v(quad_strengths, quad_positions, screen_position, "y")
+        ay = M[..., 0, 0]
+        by = M[..., 0, 1]
+        self.logger.debug("Time y: {0}".format(time.time() - t1))
+        A = np.stack((ax, bx, ay, by), -1).reshape(-1, 4)
+        k = quad_strengths.reshape(-1, 4)
+        self.A_lu = A
+        self.k_lu = k
 
     def start_scan(self, current_sigma_x, current_sigma_y, section="MS1", n_steps=16,
                    guess_alpha=0.0, guess_beta=40.0, guess_eps_n=2e-6):
@@ -521,36 +551,6 @@ class MultiQuadManual(object):
             beta = ldata.x[1]
             alpha = ldata.x[2]
 
-            # ldata = np.linalg.lstsq(M, sigma, rcond=-1)
-            # x = ldata[0]
-            # res = ldata[1]
-            # eps = np.sqrt(x[2] * x[0] - x[1] ** 2)
-            # eps_n = eps * self.gamma_energy
-            # beta = x[0] / eps
-            # alpha = x[1] / eps
-
-            # bfgs = BFGS()
-            #
-            # def opt_fun2(x, M, sigma):
-            #     return np.sum((np.dot(M, x) - sigma**2)**2)
-            #
-            # def tc_constr0(x):
-            #     return [x[2] * x[0] - x[1]**2]
-            #
-            # x0_0 = self.beta_list[-1] * self.eps_list[-1]
-            # x0_1 = self.alpha_list[-1] * self.eps_list[-1]
-            # x0_2 = (self.eps_list[-1]**2 + x0_1**2) / x0_0
-            # x0 = [x0_0, x0_1, x0_2]
-            #
-            # c0 = NonlinearConstraint(tc_constr0, 0, np.inf, jac="2-point", hess=bfgs)
-            # bounds = Bounds([0, 0, -np.inf], [np.inf, np.inf, np.inf])
-            # options = {"xtol": 1e-8, "verbose": 1, "initial_constr_penalty": 1}
-            # res = minimize(opt_fun2, x0=x0, method="trust-constr", jac="2-point", hess=bfgs, args=(M, sigma), constraints=[c0], options=options)
-            #
-            # eps = np.sqrt(res.x[2] * res.x[0] - res.x[1] ** 2)
-            # eps_n = eps * self.gamma_energy
-            # beta = res.x[0] / eps
-            # alpha = res.x[1] / eps
             self.logger.debug("Found twiss parameters:"
                               "\n alpha={0:.3f}\n beta={1:.3f}\n eps_n={2:.3f}".format(alpha, beta,
                                                                                        eps * self.gamma_energy * 1e6))
@@ -623,71 +623,16 @@ class MultiQuadManual(object):
                          "Vertical target a,b   = {3:.3f}, {4:.3f}".format(self, target_a, target_b,
                                                                          target_a_y, target_b_y))
         # x0 = self.quad_strength_list
-        x0 = self.k_list[-1]
 
-        bfgs = BFGS()
+        def calc_sigma(alpha, beta, eps, a, b):
+            sigma = np.sqrt(eps * (beta * a ** 2 - 2.0 * alpha * a * b + (1.0 + alpha ** 2) / beta * b ** 2))
+            return sigma
 
-        def tc_constr0(x):
-            M = self.calc_response_matrix(x, self.quad_list, self.screen.position)
-            y0 = (target_a - M[0, 0])**2
-            y1 = (target_b - M[0, 1])**2
-            return [y0, y1]
+        sigma_x = calc_sigma(self.alpha_list[-1], self.beta_list[-1], self.eps_list[-1],
+                             self.A_lu[:, 0], self.A_lu[:, 1])
+        sigma_y = calc_sigma(self.alpha_y_list[-1], self.beta_y_list[-1], self.eps_y_list[-1],
+                             self.A_lu[:, 2], self.A_lu[:, 3])
 
-        def tc_constr0y(x):
-            M = self.calc_response_matrix(x, self.quad_list, self.screen.position, axis="y")
-            y0 = (target_a_y - M[0, 0])**2
-            y1 = (target_b_y - M[0, 1])**2
-            return [y0, y1]
-
-        def tc_constr1(x):
-            M_x = self.calc_response_matrix(x, self.quad_list, self.screen.position, axis="x")
-            a_x = M_x[0, 0]
-            b_x = M_x[0, 1]
-            M_y = self.calc_response_matrix(x, self.quad_list, self.screen.position, axis="y")
-            a_y = M_y[0, 0]
-            b_y = M_y[0, 1]
-            alpha = self.alpha_list[-1]
-            beta = self.beta_list[-1]
-            eps = self.eps_list[-1]
-            sigma_x = self.x_list[0]
-            sigma_y = self.y_list[0]
-            s_x = np.sqrt(eps * (a_x ** 2 * beta - 2 * a_x * b_x * alpha + b_x ** 2 * (1 + alpha ** 2) / beta))
-            s_y = np.sqrt(eps * (a_y ** 2 * beta - 2 * a_y * b_y * alpha + b_y ** 2 * (1 + alpha ** 2) / beta))
-            # y0 = (s_x / sigma_x - 1) ** 2
-            # y1 = (s_y / sigma_y - 1) ** 2
-            s_t = (s_x * s_y - sigma_x * sigma_y) ** 2 / (sigma_x * sigma_y) ** 2
-            # s_t = (s_y - sigma_y) ** 2 / (sigma_y) ** 2
-            return [s_t]
-
-        def tc_constr2(x):
-            M_x = self.calc_response_matrix(x, self.quad_list, self.screen.position)
-            a_x = M_x[0, 0]
-            b_x = M_x[0, 1]
-            psi_x = self.get_psi(a_x, b_x, self.theta_list[-1], self.r_maj_list[-1], self.r_min_list[-1])
-            s_t = (target_psi - psi_x) ** 2
-            return [s_t]
-
-        def opt_fun(x, alpha, beta, eps, sigma_x, sigma_y):
-            M_x = self.calc_response_matrix(x, self.quad_list, self.screen.position)
-            M_y = self.calc_response_matrix(x, self.quad_list, self.screen.position, axis="y")
-            a_x = M_x[0, 0]
-            b_x = M_x[0, 1]
-            a_y = M_y[0, 0]
-            b_y = M_y[0, 1]
-            s_x = (eps * (a_x ** 2 * beta - 2 * a_x * b_x * alpha + b_x ** 2 * (1 + alpha ** 2) / beta))
-            s_y = (eps * (a_y ** 2 * beta - 2 * a_y * b_y * alpha + b_y ** 2 * (1 + alpha ** 2) / beta))
-            # s_t = (s_x * s_y - sigma_x ** 2 * sigma_y ** 2) ** 2
-            s_t = (s_x - sigma_x ** 2) ** 2 + (s_y - sigma_y ** 2) ** 2
-            return s_t
-
-        c0 = NonlinearConstraint(tc_constr0, 0, 0.1, jac="2-point", hess=bfgs)
-        c1 = NonlinearConstraint(tc_constr0y, 0, 0.1, jac="2-point", hess=bfgs)
-        c2 = NonlinearConstraint(tc_constr2, 0, 0.0001, jac="2-point", hess=bfgs)
-        bounds = Bounds(-self.max_k, self.max_k)
-        options = {"xtol": 1e-8, "verbose": 1, "initial_constr_penalty": 100}
-        res = minimize(opt_fun, x0=x0,  method="trust-constr", jac="2-point", hess=bfgs,
-                       args=(self.alpha_list[-1], self.beta_list[-1], self.eps_list[-1], self.x_list[0], self.y_list[0]),
-                       constraints=[c0, c1], options=options, bounds=bounds)
 
         self.logger.debug("Found quad strengths: {0}".format(res.x))
         # self.logger.debug("{0}".format(res))
@@ -696,6 +641,30 @@ class MultiQuadManual(object):
         else:
             self.logger.debug("-----EPIC FAIL------")
         return res
+
+    def calc_response_matrix_v(self, quad_strengths, quad_positions, screen_position, axis="x"):
+        # self.logger.debug("{0}: Calculating new response matrix".format(self))
+        s = quad_positions[0]
+        M = np.identity(2)
+        if axis != "x":
+            quad_strengths = -np.array(quad_strengths)
+        for ind, quad in enumerate(quad_positions):
+            # self.logger.debug("Position s: {0} m".format(s))
+            drift = quad - s
+            M_d = np.array([[1.0, drift], [0.0, 1.0]])
+            M = np.matmul(M_d, M)
+            L = 0.2
+            k = quad_strengths[..., ind]
+            k_sqrt = np.sqrt(k * (1 + 0j))
+
+            M_q = np.real(np.array([[np.cos(k_sqrt * L), L * sinc(L * k_sqrt)],
+                                    [-k_sqrt * np.sin(k_sqrt * L), np.cos(k_sqrt * L)]]))
+            M = np.matmul(np.moveaxis(M_q, (0, 1), (-2, -1)), M)
+            s = quad + L
+        drift = screen_position - s
+        M_d = np.array([[1.0, drift], [0.0, 1.0]])
+        M = np.matmul(M_d, M)
+        return M
 
     def calc_response_matrix(self, quad_strengths, quad_list, screen_position, axis="x"):
         # self.logger.debug("{0}: Calculating new response matrix".format(self))
@@ -889,7 +858,7 @@ class MultiQuadTango(object):
         self.logger = logging.getLogger("Tango.{0}".format(self.name.upper()))
         self.logger.setLevel(logging.INFO)
 
-        self.mq = MultiQuadManual()
+        self.mq = MultiQuadLookup()
         self.magnet_names = ["i-ms1/mag/qb-01", "i-ms1/mag/qb-02", "i-ms1/mag/qb-03", "i-ms1/mag/qb-04"]
         # self.screen_name = "i-ms1/dia/scrn-01"
         self.camera_name = "lima/liveviewer/i-ms1-dia-scrn-01"

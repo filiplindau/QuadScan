@@ -58,7 +58,6 @@ def calc_response_matrix(quad_strengths, quad_positions, screen_position, axis="
     if axis != "x":
         quad_strengths = -np.array(quad_strengths)
     for ind, quad in enumerate(quad_positions):
-        logger.debug("Calculating for quad {0}{1}, pos {2}".format(axis, ind, quad))
         # self.logger.debug("Position s: {0} m".format(s))
         drift = quad - s
         M_d = np.array([[1.0, drift], [0.0, 1.0]])
@@ -67,7 +66,7 @@ def calc_response_matrix(quad_strengths, quad_positions, screen_position, axis="
         k = quad_strengths[..., ind]
         k_sqrt = np.sqrt(k * (1 + 0j))
 
-        M_q = np.real(np.array([[np.cos(k_sqrt * L), L * sinc(k_sqrt)],
+        M_q = np.real(np.array([[np.cos(k_sqrt * L), L * sinc(L * k_sqrt)],
                                 [-k_sqrt * np.sin(k_sqrt * L), np.cos(k_sqrt * L)]]))
         M = np.matmul(np.moveaxis(M_q, (0, 1), (-2, -1)), M)
         s = quad + L
