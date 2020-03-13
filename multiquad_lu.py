@@ -417,6 +417,8 @@ class MultiQuadLookup(object):
         self.n_steps = n_steps
         self.current_step = 0
 
+        self.generate_lookup()
+
     def scan_step(self, current_sigma_x, current_sigma_y, current_k_list):
         """
         Do a scan step with manual input of beam size sigma and quad magnet k values
@@ -465,6 +467,10 @@ class MultiQuadLookup(object):
             alpha_y = res_y[0]
             beta_y = res_y[1]
             eps_y = res_y[2]
+        self.alpha_y_list.append(alpha_y)
+        self.beta_y_list.append(beta_y)
+        self.eps_y_list.append(eps_y)
+        self.eps_n_y_list.append(eps_y * self.gamma_energy)
 
         # Calculate new estimate of ellipse from the updated twiss parameters
         theta_y, r_maj_y, r_min_y = self.calc_ellipse(alpha_y, beta_y, eps_y, self.target_sigma_y)
@@ -480,8 +486,8 @@ class MultiQuadLookup(object):
         next_a_y, next_b_y = self.set_target_ab(self.current_step, theta_y, r_maj_y, r_min_y, axis="y")
 
         # Determine quad settings to achieve these a-b values
-        r = self.solve_quads(next_a, next_b, next_a_y, next_b_y)
-        if r is None:
+        next_k = self.solve_quads(next_a, next_b, next_a_y, next_b_y)
+        if next_k is None:
             self.logger.error("Could not find quad settings to match desired a-b values")
             self.k_list.pop()
             self.x_list.pop()
@@ -495,7 +501,6 @@ class MultiQuadLookup(object):
             self.eps_list.pop()
             self.eps_n_list.pop()
             return None
-        next_k = r.x
 
         self.target_a_list.append(next_a)
         self.target_b_list.append(next_b)
@@ -503,10 +508,6 @@ class MultiQuadLookup(object):
         self.theta_list.append(theta)
         self.r_maj_list.append(r_maj)
         self.r_min_list.append(r_min)
-        self.alpha_y_list.append(alpha_y)
-        self.beta_y_list.append(beta_y)
-        self.eps_y_list.append(eps_y)
-        self.eps_n_y_list.append(eps_y * self.gamma_energy)
         self.theta_y_list.append(theta_y)
         self.r_maj_y_list.append(r_maj_y)
         self.r_min_y_list.append(r_min_y)
@@ -522,7 +523,7 @@ class MultiQuadLookup(object):
 
         return next_k
 
-    def calc_twiss(self, a, b, sigma):
+    def calc_twiss(self, a, b, sigma, axis="x"):
         M = np.vstack((a*a, -2*a*b, b*b)).transpose()
         if M.shape[0] == 1:
             eps0 = self.guess_eps_n / self.gamma_energy
@@ -535,14 +536,21 @@ class MultiQuadLookup(object):
             eps = c * eps0
         elif M.shape[0] == 2:
             theta = np.arctan(b[-1] / a[-1])
-            alpha = self.alpha_list[-1]
-            beta = self.beta_list[-1]
+            if axis == "x":
+                alpha = self.alpha_list[-1]
+                beta = self.beta_list[-1]
+            else:
+                alpha = self.alpha_y_list[-1]
+                beta = self.beta_y_list[-1]
             eps = sigma[-1]**2 / (a[-1]**2 * beta - 2 * a[-1] * b[-1] * alpha**2 + b[-1]**2 * (1 + alpha**2) / beta)
         else:
             def opt_fun(x, a, b, sigma):
                 return 1e6 * x[0] * (x[1] * a**2 - 2 * x[2] * a * b + (1 + x[2]**2) / x[1] * b**2) - (sigma * 1e3)**2
 
-            x0 = [self.eps_list[0], self.beta_list[0], self.alpha_list[0]]
+            if axis == "x":
+                x0 = [self.eps_list[0], self.beta_list[0], self.alpha_list[0]]
+            else:
+                x0 = [self.eps_y_list[0], self.beta_y_list[0], self.alpha_y_list[0]]
             # ldata = least_squares(opt_fun, x0, jac="2-point", args=(a, b, sigma),
             #                       bounds=([0, 0, -np.inf], [np.inf, np.inf, np.inf]), gtol=1e-16, xtol=1e-16, ftol=1e-16)
             ldata = least_squares(opt_fun, x0, jac="2-point", args=(a, b, sigma),
@@ -620,7 +628,7 @@ class MultiQuadLookup(object):
     def solve_quads(self, target_a, target_b, target_a_y, target_b_y):
         self.logger.info("{0}: Solving new quad strengths for \n"
                          "Horizontal target a,b = {1:.3f}, {2:.3f}\n"
-                         "Vertical target a,b   = {3:.3f}, {4:.3f}".format(self, target_a, target_b,
+                         "Vertical target   a,b = {3:.3f}, {4:.3f}".format(self, target_a, target_b,
                                                                          target_a_y, target_b_y))
         # x0 = self.quad_strength_list
 
@@ -633,14 +641,18 @@ class MultiQuadLookup(object):
         sigma_y = calc_sigma(self.alpha_y_list[-1], self.beta_y_list[-1], self.eps_y_list[-1],
                              self.A_lu[:, 2], self.A_lu[:, 3])
 
+        target_ap = np.array([target_a, target_b])
+        th_ab = 0.2
+        ind_p = ((self.A_lu[:, 0:2] - target_ap) ** 2).sum(1) < th_ab**2
+        Asi = np.stack((sigma_x.flatten()[ind_p] * sigma_y.flatten()[ind_p]), -1).reshape(-1, 1)
+        target_asi = np.array([self.target_sigma * self.target_sigma_y]).reshape(-1, 1)
+        ind_si = ((Asi - target_asi) ** 2).sum(-1)
 
-        self.logger.debug("Found quad strengths: {0}".format(res.x))
+        k_target = self.k_lu[ind_p, :][ind_si.argmin(), :]
+
+        self.logger.debug("Found quad strengths: {0}".format(k_target))
         # self.logger.debug("{0}".format(res))
-        if res.status in [1, 2]:
-            self.logger.debug("-------SUCCESS------")
-        else:
-            self.logger.debug("-----EPIC FAIL------")
-        return res
+        return k_target
 
     def calc_response_matrix_v(self, quad_strengths, quad_positions, screen_position, axis="x"):
         # self.logger.debug("{0}: Calculating new response matrix".format(self))

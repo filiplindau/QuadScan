@@ -168,7 +168,7 @@ ind_s = ((As-target_as)**2).sum(1)
 Ap = np.stack((ax.flatten(), bx.flatten()), -1)
 target_ap = np.array([target_a, target_b])
 ind_p = ((Ap-target_ap)**2).sum(1) < 0.04
-Asi = np.stack((sigma_x.flatten(), sigma_y.flatten()), -1)
-target_asi = np.array([target_sigma, target_sigma])
-ind_si = ((Asi[ind_p, :] - target_asi)**2).sum(1)
+Asi = np.stack((sigma_x.flatten()[ind_p] * sigma_y.flatten()[ind_p]), -1).reshape(-1, 1)
+target_asi = np.array([target_sigma * target_sigma]).reshape(-1, 1)
+ind_si = ((Asi - target_asi)**2).sum(-1)
 
