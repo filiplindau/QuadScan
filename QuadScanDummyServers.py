@@ -243,6 +243,17 @@ class DummyLiveviewer(Device):
                           fget="get_pixel_cal",
                           doc="Resolution of camera pixel", )
 
+    roi = attribute(label='Region of interest',
+                    dtype=[int],
+                    access=pt.AttrWriteType.READ_WRITE,
+                    display_level=pt.DispLevel.OPERATOR,
+                    max_dim_x=4,
+                    unit="px",
+                    format="%d",
+                    fget="get_roi",
+                    fset="set_roi",
+                    doc="Region of interest", )
+
     position = attribute(label='position',
                          dtype=float,
                          access=pt.AttrWriteType.READ_WRITE,
@@ -385,6 +396,7 @@ class DummyLiveviewer(Device):
         self.width = 1280
         self.height = 1024
         self.px = 15e-6
+        self.roi_data = np.array([0, 0, 1280, 1024])
         self.charge_data = 100.0
         self.position_data = 0.0
         self.framerate_data = 2.0
@@ -456,6 +468,12 @@ class DummyLiveviewer(Device):
 
     def get_pixel_cal(self):
         return self.px
+
+    def get_roi(self):
+        return self.roi_data
+
+    def set_roi(self, value):
+        self.roi_data = value
 
     def get_position(self):
         return self.position_data

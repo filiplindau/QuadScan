@@ -263,53 +263,6 @@ class QuadSimulator(object):
         return res
 
 
-def calc_sigma(alpha, beta, eps, a, b):
-    sigma = np.sqrt(eps * (beta * a ** 2 - 2.0 * alpha * a * b + (1.0 + alpha ** 2) / beta * b ** 2))
-    return sigma
-
-
-def calc_indp(A_lu, target_ap, th_ab):
-    return ((A_lu - target_ap) ** 2).sum(1) < th_ab ** 2
-
-
-def calc_sigma_mp(qt, qr, a, b):
-    logger.info("Entering calc_sigma_mp.")
-    while True:
-        try:
-            data = qt.get(timeout=0.1)
-        except Empty:
-            continue
-        if data == "stop":
-            break
-        logger.info("Got data")
-        alpha = data[0]
-        beta = data[1]
-        eps = data[2]
-        sigma = np.sqrt(eps * (beta * a ** 2 - 2.0 * alpha * a * b + (1.0 + alpha ** 2) / beta * b ** 2))
-        logger.info("Data calculated")
-        qr.put(sigma)
-        logger.info("Put data")
-    logger.info("Exiting calc_sigma_mp.")
-    return True
-
-
-def calc_indp_mp(qt, qr, A_lu):
-    logger.info("Entering calc_indp_mp.")
-    while True:
-        try:
-            data = qt.get(timeout=0.1)
-        except Empty:
-            continue
-        if data == "stop":
-            break
-        target_ap = data[0]
-        th_ab = data[1]
-        ind_p = ((A_lu - target_ap) ** 2).sum(1) < th_ab ** 2
-        qr.put(ind_p)
-    logger.info("Exiting calc_indp_mp.")
-    return True
-
-
 class MultiQuadLookup(object):
     def __init__(self):
         self.name = "MultiQuadScan"
@@ -366,16 +319,6 @@ class MultiQuadLookup(object):
         self.guess_beta = None
         self.guess_eps_n = None
 
-        self.sx_p = None
-        self.sx_tq = None
-        self.sx_rq = None
-        self.sy_p = None
-        self.sy_tq = None
-        self.sy_rq = None
-        self.ind_p = None
-        self.ind_tq = None
-        self.ind_rq = None
-
         self.logger.setLevel(logging.DEBUG)
 
     def reset_data(self):
@@ -421,21 +364,6 @@ class MultiQuadLookup(object):
         self.guess_beta = None
         self.guess_eps_n = None
 
-        try:
-            self.sx_tq.put("stop")
-            self.sy_tq.put("stop")
-            self.ind_tq.put("stop")
-            self.sx_p.join()
-            self.sy_p.join()
-            self.ind_p.join()
-            self.sx_tq.close()
-            self.sx_rq.close()
-            self.sy_tq.close()
-            self.sy_rq.close()
-            self.ind_tq.close()
-            self.ind_rq.close()
-        except AttributeError:
-            pass
 
     def generate_lookup(self):
         self.logger.info("Generating lookup table for {0}".format(self.screen.screen))
@@ -493,19 +421,6 @@ class MultiQuadLookup(object):
         self.current_step = 0
 
         self.generate_lookup()
-
-        self.sx_tq = mp.Queue(3)
-        self.sx_rq = mp.Queue(3)
-        self.sx_p = mp.Process(target=calc_sigma_mp, args=(self.sx_tq, self.sx_rq, self.A_lu[:, 0], self.A_lu[:, 1],))
-        self.sx_p.start()
-        self.sy_tq = mp.Queue(3)
-        self.sy_rq = mp.Queue(3)
-        self.sy_p = mp.Process(target=calc_sigma_mp, args=(self.sy_tq, self.sy_rq, self.A_lu[:, 2], self.A_lu[:, 3],))
-        self.sy_p.start()
-        self.ind_tq = mp.Queue(3)
-        self.ind_rq = mp.Queue(3)
-        self.ind_p = mp.Process(target=calc_indp_mp, args=(self.ind_tq, self.ind_rq, self.A_lu[:, 0:2],))
-        self.ind_p.start()
 
     def scan_step(self, current_sigma_x, current_sigma_y, current_k_list):
         """
@@ -574,7 +489,7 @@ class MultiQuadLookup(object):
         next_a_y, next_b_y = self.set_target_ab(self.current_step, theta_y, r_maj_y, r_min_y, axis="y")
 
         # Determine quad settings to achieve these a-b values
-        next_k = self.solve_quads_mp(next_a, next_b, next_a_y, next_b_y)
+        next_k = self.solve_quads(next_a, next_b, next_a_y, next_b_y)
         if next_k is None:
             self.logger.error("Could not find quad settings to match desired a-b values")
             self.k_list.pop()
@@ -722,57 +637,21 @@ class MultiQuadLookup(object):
                          "Horizontal target a,b = {1:.3f}, {2:.3f}\n"
                          "Vertical target   a,b = {3:.3f}, {4:.3f}".format(self, target_a, target_b,
                                                                          target_a_y, target_b_y))
-        # x0 = self.quad_strength_list
 
         def calc_sigma(alpha, beta, eps, a, b):
             sigma = np.sqrt(eps * (beta * a ** 2 - 2.0 * alpha * a * b + (1.0 + alpha ** 2) / beta * b ** 2))
             return sigma
 
-        # def calc_indp(A_lu, target_ap, th_ab):
-        #     return ((A_lu - target_ap) ** 2).sum(1) < th_ab ** 2
-        sigma_x = calc_sigma(self.alpha_list[-1], self.beta_list[-1], self.eps_list[-1],
-                             self.A_lu[:, 0], self.A_lu[:, 1])
-        sigma_y = calc_sigma(self.alpha_y_list[-1], self.beta_y_list[-1], self.eps_y_list[-1],
-                             self.A_lu[:, 2], self.A_lu[:, 3])
         target_ap = np.array([target_a, target_b])
         th_ab = 0.2
         ind_p = ((self.A_lu[:, 0:2] - target_ap) ** 2).sum(1) < th_ab ** 2
-        Asi = np.stack((sigma_x.flatten()[ind_p] * sigma_y.flatten()[ind_p]), -1).reshape(-1, 1)
-        target_asi = np.array([self.target_sigma * self.target_sigma_y]).reshape(-1, 1)
-        ind_si = ((Asi - target_asi) ** 2).sum(-1)
 
-        k_target = self.k_lu[ind_p, :][ind_si.argmin(), :]
-
-        self.logger.debug("Found quad strengths: {0}".format(k_target))
-        # self.logger.debug("{0}".format(res))
-        self.logger.debug("Time: {0:.3f} s".format(time.time() - t0))
-        return k_target
-
-    def solve_quads_mp(self, target_a, target_b, target_a_y, target_b_y):
-        t0 = time.time()
-        self.logger.info("{0}: Solving new quad strengths for \n"
-                         "Horizontal target a,b = {1:.3f}, {2:.3f}\n"
-                         "Vertical target   a,b = {3:.3f}, {4:.3f}".format(self, target_a, target_b,
-                                                                         target_a_y, target_b_y))
-        # x0 = self.quad_strength_list
-
-        def calc_sigma(alpha, beta, eps, a, b):
-            sigma = np.sqrt(eps * (beta * a ** 2 - 2.0 * alpha * a * b + (1.0 + alpha ** 2) / beta * b ** 2))
-            return sigma
-
-        # def calc_indp(A_lu, target_ap, th_ab):
-        #     return ((A_lu - target_ap) ** 2).sum(1) < th_ab ** 2
-        logger.info("Putting sigma_x")
-        self.sx_tq.put((self.alpha_list[-1], self.beta_list[-1], self.eps_list[-1], ))
-        sigma_x = self.sx_rq.get()
-        logger.info("Got sigma_x")
-        self.sy_tq.put((self.alpha_y_list[-1], self.beta_y_list[-1], self.eps_y_list[-1],))
-        sigma_y = self.sy_rq.get()
-        target_ap = np.array([target_a, target_b])
-        th_ab = 0.2
-        self.ind_tq.put((target_ap, th_ab, ))
-        ind_p = self.ind_rq.get()
-        Asi = np.stack((sigma_x.flatten()[ind_p] * sigma_y.flatten()[ind_p]), -1).reshape(-1, 1)
+        sigma_x = calc_sigma(self.alpha_list[-1], self.beta_list[-1], self.eps_list[-1],
+                             self.A_lu[ind_p, 0], self.A_lu[ind_p, 1])
+        sigma_y = calc_sigma(self.alpha_y_list[-1], self.beta_y_list[-1], self.eps_y_list[-1],
+                             self.A_lu[ind_p, 2], self.A_lu[ind_p, 3])
+        # Asi = np.stack((sigma_x.flatten()[ind_p] * sigma_y.flatten()[ind_p]), -1).reshape(-1, 1)
+        Asi = np.stack((sigma_x.flatten() * sigma_y.flatten()), -1).reshape(-1, 1)
         target_asi = np.array([self.target_sigma * self.target_sigma_y]).reshape(-1, 1)
         ind_si = ((Asi - target_asi) ** 2).sum(-1)
 
@@ -1021,6 +900,7 @@ class MultiQuadTango(object):
         k0 = [2.0, 1.3, -3.8, 0.3]
 
         self.image_list = list()
+        self.image_p_list = list()
 
         self.magnet_devices = list()
         for mag in self.magnet_names:
@@ -1035,6 +915,8 @@ class MultiQuadTango(object):
         self.logger.info("Connected to device {0}".format(self.camera_name))
         camera_pos = self.camera_device.position
         self.px_cal = self.camera_device.pixel_cal
+        self.roi = self.camera_device.roi
+        self.roi = np.array([520, 400, 240, 240])
         self.camera_device.alpha = self.alpha
         self.camera_device.beta = self.beta
         self.camera_device.eps_n = self.eps_n * 1e6
@@ -1042,9 +924,8 @@ class MultiQuadTango(object):
         self.camera_device.beta_y = self.beta_y
         self.camera_device.eps_n_y = self.eps_n_y * 1e6
         self.camera_device.beamenergy = self.beamenergy * 1e-6
-        sigma_x, sigma_y = self.process_image(self.camera_device.image)
+        sigma_x, sigma_y, image_p = self.process_image(self.camera_device.image)
         self.sigma_target = sigma_x
-
 
         self.mq.start_scan(self.sigma_target, self.sigma_target, section, self.n_steps, alpha0, beta0, eps_n_0)
         self.current_step = 0
@@ -1053,8 +934,9 @@ class MultiQuadTango(object):
         t0 = time.time()
         k_current = [dev.mainfieldcomponent for dev in self.magnet_devices]
         image = self.camera_device.image
-        sigma_x, sigma_y = self.process_image(image)
+        sigma_x, sigma_y, image_p = self.process_image(image)
         self.image_list.append(image)
+        self.image_p_list.append(image_p)
         self.logger.info("Step {0}: sigma_x={1:.3f} mm, sigma_y={2:.3f} mm".format(self.current_step,
                                                                                    sigma_x*1e3, sigma_y*1e3))
         k_next = self.mq.scan_step(sigma_x, sigma_y, k_current)
@@ -1064,7 +946,8 @@ class MultiQuadTango(object):
         self.logger.debug("Step time: {0:.3} s".format(time.time() - t0))
 
     def process_image(self, image, keep_charge_ratio=0.95):
-        image_p = medfilt2d(image, 5)
+        image_roi = image[self.roi[1]:self.roi[1]+self.roi[3], self.roi[0]:self.roi[0]+self.roi[2]]
+        image_p = medfilt2d(image_roi, 5)
         bkg = image_p[0:50, 0:50].max() * 2
         image_p[image_p < bkg] = 0
         n_bins = np.unique(image_p.flatten()).shape[0]
@@ -1078,14 +961,14 @@ class MultiQuadTango(object):
         th_q = h[1][th_ind] - d
         image_p[image_p < th_q] = 0.0
 
-        x_v = np.arange(image.shape[1])
-        y_v = np.arange(image.shape[0])
+        x_v = np.arange(image_p.shape[1])
+        y_v = np.arange(image_p.shape[0])
         w0 = image_p.sum()
         x0 = (image_p.sum(0) * x_v).sum() / w0
         y0 = (image_p.sum(1) * y_v).sum() / w0
         sigma_x = self.px_cal * np.sqrt((image_p.sum(0) * (x_v - x0)**2).sum() / w0)
         sigma_y = self.px_cal * np.sqrt((image_p.sum(1) * (y_v - y0) ** 2).sum() / w0)
-        return sigma_x, sigma_y
+        return sigma_x, sigma_y, image_p
 
     def do_scan(self):
         for step in range(self.n_steps):
