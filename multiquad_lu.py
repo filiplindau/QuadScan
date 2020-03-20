@@ -263,6 +263,31 @@ class QuadSimulator(object):
         return res
 
 
+def calc_response_matrix_mp(quad_strengths, quad_positions, screen_position, axis="x"):
+    # self.logger.debug("{0}: Calculating new response matrix".format(self))
+    s = quad_positions[0]
+    M = np.identity(2)
+    if axis != "x":
+        quad_strengths = -np.array(quad_strengths)
+    for ind, quad in enumerate(quad_positions):
+        # self.logger.debug("Position s: {0} m".format(s))
+        drift = quad - s
+        M_d = np.array([[1.0, drift], [0.0, 1.0]])
+        M = np.matmul(M_d, M)
+        L = 0.2
+        k = quad_strengths[..., ind]
+        k_sqrt = np.sqrt(k * (1 + 0j))
+
+        M_q = np.real(np.array([[np.cos(k_sqrt * L), L * sinc(L * k_sqrt)],
+                                [-k_sqrt * np.sin(k_sqrt * L), np.cos(k_sqrt * L)]]))
+        M = np.matmul(np.moveaxis(M_q, (0, 1), (-2, -1)), M)
+        s = quad + L
+    drift = screen_position - s
+    M_d = np.array([[1.0, drift], [0.0, 1.0]])
+    M = np.matmul(M_d, M)
+    return M
+
+
 class MultiQuadLookup(object):
     def __init__(self):
         self.name = "MultiQuadScan"
@@ -288,6 +313,8 @@ class MultiQuadLookup(object):
         self.y_list = list()
         self.psi_target = list()
         self.psi_list = list()
+        self.target_charge = None
+        self.charge_list = list()
 
         self.alpha_list = list()
         self.beta_list = list()
@@ -334,6 +361,8 @@ class MultiQuadLookup(object):
         self.y_list = list()
         self.psi_target = list()
         self.psi_list = list()
+        self.charge_list = list()
+        self.target_charge = None
 
         self.alpha_list = list()
         self.beta_list = list()
@@ -364,7 +393,6 @@ class MultiQuadLookup(object):
         self.guess_beta = None
         self.guess_eps_n = None
 
-
     def generate_lookup(self):
         self.logger.info("Generating lookup table for {0}".format(self.screen.screen))
         quad_positions = np.array([q.position for q in self.quad_list])
@@ -387,7 +415,36 @@ class MultiQuadLookup(object):
         self.A_lu = A
         self.k_lu = k
 
-    def start_scan(self, current_sigma_x, current_sigma_y, section="MS1", n_steps=16,
+    def generate_lookup_mp(self):
+        self.logger.info("Generating lookup table for {0}".format(self.screen.screen))
+        quad_positions = np.array([q.position for q in self.quad_list])
+        screen_position = self.screen.position
+        q_v = np.linspace(-self.max_k, self.max_k, 40)
+        q1, q2, q3, q4 = np.meshgrid(q_v, q_v, q_v, q_v)
+        quad_strengths = np.stack((q1, q2, q3, q4), -1)
+        t0 = time.time()
+        n_proc = mp.cpu_count()
+
+        with mp.Pool(processes=n_proc) as pool:
+            quad_strengths_list = zip(np.array_split(quad_strengths, n_proc, 0),
+                                      [quad_positions] * n_proc, [screen_position] * n_proc, ["x"] * n_proc)
+            M = np.array(pool.starmap(calc_response_matrix_mp, quad_strengths_list))
+            ax = M[..., 0, 0]
+            bx = M[..., 0, 1]
+            self.logger.debug("Time x: {0:.3f} s".format(time.time() - t0))
+            t1 = time.time()
+            quad_strengths_list = zip(np.array_split(quad_strengths, n_proc, 0),
+                                      [quad_positions]*n_proc, [screen_position]*n_proc, ["y"]*n_proc)
+            M = np.array(pool.starmap(calc_response_matrix_mp, quad_strengths_list))
+            ay = M[..., 0, 0]
+            by = M[..., 0, 1]
+            self.logger.debug("Time y: {0:.3f} s".format(time.time() - t1))
+        A = np.stack((ax, bx, ay, by), -1).reshape(-1, 4)
+        k = quad_strengths.reshape(-1, 4)
+        self.A_lu = A
+        self.k_lu = k
+
+    def start_scan(self, current_sigma_x, current_sigma_y, current_charge, section="MS1", n_steps=16,
                    guess_alpha=0.0, guess_beta=40.0, guess_eps_n=2e-6):
         """
         Start a new multi-quad scan using current beam size as target beam size. Initial guess should be provided
@@ -395,6 +452,8 @@ class MultiQuadLookup(object):
 
         :param current_sigma_x: Current horizontal beam size sigma, used as target beam size for scan
         :param current_sigma_y: Current vertical beam size sigma, used as target beam size for scan
+        :param current_charge: Total charge in image. Used to adjust the weight of different shots when calculating
+        beam parameters
         :param section: MS1, MS2, MS3
         :param n_steps: Number of steps in scan. Determines spacing of a-b values on the ellipse
         :param guess_alpha: Staring guess of beam twiss parameter alpha. Used for first two steps.
@@ -402,10 +461,13 @@ class MultiQuadLookup(object):
         :param guess_eps_n: Staring guess of beam twiss parameter normalized emittance. Used for first two steps.
         :return:
         """
+        self.logger.info("Start scan: sigma {0:.3f} x {1:.3f} mm".format(current_sigma_x*1e3, current_sigma_y*1e3))
         self.reset_data()
         self.set_section(section)
+        self.generate_lookup_mp()
         self.target_sigma = current_sigma_x
         self.target_sigma_y = current_sigma_y
+        self.target_charge = current_charge
 
         self.guess_alpha = guess_alpha
         self.guess_beta = guess_beta
@@ -420,9 +482,7 @@ class MultiQuadLookup(object):
         self.n_steps = n_steps
         self.current_step = 0
 
-        self.generate_lookup()
-
-    def scan_step(self, current_sigma_x, current_sigma_y, current_k_list):
+    def scan_step(self, current_sigma_x, current_sigma_y, current_charge, current_k_list):
         """
         Do a scan step with manual input of beam size sigma and quad magnet k values
 
@@ -433,6 +493,7 @@ class MultiQuadLookup(object):
         """
         self.current_step += 1
         self.k_list.append(current_k_list)
+        self.charge_list.append(current_charge)
 
         # Calculate response matrix for current quad settings and store the a-b values
         M = self.calc_response_matrix(current_k_list, self.quad_list, self.screen.position, axis="x")
@@ -441,7 +502,8 @@ class MultiQuadLookup(object):
 
         # Calculate new estimates of twiss parameters including the current point
         self.x_list.append(current_sigma_x)
-        res = self.calc_twiss(np.array(self.a_list), np.array(self.b_list), np.array(self.x_list))
+        res = self.calc_twiss(np.array(self.a_list), np.array(self.b_list), np.array(self.x_list),
+                              np.array(self.charge_list), "x")
         if res is not None:
             alpha = res[0]
             beta = res[1]
@@ -465,7 +527,8 @@ class MultiQuadLookup(object):
         self.b_y_list.append(M_y[0, 1])
         self.y_list.append(current_sigma_y)
 
-        res_y = self.calc_twiss(np.array(self.a_y_list), np.array(self.b_y_list), np.array(self.y_list))
+        res_y = self.calc_twiss(np.array(self.a_y_list), np.array(self.b_y_list), np.array(self.y_list),
+                                np.array(self.charge_list), "y")
         if res_y is not None:
             alpha_y = res_y[0]
             beta_y = res_y[1]
@@ -529,14 +592,14 @@ class MultiQuadLookup(object):
 
         return next_k
 
-    def calc_twiss(self, a, b, sigma, axis="x"):
+    def calc_twiss(self, a, b, sigma, charge=None, axis="x"):
         M = np.vstack((a*a, -2*a*b, b*b)).transpose()
         if M.shape[0] == 1:
             eps0 = self.guess_eps_n / self.gamma_energy
             alpha0 = self.guess_alpha
             beta0 = self.guess_beta
-            c = np.sqrt((sigma[-1]**2 / eps0 - b[-1]**2 / beta0) / (a[-1]**2 * beta0 - 2 * a[-1] * b[-1] * alpha0**2 +
-                                                                    b[-1]**2 * alpha0**2 / beta0))
+            c = np.sqrt(np.abs((sigma[-1]**2 / eps0 - b[-1]**2 / beta0) / (a[-1]**2 * beta0 - 2 * a[-1] * b[-1] * alpha0 +
+                                                                    b[-1]**2 * alpha0**2 / beta0)))
             alpha = c * alpha0
             beta = c * beta0
             eps = c * eps0
@@ -548,26 +611,58 @@ class MultiQuadLookup(object):
             else:
                 alpha = self.alpha_y_list[-1]
                 beta = self.beta_y_list[-1]
-            eps = sigma[-1]**2 / (a[-1]**2 * beta - 2 * a[-1] * b[-1] * alpha**2 + b[-1]**2 * (1 + alpha**2) / beta)
+            eps = sigma[-1]**2 / (a[-1]**2 * beta - 2 * a[-1] * b[-1] * alpha + b[-1]**2 * (1 + alpha**2) / beta)
         else:
-            def opt_fun(x, a, b, sigma):
-                return 1e6 * x[0] * (x[1] * a**2 - 2 * x[2] * a * b + (1 + x[2]**2) / x[1] * b**2) - (sigma * 1e3)**2
+            def opt_fun(x, a, b, sigma, weights):
+                return weights * (1e6 * x[0] * (x[1] * a**2 - 2 * x[2] * a * b + (1 + x[2]**2) / x[1] * b**2) -
+                                  (sigma * 1e3)**2)
+
+            def opt_fun2(x, a, b, sigma, weights):
+                return weights * (a**2 * x[0] - 2 * a * b * x[1] + b**2 * x[2] - sigma**2)
 
             if axis == "x":
                 x0 = [self.eps_list[0], self.beta_list[0], self.alpha_list[0]]
             else:
                 x0 = [self.eps_y_list[0], self.beta_y_list[0], self.alpha_y_list[0]]
-            # ldata = least_squares(opt_fun, x0, jac="2-point", args=(a, b, sigma),
-            #                       bounds=([0, 0, -np.inf], [np.inf, np.inf, np.inf]), gtol=1e-16, xtol=1e-16, ftol=1e-16)
-            ldata = least_squares(opt_fun, x0, jac="2-point", args=(a, b, sigma),
-                                  bounds=([0, 0, -np.inf], [np.inf, np.inf, np.inf]))
-            eps = ldata.x[0]
-            beta = ldata.x[1]
-            alpha = ldata.x[2]
+            # # ldata = least_squares(opt_fun, x0, jac="2-point", args=(a, b, sigma),
+            # #                       bounds=([0, 0, -np.inf], [np.inf, np.inf, np.inf]), gtol=1e-16, xtol=1e-16, ftol=1e-16)
+            if charge is None:
+                weights = 1.0
+            else:
+                s_q = np.sqrt(0.81 / np.log(2))
+                weights = np.exp(-(charge / charge[0] - 1)**2 / s_q**2)
+            # self.logger.debug("Weights: {0}".format(weights))
+            ldata = least_squares(opt_fun, x0, jac="2-point", args=(a, b, sigma, weights),
+                                  bounds=([0.2e-6 / self.gamma_energy, 0.0, -np.inf],
+                                          [20e-6 / self.gamma_energy, 100.0, np.inf]))
+            if ldata.success:
+                eps = ldata.x[0]
+                beta = ldata.x[1]
+                alpha = ldata.x[2]
+            else:
+                self.logger.info("Direct twiss least squares failed. Attempting indirect")
+                if axis == "x":
+                    alpha0 = self.alpha_list[-1]
+                    beta0 = self.beta_list[-1]
+                    eps0 = self.eps_list[-1]
+                    x0 = [eps0 * beta0, eps0 * alpha0, eps0 * (1 + alpha0**2) / beta0]
+                else:
+                    alpha0 = self.alpha_y_list[-1]
+                    beta0 = self.beta_y_list[-1]
+                    eps0 = self.eps_y_list[-1]
+                    x0 = [eps0 * beta0, eps0 * alpha0, eps0 * (1 + alpha0**2) / beta0]
+                ldata = least_squares(opt_fun2, x0, jac="2-point", args=(a, b, sigma, weights),
+                                      bounds=([0, -np.inf, 0], [np.inf, np.inf, np.inf]))
+                eps2 = ldata.x[2] * ldata.x[0] - ldata.x[1]**2
+                if eps2 < 0:
+                    eps2 = eps0**2
+                eps = np.sqrt(eps2)
+                alpha = ldata.x[1] / eps
+                beta = ldata.x[0] / eps
 
             self.logger.debug("Found twiss parameters:"
-                              "\n alpha={0:.3f}\n beta={1:.3f}\n eps_n={2:.3f}".format(alpha, beta,
-                                                                                       eps * self.gamma_energy * 1e6))
+                              "\n alpha_{3}={0:.3f}\n beta_{3}={1:.3f}\n eps_n_{3}={2:.3f}".format(alpha, beta,
+                                                                                       eps * self.gamma_energy * 1e6, axis))
 
         return alpha, beta, eps
 
@@ -767,6 +862,7 @@ class MultiQuadLookup(object):
         c = 0.8
         mag_r = Bounds(-c * max_k, c * max_k)
         x0 = np.array(self.quad_strength_list)
+        self.logger.info("x0: {0}".format(x0))
         res = minimize(ab_fun, x0=x0, args=(True, False, axis), bounds=mag_r)
         a_min = self.calc_response_matrix(res.x, self.quad_list, self.screen.position)[0, 0]
         res = minimize(ab_fun, x0=x0, args=(True, True, axis), bounds=mag_r)
@@ -882,16 +978,16 @@ class MultiQuadTango(object):
         self.magnet_names = ["i-ms1/mag/qb-01", "i-ms1/mag/qb-02", "i-ms1/mag/qb-03", "i-ms1/mag/qb-04"]
         # self.screen_name = "i-ms1/dia/scrn-01"
         self.camera_name = "lima/liveviewer/i-ms1-dia-scrn-01"
-        self.sigma_target = 400e-6
+        self.sigma_target_x = 400e-6
         section = "MS1"
         self.n_steps = n_steps
         alpha0 = 0
-        beta0 = 40
-        eps_n_0 = 3e-6
+        beta0 = 10
+        eps_n_0 = 1e-6
 
-        self.alpha = -5.0
-        self.beta = 17.0
-        self.eps_n = 1e-6
+        self.alpha = 15.0
+        self.beta = 50.0
+        self.eps_n = 5e-6
         self.alpha_y = 0.0
         self.beta_y = 30.0
         self.eps_n_y = 2e-6
@@ -924,39 +1020,53 @@ class MultiQuadTango(object):
         self.camera_device.beta_y = self.beta_y
         self.camera_device.eps_n_y = self.eps_n_y * 1e6
         self.camera_device.beamenergy = self.beamenergy * 1e-6
-        sigma_x, sigma_y, image_p = self.process_image(self.camera_device.image)
-        self.sigma_target = sigma_x
+        sigma_x, sigma_y, image_p = self.process_image(self.camera_device.image, 0.95)
+        self.sigma_target_x = sigma_x
+        self.sigma_target_y = sigma_y
+        self.charge = image_p.sum()
 
-        self.mq.start_scan(self.sigma_target, self.sigma_target, section, self.n_steps, alpha0, beta0, eps_n_0)
+        self.mq.start_scan(self.sigma_target_x, self.sigma_target_y, self.charge, section, self.n_steps,
+                           alpha0, beta0, eps_n_0)
         self.current_step = 0
 
     def do_step(self):
         t0 = time.time()
         k_current = [dev.mainfieldcomponent for dev in self.magnet_devices]
+        time.sleep(0.1)
         image = self.camera_device.image
-        sigma_x, sigma_y, image_p = self.process_image(image)
+        sigma_x, sigma_y, image_p = self.process_image(image, 0.95)
         self.image_list.append(image)
         self.image_p_list.append(image_p)
+        charge = image_p.sum()
         self.logger.info("Step {0}: sigma_x={1:.3f} mm, sigma_y={2:.3f} mm".format(self.current_step,
                                                                                    sigma_x*1e3, sigma_y*1e3))
-        k_next = self.mq.scan_step(sigma_x, sigma_y, k_current)
+        k_next = self.mq.scan_step(sigma_x, sigma_y, charge, k_current)
         for ind, dev in enumerate(self.magnet_devices):
             dev.mainfieldcomponent = k_next[ind]
         self.current_step += 1
         self.logger.debug("Step time: {0:.3} s".format(time.time() - t0))
 
     def process_image(self, image, keep_charge_ratio=0.95):
+        t0 = time.time()
         image_roi = image[self.roi[1]:self.roi[1]+self.roi[3], self.roi[0]:self.roi[0]+self.roi[2]]
+
+        # Median filter and background subtraction:
         image_p = medfilt2d(image_roi, 5)
         bkg = image_p[0:50, 0:50].max() * 2
         image_p[image_p < bkg] = 0
+
+        # Find charge to keep:
         n_bins = np.unique(image_p.flatten()).shape[0]
         if n_bins < 1:
             n_bins = 1
         h = np.histogram(image_p, n_bins)
+        # Cumlative charge as function of pixel value:
         hq = (h[0]*h[1][:-1]).cumsum()
+        # Normalize:
         hq = hq / np.float(hq.max())
+        # Find index above which the desired charge ratio is:
         th_ind = np.searchsorted(hq, 1-keep_charge_ratio)
+        # Background level:
         d = (h[1][1] - h[1][0])/2.0
         th_q = h[1][th_ind] - d
         image_p[image_p < th_q] = 0.0
@@ -968,6 +1078,8 @@ class MultiQuadTango(object):
         y0 = (image_p.sum(1) * y_v).sum() / w0
         sigma_x = self.px_cal * np.sqrt((image_p.sum(0) * (x_v - x0)**2).sum() / w0)
         sigma_y = self.px_cal * np.sqrt((image_p.sum(1) * (y_v - y0) ** 2).sum() / w0)
+        self.logger.debug("Process image roi {0}x{1} time: {2:.3f} ms".format(image_roi.shape[1], image_roi.shape[0],
+                                                                              1e3 * (time.time() - t0)))
         return sigma_x, sigma_y, image_p
 
     def do_scan(self):
@@ -978,9 +1090,9 @@ class MultiQuadTango(object):
 if __name__ == "__main__":
 
     mt = MultiQuadTango()
-    theta, r_maj, r_min = mt.mq.calc_ellipse(mt.alpha, mt.beta, mt.eps_n / (mt.beamenergy / 0.511e6), mt.sigma_target)
-    theta_y, r_maj_y, r_min_y = mt.mq.calc_ellipse(mt.alpha_y, mt.beta_y, mt.eps_n_y / (mt.beamenergy / 0.511e6), mt.sigma_target)
+    theta, r_maj, r_min = mt.mq.calc_ellipse(mt.alpha, mt.beta, mt.eps_n / (mt.beamenergy / 0.511e6), mt.sigma_target_x)
+    theta_y, r_maj_y, r_min_y = mt.mq.calc_ellipse(mt.alpha_y, mt.beta_y, mt.eps_n_y / (mt.beamenergy / 0.511e6), mt.sigma_target_y)
     psi_v = np.linspace(0, 2 * np.pi, 1000)
-    a, b = mt.mq.get_ab(psi_v, theta, r_maj, r_min)
+    a_x, b_x = mt.mq.get_ab(psi_v, theta, r_maj, r_min)
     a_y, b_y = mt.mq.get_ab(psi_v, theta_y, r_maj_y, r_min_y)
 
