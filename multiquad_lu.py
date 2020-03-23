@@ -566,6 +566,11 @@ class MultiQuadLookup(object):
             self.beta_list.pop()
             self.eps_list.pop()
             self.eps_n_list.pop()
+            self.alpha_y_list.pop()
+            self.beta_y_list.pop()
+            self.eps_y_list.pop()
+            self.eps_n_y_list.pop()
+            self.charge_list.pop()
             return None
 
         self.target_a_list.append(next_a)
@@ -587,8 +592,7 @@ class MultiQuadLookup(object):
             "{5}".format(self.current_step, self.n_steps, alpha, beta, eps * self.gamma_energy, next_k)
         self.logger.info(s)
         if self.current_step >= self.n_steps:
-            self.pool.close()
-            self.pool.join()
+            self.logger.info("=========== END OF SCAN ===========")
 
         return next_k
 
@@ -696,7 +700,7 @@ class MultiQuadLookup(object):
                 b1 = c * r_maj * np.cos(psi + d_psi) * np.sin(theta) + c * r_min * np.sin(psi + d_psi) * np.cos(theta)
                 da = a1 - a_list[-1]
                 db = b1 - b_list[-1]
-                d_ab = 0.5
+                d_ab = 0.5 / np.sqrt(da**2 + db**2)
                 self.logger.debug("da: {0:.3f}, db: {1:.3f}".format(da, db))
                 target_a = a_list[-1] + d_ab * da
                 target_b = b_list[-1] + d_ab * db
@@ -746,7 +750,11 @@ class MultiQuadLookup(object):
         sigma_y = calc_sigma(self.alpha_y_list[-1], self.beta_y_list[-1], self.eps_y_list[-1],
                              self.A_lu[ind_p, 2], self.A_lu[ind_p, 3])
         # Asi = np.stack((sigma_x.flatten()[ind_p] * sigma_y.flatten()[ind_p]), -1).reshape(-1, 1)
-        Asi = np.stack((sigma_x.flatten() * sigma_y.flatten()), -1).reshape(-1, 1)
+        try:
+            Asi = np.stack((sigma_x.flatten() * sigma_y.flatten()), -1).reshape(-1, 1)
+        except ValueError as e:
+            self.logger.warning("Could not find quad values for a={0:.3f}, b={1:.3f}".format(target_a, target_b))
+            return None
         target_asi = np.array([self.target_sigma * self.target_sigma_y]).reshape(-1, 1)
         ind_si = ((Asi - target_asi) ** 2).sum(-1)
 
@@ -979,7 +987,7 @@ class MultiQuadTango(object):
         # self.screen_name = "i-ms1/dia/scrn-01"
         self.camera_name = "lima/liveviewer/i-ms1-dia-scrn-01"
         self.sigma_target_x = 400e-6
-        section = "MS1"
+        self.section = "MS1"
         self.n_steps = n_steps
         alpha0 = 0
         beta0 = 10
@@ -994,6 +1002,7 @@ class MultiQuadTango(object):
         self.beamenergy = 233.0e6
 
         k0 = [2.0, 1.3, -3.8, 0.3]
+        k0 = [-0.1, 0.1, -1.5, -1.4]
 
         self.image_list = list()
         self.image_p_list = list()
@@ -1025,11 +1034,15 @@ class MultiQuadTango(object):
         self.sigma_target_y = sigma_y
         self.charge = image_p.sum()
 
-        self.mq.start_scan(self.sigma_target_x, self.sigma_target_y, self.charge, section, self.n_steps,
+        self.base_filename = "multiquad"
+        self.base_path = "..\\..\\data"
+        self.pathname = None
+
+        self.mq.start_scan(self.sigma_target_x, self.sigma_target_y, self.charge, self.section, self.n_steps,
                            alpha0, beta0, eps_n_0)
         self.current_step = 0
 
-    def do_step(self):
+    def do_step(self, save=True):
         t0 = time.time()
         k_current = [dev.mainfieldcomponent for dev in self.magnet_devices]
         time.sleep(0.1)
@@ -1040,9 +1053,13 @@ class MultiQuadTango(object):
         charge = image_p.sum()
         self.logger.info("Step {0}: sigma_x={1:.3f} mm, sigma_y={2:.3f} mm".format(self.current_step,
                                                                                    sigma_x*1e3, sigma_y*1e3))
+        if save:
+            self.save_image(image, self.current_step, k_current)
+
         k_next = self.mq.scan_step(sigma_x, sigma_y, charge, k_current)
-        for ind, dev in enumerate(self.magnet_devices):
-            dev.mainfieldcomponent = k_next[ind]
+        if k_next is not None:
+            for ind, dev in enumerate(self.magnet_devices):
+                dev.mainfieldcomponent = k_next[ind]
         self.current_step += 1
         self.logger.debug("Step time: {0:.3} s".format(time.time() - t0))
 
@@ -1082,9 +1099,24 @@ class MultiQuadTango(object):
                                                                               1e3 * (time.time() - t0)))
         return sigma_x, sigma_y, image_p
 
-    def do_scan(self):
+    def do_scan(self, save=True):
+        if save:
+            s = "Multiquad_{0}_{1}".format(time.strftime("%Y-%m-%d_%H-%M-%S"), self.section)
+            self.pathname = os.path.join(self.base_path, s)
+            os.makedirs(self.pathname)
         for step in range(self.n_steps):
-            self.do_step()
+            self.do_step(save)
+
+    def save_image(self, image, step, k_values):
+        self.logger.info("Saving image {0}".format(step))
+        s = "_".join(["{0:.3f}".format(k) for k in k_values])
+        filename = "{0}_{1}_.png".format(step, s)
+        full_name = os.path.join(self.pathname, filename)
+        with open(full_name, "wb") as fh:
+            try:
+                write_png(fh, image.astype(np.uint16), filter_type=1)
+            except Exception as e:
+                self.logger.error("Image error: {0}".format(e))
 
 
 if __name__ == "__main__":
