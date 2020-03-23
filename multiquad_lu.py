@@ -633,7 +633,7 @@ class MultiQuadLookup(object):
             if charge is None:
                 weights = 1.0
             else:
-                s_q = np.sqrt(0.81 / np.log(2))
+                s_q = np.sqrt(0.01 / np.log(2))
                 weights = np.exp(-(charge / charge[0] - 1)**2 / s_q**2)
             # self.logger.debug("Weights: {0}".format(weights))
             ldata = least_squares(opt_fun, x0, jac="2-point", args=(a, b, sigma, weights),
