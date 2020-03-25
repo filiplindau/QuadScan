@@ -647,10 +647,11 @@ class MultiQuadLookup(object):
             #                       bounds=([0.2e-6 / self.gamma_energy, 0.0, -np.inf],
             #                               [20e-6 / self.gamma_energy, 100.0, np.inf]))
             ldata = leastsq(opt_fun, x0, args=(a, b, sigma, weights))
-            if True:
-                eps = ldata.x[0]
-                beta = ldata.x[1]
-                alpha = ldata.x[2]
+            if ldata[1] < 5:
+                x = ldata[0]
+                eps = x[0]
+                beta = x[1]
+                alpha = x[2]
             else:
                 self.logger.info("Direct twiss least squares failed. Attempting indirect")
                 if axis == "x":
@@ -666,12 +667,16 @@ class MultiQuadLookup(object):
                 # ldata = least_squares(opt_fun2, x0, jac="2-point", args=(a, b, sigma, weights),
                 #                       bounds=([0, -np.inf, 0], [np.inf, np.inf, np.inf]))
                 ldata = leastsq(opt_fun2, x0, args=(a, b, sigma, weights))
-                eps2 = ldata.x[2] * ldata.x[0] - ldata.x[1]**2
+                x = ldata[0]
+                eps2 = x[2] * x[0] - x[1]**2
                 if eps2 < 0:
                     eps2 = eps0**2
                 eps = np.sqrt(eps2)
-                alpha = ldata.x[1] / eps
-                beta = ldata.x[0] / eps
+                alpha = x[1] / eps
+                beta = x[0] / eps
+                if beta < 0:
+                    beta = beta0
+                    alpha = alpha0
 
             self.logger.debug("Found twiss parameters:"
                               "\n alpha_{3}={0:.3f}\n beta_{3}={1:.3f}\n eps_n_{3}={2:.3f}".format(alpha, beta,
@@ -785,22 +790,18 @@ class MultiQuadLookup(object):
             # self.logger.debug("Position s: {0} m".format(s))
             drift = quad - s
             M_d = np.array([[1.0, drift], [0.0, 1.0]])
-            M = np.rollaxis(np.dot(M_d, M), 0, -1)
+            M = np.einsum("...ij, ...jk -> ...ik", M_d, M)
             L = 0.2
             k = quad_strengths[..., ind]
             k_sqrt = np.sqrt(k * (1 + 0j))
 
             M_q = np.real(np.array([[np.cos(k_sqrt * L), L * sinc(L * k_sqrt)],
                                     [-k_sqrt * np.sin(k_sqrt * L), np.cos(k_sqrt * L)]]))
-            M_q = M_q.transpose(np.roll(np.arange(M_q.ndim), -2))
-            # M = np.dot(np.moveaxis(M_q, (0, 1), (-2, -1)), M)
-            self.logger.info("M: {0}, M_q: {1}".format(M.shape, M_q.shape))
-            M = np.rollaxis(np.dot(M_q, M), 0, -1)
-            self.logger.info("M: {0}".format(M.shape))
+            M = np.einsum("ij..., ...jk -> ...ik", M_q, M)
             s = quad + L
         drift = screen_position - s
         M_d = np.array([[1.0, drift], [0.0, 1.0]])
-        M = np.rollaxis(np.dot(M_d, M), 0, -1)
+        M = np.einsum("...ij, ...jk -> ...ik", M_d, M)
         return M
 
     def calc_response_matrix(self, quad_strengths, quad_list, screen_position, axis="x"):
@@ -882,7 +883,7 @@ class MultiQuadLookup(object):
                 else:
                     return self.calc_response_matrix(x, self.quad_list, self.screen.position, axis)[0, 1]
         c = 0.8
-        mag_r = Bounds(-c * max_k, c * max_k)
+        mag_r = [(-c * max_k, c * max_k) for k in self.quad_strength_list]
         x0 = np.array(self.quad_strength_list)
         self.logger.info("x0: {0}".format(x0))
         res = minimize(ab_fun, x0=x0, args=(True, False, axis), bounds=mag_r)
@@ -1008,8 +1009,8 @@ class MultiQuadTango(object):
         eps_n_0 = 1e-6
 
         self.alpha = 15.0
-        self.beta = 50.0
-        self.eps_n = 5e-6
+        self.beta = 20.0
+        self.eps_n = 3e-6
         self.alpha_y = 0.0
         self.beta_y = 30.0
         self.eps_n_y = 2e-6
@@ -1017,6 +1018,7 @@ class MultiQuadTango(object):
 
         k0 = [2.0, 1.3, -3.8, 0.3]
         k0 = [-0.1, 0.1, -1.5, -1.4]
+        k0 = [-0.9, 0.7, 4.9, -3.0]
 
         self.image_list = list()
         self.image_p_list = list()
