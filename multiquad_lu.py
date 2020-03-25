@@ -144,7 +144,7 @@ class QuadSimulator(object):
             else:
                 drift = quad.position - s
             M_d = np.array([[1.0, drift], [0.0, 1.0]])
-            M = np.matmul(M_d, M)
+            M = np.dot(M_d, M)
             L = quad.length
             if axis == "x":
                 k = quad_strengths[ind]
@@ -164,11 +164,11 @@ class QuadSimulator(object):
             #                             [-k_sqrt * np.sin(k_sqrt * L),  np.cos(k_sqrt * L)]]))
             # else:
             #     M_q = np.array([[1, L], [0, 1]])
-            M = np.matmul(M_q, M)
+            M = np.dot(M_q, M)
             s = quad.position + L
         drift = self.screen.position - s
         M_d = np.array([[1.0, drift], [0.0, 1.0]])
-        M = np.matmul(M_d, M)
+        M = np.dot(M_d, M)
         return M
 
     def calc_response_matrix_m(self, quad_strengths, axis="x"):
@@ -183,7 +183,7 @@ class QuadSimulator(object):
             # self.logger.debug("Position s: {0} m".format(s))
             drift = quad.position - s
             M_d[:, :, :, :, 0, 1] = drift
-            M = np.matmul(M_d, M)
+            M = np.dot(M_d, M)
             L = quad.length
             if axis == "x":
                 k = quad_strengths[ind]
@@ -194,19 +194,19 @@ class QuadSimulator(object):
             M_q0 = np.real(np.array([[np.cos(k_sqrt * L), np.sinc(k_sqrt * (L / np.pi)) * L],
                                     [-k_sqrt * np.sin(k_sqrt * L), np.cos(k_sqrt * L)]]))
             M_q = np.moveaxis(M_q0, [0, 1], [-2, -1])
-            M = np.matmul(M_q, M)
+            M = np.dot(M_q, M)
             s = quad.position + L
         drift = self.screen.position - s
         M_d[:, :, :, :, 0, 1] = drift
-        M = np.matmul(M_d, M)
+        M = np.dot(M_d, M)
         return M
 
     def get_screen_twiss(self, axis="x"):
         M = self.calc_response_matrix(self.quad_strengths, axis)
         if axis == "x":
-            sigma2 = np.matmul(np.matmul(M, self.sigma1), M.transpose())
+            sigma2 = np.dot(np.dot(M, self.sigma1), M.transpose())
         else:
-            sigma2 = np.matmul(np.matmul(M, self.sigma1_y), M.transpose())
+            sigma2 = np.dot(np.dot(M, self.sigma1_y), M.transpose())
         eps = np.sqrt(np.linalg.det(sigma2))
         alpha = -sigma2[0, 1] / eps
         beta = sigma2[0, 0] / eps
@@ -268,18 +268,18 @@ def calc_response_matrix_mp(quad_strengths, quad_positions, screen_position, axi
         # self.logger.debug("Position s: {0} m".format(s))
         drift = quad - s
         M_d = np.array([[1.0, drift], [0.0, 1.0]])
-        M = np.matmul(M_d, M)
+        M = np.dot(M_d, M)
         L = 0.2
         k = quad_strengths[..., ind]
         k_sqrt = np.sqrt(k * (1 + 0j))
 
         M_q = np.real(np.array([[np.cos(k_sqrt * L), L * sinc(L * k_sqrt)],
                                 [-k_sqrt * np.sin(k_sqrt * L), np.cos(k_sqrt * L)]]))
-        M = np.matmul(np.moveaxis(M_q, (0, 1), (-2, -1)), M)
+        M = np.dot(np.moveaxis(M_q, (0, 1), (-2, -1)), M)
         s = quad + L
     drift = screen_position - s
     M_d = np.array([[1.0, drift], [0.0, 1.0]])
-    M = np.matmul(M_d, M)
+    M = np.dot(M_d, M)
     return M
 
 
@@ -772,18 +772,18 @@ class MultiQuadLookup(object):
             # self.logger.debug("Position s: {0} m".format(s))
             drift = quad - s
             M_d = np.array([[1.0, drift], [0.0, 1.0]])
-            M = np.matmul(M_d, M)
+            M = np.dot(M_d, M)
             L = 0.2
             k = quad_strengths[..., ind]
             k_sqrt = np.sqrt(k * (1 + 0j))
 
             M_q = np.real(np.array([[np.cos(k_sqrt * L), L * sinc(L * k_sqrt)],
                                     [-k_sqrt * np.sin(k_sqrt * L), np.cos(k_sqrt * L)]]))
-            M = np.matmul(np.moveaxis(M_q, (0, 1), (-2, -1)), M)
+            M = np.dot(np.moveaxis(M_q, (0, 1), (-2, -1)), M)
             s = quad + L
         drift = screen_position - s
         M_d = np.array([[1.0, drift], [0.0, 1.0]])
-        M = np.matmul(M_d, M)
+        M = np.dot(M_d, M)
         return M
 
     def calc_response_matrix(self, quad_strengths, quad_list, screen_position, axis="x"):
@@ -796,7 +796,7 @@ class MultiQuadLookup(object):
             # self.logger.debug("Position s: {0} m".format(s))
             drift = quad.position - s
             M_d = np.array([[1.0, drift], [0.0, 1.0]])
-            M = np.matmul(M_d, M)
+            M = np.dot(M_d, M)
             L = quad.length
             k = quad_strengths[ind]
             if k != 0:
@@ -806,11 +806,11 @@ class MultiQuadLookup(object):
                                         [-k_sqrt * np.sin(k_sqrt * L),  np.cos(k_sqrt * L)]]))
             else:
                 M_q = np.array([[1, L], [0, 1]])
-            M = np.matmul(M_q, M)
+            M = np.dot(M_q, M)
             s = quad.position + L
         drift = screen_position - s
         M_d = np.array([[1.0, drift], [0.0, 1.0]])
-        M = np.matmul(M_d, M)
+        M = np.dot(M_d, M)
         return M
 
     def calc_ellipse(self, alpha, beta, eps, sigma):
