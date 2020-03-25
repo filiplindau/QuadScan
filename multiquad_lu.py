@@ -425,7 +425,8 @@ class MultiQuadLookup(object):
         t0 = time.time()
         n_proc = mp.cpu_count()
 
-        with mp.Pool(processes=n_proc) as pool:
+        try:
+            pool = mp.Pool(processes=n_proc)
             quad_strengths_list = zip(np.array_split(quad_strengths, n_proc, 0),
                                       [quad_positions] * n_proc, [screen_position] * n_proc, ["x"] * n_proc)
             M = np.array(pool.starmap(calc_response_matrix_mp, quad_strengths_list))
@@ -439,6 +440,8 @@ class MultiQuadLookup(object):
             ay = M[..., 0, 0]
             by = M[..., 0, 1]
             self.logger.debug("Time y: {0:.3f} s".format(time.time() - t1))
+        finally:
+            pool.close()
         # A = np.stack((ax, bx, ay, by), -1).reshape(-1, 4)
         A = np.concatenate((np.expand_dims(ax, ax.ndim), np.expand_dims(bx, bx.ndim),
                             np.expand_dims(ay, ay.ndim), np.expand_dims(by, by.ndim)), ax.ndim).reshape(-1, 4)
