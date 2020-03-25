@@ -24,7 +24,7 @@ from scipy.optimize import lsq_linear
 # from QuadScanTasks import TangoReadAttributeTask, TangoMonitorAttributeTask, TangoWriteAttributeTask, work_func_local2
 from operator import attrgetter
 
-from tasks.GenericTasks import *
+#from tasks.GenericTasks import *
 from QuadScanDataStructs import *
 
 
