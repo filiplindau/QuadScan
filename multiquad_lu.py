@@ -10,8 +10,8 @@ import time
 import ctypes
 import inspect
 import multiprocessing as mp
-from queue import Empty
-import PIL
+# from queue import Empty
+# import PIL
 import numpy as np
 from numpngw import write_png
 import os
