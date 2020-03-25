@@ -7,11 +7,7 @@ Using a look-up table to find correct quad settings
 """
 
 import time
-import ctypes
-import inspect
 import multiprocessing as mp
-# from queue import Empty
-# import PIL
 import numpy as np
 from numpngw import write_png
 import os
@@ -19,8 +15,8 @@ from collections import namedtuple
 import pprint
 import traceback
 from scipy.signal import medfilt2d
-from scipy.optimize import minimize, Bounds, least_squares #, BFGS, NonlinearConstraint
-from scipy.optimize import lsq_linear
+from scipy.optimize import minimize, leastsq # Bounds, least_squares, BFGS, NonlinearConstraint
+#from scipy.optimize import lsq_linear
 # from QuadScanTasks import TangoReadAttributeTask, TangoMonitorAttributeTask, TangoWriteAttributeTask, work_func_local2
 from operator import attrgetter
 
@@ -635,10 +631,11 @@ class MultiQuadLookup(object):
                 s_q = np.sqrt(0.01 / np.log(2))
                 weights = np.exp(-(charge / charge[0] - 1)**2 / s_q**2)
             # self.logger.debug("Weights: {0}".format(weights))
-            ldata = least_squares(opt_fun, x0, jac="2-point", args=(a, b, sigma, weights),
-                                  bounds=([0.2e-6 / self.gamma_energy, 0.0, -np.inf],
-                                          [20e-6 / self.gamma_energy, 100.0, np.inf]))
-            if ldata.success:
+            # ldata = least_squares(opt_fun, x0, jac="2-point", args=(a, b, sigma, weights),
+            #                       bounds=([0.2e-6 / self.gamma_energy, 0.0, -np.inf],
+            #                               [20e-6 / self.gamma_energy, 100.0, np.inf]))
+            ldata = leastsq(opt_fun, x0, args=(a, b, sigma, weights))
+            if True:
                 eps = ldata.x[0]
                 beta = ldata.x[1]
                 alpha = ldata.x[2]
@@ -654,8 +651,9 @@ class MultiQuadLookup(object):
                     beta0 = self.beta_y_list[-1]
                     eps0 = self.eps_y_list[-1]
                     x0 = [eps0 * beta0, eps0 * alpha0, eps0 * (1 + alpha0**2) / beta0]
-                ldata = least_squares(opt_fun2, x0, jac="2-point", args=(a, b, sigma, weights),
-                                      bounds=([0, -np.inf, 0], [np.inf, np.inf, np.inf]))
+                # ldata = least_squares(opt_fun2, x0, jac="2-point", args=(a, b, sigma, weights),
+                #                       bounds=([0, -np.inf, 0], [np.inf, np.inf, np.inf]))
+                ldata = leastsq(opt_fun2, x0, args=(a, b, sigma, weights))
                 eps2 = ldata.x[2] * ldata.x[0] - ldata.x[1]**2
                 if eps2 < 0:
                     eps2 = eps0**2
