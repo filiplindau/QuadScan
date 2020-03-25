@@ -14,7 +14,7 @@ import sys
 
 from tasks.GenericTasks import *
 from QuadScanDataStructs import *
-from multiquad_sim import QuadSimulator
+from multiquad_lu import QuadSimulator
 
 try:
     import PyTango as pt
