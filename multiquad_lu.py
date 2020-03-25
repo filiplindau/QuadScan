@@ -394,7 +394,9 @@ class MultiQuadLookup(object):
         screen_position = self.screen.position
         q_v = np.linspace(-self.max_k, self.max_k, 40)
         q1, q2, q3, q4 = np.meshgrid(q_v, q_v, q_v, q_v)
-        quad_strengths = np.stack((q1, q2, q3, q4), -1)
+        # quad_strengths = np.stack((q1, q2, q3, q4), -1)
+        quad_strengths = np.concatenate((np.expand_dims(q1, q1.ndim), np.expand_dims(q2, q2.ndim),
+                                         np.expand_dims(q3, q3.ndim), np.expand_dims(q4, q4.ndim)), q1.ndim)
         t0 = time.time()
         M = self.calc_response_matrix_v(quad_strengths, quad_positions, screen_position, "x")
         ax = M[..., 0, 0]
@@ -405,7 +407,9 @@ class MultiQuadLookup(object):
         ay = M[..., 0, 0]
         by = M[..., 0, 1]
         self.logger.debug("Time y: {0}".format(time.time() - t1))
-        A = np.stack((ax, bx, ay, by), -1).reshape(-1, 4)
+        # A = np.stack((ax, bx, ay, by), -1).reshape(-1, 4)
+        A = np.concatenate((np.expand_dims(ax, ax.ndim), np.expand_dims(bx, bx.ndim),
+                            np.expand_dims(ay, ay.ndim), np.expand_dims(by, by.ndim)), ax.ndim).reshape(-1, 4)
         k = quad_strengths.reshape(-1, 4)
         self.A_lu = A
         self.k_lu = k
@@ -416,7 +420,8 @@ class MultiQuadLookup(object):
         screen_position = self.screen.position
         q_v = np.linspace(-self.max_k, self.max_k, 40)
         q1, q2, q3, q4 = np.meshgrid(q_v, q_v, q_v, q_v)
-        quad_strengths = np.stack((q1, q2, q3, q4), -1)
+        quad_strengths = np.concatenate((np.expand_dims(q1, q1.ndim), np.expand_dims(q2, q2.ndim),
+                                         np.expand_dims(q3, q3.ndim), np.expand_dims(q4, q4.ndim)), q1.ndim)
         t0 = time.time()
         n_proc = mp.cpu_count()
 
@@ -434,7 +439,9 @@ class MultiQuadLookup(object):
             ay = M[..., 0, 0]
             by = M[..., 0, 1]
             self.logger.debug("Time y: {0:.3f} s".format(time.time() - t1))
-        A = np.stack((ax, bx, ay, by), -1).reshape(-1, 4)
+        # A = np.stack((ax, bx, ay, by), -1).reshape(-1, 4)
+        A = np.concatenate((np.expand_dims(ax, ax.ndim), np.expand_dims(bx, bx.ndim),
+                            np.expand_dims(ay, ay.ndim), np.expand_dims(by, by.ndim)), ax.ndim).reshape(-1, 4)
         k = quad_strengths.reshape(-1, 4)
         self.A_lu = A
         self.k_lu = k
@@ -748,7 +755,8 @@ class MultiQuadLookup(object):
                              self.A_lu[ind_p, 2], self.A_lu[ind_p, 3])
         # Asi = np.stack((sigma_x.flatten()[ind_p] * sigma_y.flatten()[ind_p]), -1).reshape(-1, 1)
         try:
-            Asi = np.stack((sigma_x.flatten() * sigma_y.flatten()), -1).reshape(-1, 1)
+            # Asi = np.stack((sigma_x.flatten() * sigma_y.flatten()), -1).reshape(-1, 1)
+            Asi = (sigma_x.flatten() * sigma_y.flatten()).reshape(-1, 1)
         except ValueError as e:
             self.logger.warning("Could not find quad values for a={0:.3f}, b={1:.3f}".format(target_a, target_b))
             return None
