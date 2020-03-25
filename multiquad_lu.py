@@ -194,7 +194,7 @@ class QuadSimulator(object):
             M_q0 = np.real(np.array([[np.cos(k_sqrt * L), np.sinc(k_sqrt * (L / np.pi)) * L],
                                     [-k_sqrt * np.sin(k_sqrt * L), np.cos(k_sqrt * L)]]))
             # M_q = np.moveaxis(M_q0, [0, 1], [-2, -1])
-            M = np.dot(np.moveaxis(M_q, (0, 1), (-2, -1)), M)
+            M_q = M_q0.transpose(np.roll(np.arange(M_q0.ndim), -2))
             M = np.dot(M_q, M)
             s = quad.position + L
         drift = self.screen.position - s
@@ -276,7 +276,8 @@ def calc_response_matrix_mp(quad_strengths, quad_positions, screen_position, axi
 
         M_q = np.real(np.array([[np.cos(k_sqrt * L), L * sinc(L * k_sqrt)],
                                 [-k_sqrt * np.sin(k_sqrt * L), np.cos(k_sqrt * L)]]))
-        M = np.dot(np.moveaxis(M_q, (0, 1), (-2, -1)), M)
+        # M = np.dot(np.moveaxis(M_q, (0, 1), (-2, -1)), M)
+        M = np.dot(M_q.transpose(np.roll(np.arange(M_q.ndim), -2)), M)
         s = quad + L
     drift = screen_position - s
     M_d = np.array([[1.0, drift], [0.0, 1.0]])
@@ -792,7 +793,7 @@ class MultiQuadLookup(object):
             M_q = np.real(np.array([[np.cos(k_sqrt * L), L * sinc(L * k_sqrt)],
                                     [-k_sqrt * np.sin(k_sqrt * L), np.cos(k_sqrt * L)]]))
             # M = np.dot(np.moveaxis(M_q, (0, 1), (-2, -1)), M)
-            M = np.dot(M_q.transpose((1, 0)), M)
+            M = np.dot(M_q.transpose(np.roll(np.arange(M_q.ndim), -2)), M)
             s = quad + L
         drift = screen_position - s
         M_d = np.array([[1.0, drift], [0.0, 1.0]])
