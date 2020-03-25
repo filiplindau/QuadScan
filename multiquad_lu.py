@@ -469,7 +469,7 @@ class MultiQuadLookup(object):
         self.logger.info("Start scan: sigma {0:.3f} x {1:.3f} mm".format(current_sigma_x*1e3, current_sigma_y*1e3))
         self.reset_data()
         self.set_section(section)
-        self.generate_lookup_mp()
+        self.generate_lookup()
         self.target_sigma = current_sigma_x
         self.target_sigma_y = current_sigma_y
         self.target_charge = current_charge
