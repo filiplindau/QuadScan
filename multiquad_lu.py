@@ -792,8 +792,10 @@ class MultiQuadLookup(object):
 
             M_q = np.real(np.array([[np.cos(k_sqrt * L), L * sinc(L * k_sqrt)],
                                     [-k_sqrt * np.sin(k_sqrt * L), np.cos(k_sqrt * L)]]))
+            M_q = M_q.transpose(np.roll(np.arange(M_q.ndim), -2))
             # M = np.dot(np.moveaxis(M_q, (0, 1), (-2, -1)), M)
-            M = np.dot(M_q.transpose(np.roll(np.arange(M_q.ndim), -2)), M)
+            self.logger.info("M: {0}, M_q: {1}".format(M.shape, M_q.shape))
+            M = np.dot(M_q, M)
             s = quad + L
         drift = screen_position - s
         M_d = np.array([[1.0, drift], [0.0, 1.0]])
