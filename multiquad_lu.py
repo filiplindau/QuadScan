@@ -1215,9 +1215,13 @@ class MultiQuadTango(object):
     def do_step(self, save=True):
         t0 = time.time()
         k_current = self.get_quad_magnets()
-        time.sleep(time.time() - self.last_shot_time)
+        dt = time.time() - self.last_shot_time
+        try:
+            time.sleep(self.shot_delay - dt)
+        except ValueError:
+            pass
         image = self.camera_device.image
-        self.last_shot_time = time.time()
+
         sigma_x, sigma_y, image_p = self.process_image(image, self.charge_ratio)
         self.image_list.append(image)
         self.image_p_list.append(image_p)
@@ -1230,9 +1234,10 @@ class MultiQuadTango(object):
         k_next = self.mq.scan_step(sigma_x, sigma_y, charge, k_current)
         if k_next is not None:
             self.set_quad_magnets(k_next)
-        time.sleep(self.shot_delay)
+        # time.sleep(self.shot_delay)
+        self.last_shot_time = time.time()
         self.current_step += 1
-        self.logger.debug("Step time: {0:.3} s".format(time.time() - t0))
+        self.logger.debug("Step time: {0:.3f} s".format(time.time() - t0))
 
     def process_image(self, image, keep_charge_ratio=0.95):
         t0 = time.time()
@@ -1264,7 +1269,7 @@ class MultiQuadTango(object):
         w0 = image_p.sum()
         x0 = (image_p.sum(0) * x_v).sum() / w0
         y0 = (image_p.sum(1) * y_v).sum() / w0
-        sigma_x = self.px_cal * np.sqrt((image_p.sum(0) * (x_v - x0)**2).sum() / w0)
+        sigma_x = self.px_cal * np.sqrt((image_p.sum(0) * (x_v - x0) ** 2).sum() / w0)
         sigma_y = self.px_cal * np.sqrt((image_p.sum(1) * (y_v - y0) ** 2).sum() / w0)
         self.logger.debug("Process image \n\n"
                           "Roi size {0}x{1}\n"
@@ -1285,6 +1290,13 @@ class MultiQuadTango(object):
         self.sigma_target_x = sigma_x
         self.sigma_target_y = sigma_y
         self.charge = image_p.sum()
+
+        alpha0 = 0
+        beta0 = 10
+        eps_n_0 = 1e-6
+        self.mq.start_scan(self.sigma_target_x, self.sigma_target_y, self.charge, self.section, self.n_steps,
+                           alpha0, beta0, eps_n_0)
+        self.current_step = 0
 
         for step in range(self.n_steps):
             self.do_step(save)
