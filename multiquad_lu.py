@@ -810,11 +810,14 @@ class MultiQuadLookup(object):
                 b_g = b[ind]
                 st = int(a_g.shape[0] / self.n_steps + 0.5)
                 self.logger.debug("Found {0} values in range. Using every {1} value.".format(a_g.shape[0], st))
-                self.logger.debug("Step {0} indexing a_g[::st] of length {1}.".format(step, a_g[::st].shape[0]))
+                if st > 0:
+                    self.logger.debug("Step {0} indexing a_g[::st] of length {1}.".format(step, a_g[::st].shape[0]))
+                else:
+                    self.logger.debug("Step {0} indexing a_g[::st] no valus.".format(step, a_g[::st].shape[0]))
                 try:
                     target_a = a_g[::st][step]
                     target_b = b_g[::st][step]
-                except IndexError as e:
+                except (ValueError, IndexError) as e:
                     self.logger.warning(e)
                     target_a = a_g[-1]
                     target_b = b_g[-1]
