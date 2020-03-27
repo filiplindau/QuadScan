@@ -533,7 +533,6 @@ class MultiQuadLookup(object):
         :param current_k_list: List of k-values for the section (MS1, MS2: for quads, MS3: 6 quads)
         :return: k-values for next point
         """
-        self.current_step += 1
         self.k_list.append(current_k_list)
         self.charge_list.append(current_charge)
 
@@ -632,8 +631,10 @@ class MultiQuadLookup(object):
             "eps_n = {4:.3g}\n\n" \
             "Next step magnet settings:\n" \
             "{5}\n=================================================\n" \
-            "".format(self.current_step, self.n_steps, alpha, beta, eps * self.gamma_energy, next_k)
+            "".format(self.current_step + 1, self.n_steps, alpha, beta, eps * self.gamma_energy, next_k)
         self.logger.info(s)
+        self.current_step += 1
+
         if self.current_step >= self.n_steps:
             self.logger.info("=========== END OF SCAN ===========")
 
