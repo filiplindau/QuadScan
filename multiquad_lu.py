@@ -1142,38 +1142,46 @@ class MultiQuadTango(object):
         self.image_p_list = list()
 
         self.magnet_devices = list()
-        for mag in self.magnet_names:
-            dev = pt.DeviceProxy("127.0.0.1:10000/{0}#dbase=no".format(mag))
-            self.magnet_devices.append(dev)
-            pos = dev.position
-            self.logger.info("Connected to device {0}".format(mag))
-        for ind, dev in enumerate(self.magnet_devices):
-            dev.mainfieldcomponent = k0[ind]
+        self.camera_device = None
+        self.px_cal = None
+        self.roi = None
+        self.sigma_target_x = None
+        self.sigma_target_y = None
+        self.charge = None
 
-        self.camera_device = pt.DeviceProxy("127.0.0.1:10002/{0}#dbase=no".format(self.camera_name))
-        self.logger.info("Connected to device {0}".format(self.camera_name))
-        camera_pos = self.camera_device.position
-        self.px_cal = self.camera_device.pixel_cal
-        self.roi = self.camera_device.roi
-        self.roi = np.array([520, 400, 240, 240])
-        self.camera_device.alpha = self.alpha
-        self.camera_device.beta = self.beta
-        self.camera_device.eps_n = self.eps_n * 1e6
-        self.camera_device.alpha_y = self.alpha_y
-        self.camera_device.beta_y = self.beta_y
-        self.camera_device.eps_n_y = self.eps_n_y * 1e6
-        self.camera_device.beamenergy = self.beamenergy * 1e-6
-        sigma_x, sigma_y, image_p = self.process_image(self.camera_device.image, self.charge_ratio)
-        self.sigma_target_x = sigma_x
-        self.sigma_target_y = sigma_y
-        self.charge = image_p.sum()
+        # self.magnet_devices = list()
+        # for mag in self.magnet_names:
+        #     dev = pt.DeviceProxy("127.0.0.1:10000/{0}#dbase=no".format(mag))
+        #     self.magnet_devices.append(dev)
+        #     pos = dev.position
+        #     self.logger.info("Connected to device {0}".format(mag))
+        # for ind, dev in enumerate(self.magnet_devices):
+        #     dev.mainfieldcomponent = k0[ind]
+        #
+        # self.camera_device = pt.DeviceProxy("127.0.0.1:10002/{0}#dbase=no".format(self.camera_name))
+        # self.logger.info("Connected to device {0}".format(self.camera_name))
+        # camera_pos = self.camera_device.position
+        # self.px_cal = self.camera_device.pixel_cal
+        # self.roi = self.camera_device.roi
+        # self.roi = np.array([520, 400, 240, 240])
+        # self.camera_device.alpha = self.alpha
+        # self.camera_device.beta = self.beta
+        # self.camera_device.eps_n = self.eps_n * 1e6
+        # self.camera_device.alpha_y = self.alpha_y
+        # self.camera_device.beta_y = self.beta_y
+        # self.camera_device.eps_n_y = self.eps_n_y * 1e6
+        # self.camera_device.beamenergy = self.beamenergy * 1e-6
+        # sigma_x, sigma_y, image_p = self.process_image(self.camera_device.image, self.charge_ratio)
+        # self.sigma_target_x = sigma_x
+        # self.sigma_target_y = sigma_y
+        # self.charge = image_p.sum()
 
         self.base_filename = "multiquad"
-        self.base_path = "..\\..\\data"
+        self.base_path = "..\\data"
         self.pathname = None
 
-        self.mq.start_scan(self.sigma_target_x, self.sigma_target_y, self.charge, self.section, self.n_steps,
-                           alpha0, beta0, eps_n_0)
+        # self.mq.start_scan(self.sigma_target_x, self.sigma_target_y, self.charge, self.section, self.n_steps,
+        #                    alpha0, beta0, eps_n_0)
         self.current_step = 0
 
         self.magnet_delay = 0.2     # Magnet settling time
