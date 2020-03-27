@@ -813,7 +813,7 @@ class MultiQuadLookup(object):
                 if st > 0:
                     self.logger.debug("Step {0} indexing a_g[::st] of length {1}.".format(step, a_g[::st].shape[0]))
                 else:
-                    self.logger.debug("Step {0} indexing a_g[::st] no valus.".format(step, a_g[::st].shape[0]))
+                    self.logger.debug("Step {0} indexing a_g[::st] no values.".format(step))
                 try:
                     target_a = a_g[::st][step]
                     target_b = b_g[::st][step]
