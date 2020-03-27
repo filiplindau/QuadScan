@@ -1240,14 +1240,15 @@ class MultiQuadTango(object):
             self.camera_device = pt.DeviceProxy("lima/liveviewer/{0}".format(self.camera_name))
             self.logger.info("Connected to device {0}".format(self.camera_name))
             beam_device = pt.DeviceProxy("lima/beamviewer/{0}".format(self.camera_name))
-            self.roi = json.loads(beam_device.roi)
+            roi = json.loads(beam_device.roi)
+            self.roi = [roi[0], roi[1] - roi[0], roi[2], roi[3] - roi[2]]
             size = json.loads(beam_device.measurementruler)["size"]
             dx = beam_device.measurementrulerwidth
             self.px_cal = dx * 1e-3 / size[0]
         self.mq.set_section(section, load_file=True)
         self.logger.info("Section {0}: \n"
                          "Electron energy = {1:.3f} MeV\n"
-                         "Pixel resolution = {2:.3f} um".format(section, self.beamenergy, self.px_cal * 1e6))
+                         "Pixel resolution = {2:.3f} um".format(section, self.beamenergy * 1e-6, self.px_cal * 1e6))
 
     def set_quad_magnets(self, k_list):
         for ind, dev in enumerate(self.crq_devices):
