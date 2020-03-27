@@ -12,7 +12,7 @@ import numpy as np
 from numpngw import write_png
 import os
 import json
-from collections import namedtuple
+from collections import namedtuple, OrderedDict
 import pprint
 import traceback
 from scipy.signal import medfilt2d
@@ -298,6 +298,7 @@ class MultiQuadLookup(object):
         self.quad_list = None
         self.quad_strength_list = None
         self.screen = None
+        self.section = None
 
         self.a_list = list()
         self.b_list = list()
@@ -465,7 +466,7 @@ class MultiQuadLookup(object):
             npzfile = np.load(filename)
         except FileNotFoundError:
             self.logger.error("Lookup file {0} does not exist")
-            self.set_section(section, load=False)
+            self.set_section(section, load_file=False)
         self.A_lu = npzfile["A_lu"]
         self.k_lu = npzfile["k_lu"]
 
@@ -488,7 +489,7 @@ class MultiQuadLookup(object):
         """
         self.logger.info("Start scan: sigma {0:.3f} x {1:.3f} mm".format(current_sigma_x*1e3, current_sigma_y*1e3))
         self.reset_data()
-        self.set_section(section, load=True)
+        self.set_section(section, load_file=True)
         self.target_sigma = current_sigma_x
         self.target_sigma_y = current_sigma_y
         self.target_charge = current_charge
@@ -1015,49 +1016,50 @@ class MultiQuadLookup(object):
         b = r_maj * np.cos(psi) * np.sin(theta) + r_min * np.sin(psi) * np.cos(theta)
         return a, b
 
-    def set_section(self, section, load=False):
-        if section == "MS1":
-            self.gamma_energy = 233e6 / 0.511e6
-            self.quad_list = list()
-            self.quad_list.append(SectionQuad("QB-01", 13.55, 0.2, "MAG-01", "CRQ-01", True))
-            self.quad_list.append(SectionQuad("QB-02", 14.45, 0.2, "MAG-02", "CRQ-02", True))
-            self.quad_list.append(SectionQuad("QB-03", 17.75, 0.2, "MAG-03", "CRQ-03", True))
-            self.quad_list.append(SectionQuad("QB-04", 18.65, 0.2, "MAG-04", "CRQ-04", True))
+    def set_section(self, section, load_file=False, force_reload=False):
+        if self.section != section or force_reload is True:
+            if section == "MS1":
+                self.gamma_energy = 233e6 / 0.511e6
+                self.quad_list = list()
+                self.quad_list.append(SectionQuad("QB-01", 13.55, 0.2, "MAG-01", "CRQ-01", True))
+                self.quad_list.append(SectionQuad("QB-02", 14.45, 0.2, "MAG-02", "CRQ-02", True))
+                self.quad_list.append(SectionQuad("QB-03", 17.75, 0.2, "MAG-03", "CRQ-03", True))
+                self.quad_list.append(SectionQuad("QB-04", 18.65, 0.2, "MAG-04", "CRQ-04", True))
 
-            self.screen = SectionScreen("screen", 19.223, "liveviewer", "beamviewer", "limaccd", "screen")
+                self.screen = SectionScreen("screen", 19.223, "liveviewer", "beamviewer", "limaccd", "screen")
 
-            self.quad_strength_list = [-0.7, -0.3, -3.6, 2.3]  # 0.4 mm size
+                self.quad_strength_list = [-0.7, -0.3, -3.6, 2.3]  # 0.4 mm size
 
-        elif section == "MS2":
-            self.gamma_energy = 233e6 / 0.511e6
+            elif section == "MS2":
+                self.gamma_energy = 233e6 / 0.511e6
 
-            self.quad_list = list()
-            self.quad_list.append(SectionQuad("QB-01", 33.52, 0.2, "MAG-01", "CRQ-01", True))
-            self.quad_list.append(SectionQuad("QB-02", 34.62, 0.2, "MAG-02", "CRQ-02", True))
-            self.quad_list.append(SectionQuad("QB-03", 35.62, 0.2, "MAG-03", "CRQ-03", True))
-            self.quad_list.append(SectionQuad("QB-04", 37.02, 0.2, "MAG-04", "CRQ-04", True))
-            self.screen = SectionScreen("screen", 38.445, "liveviewer", "beamviewer", "limaccd", "screen")
+                self.quad_list = list()
+                self.quad_list.append(SectionQuad("QB-01", 33.52, 0.2, "MAG-01", "CRQ-01", True))
+                self.quad_list.append(SectionQuad("QB-02", 34.62, 0.2, "MAG-02", "CRQ-02", True))
+                self.quad_list.append(SectionQuad("QB-03", 35.62, 0.2, "MAG-03", "CRQ-03", True))
+                self.quad_list.append(SectionQuad("QB-04", 37.02, 0.2, "MAG-04", "CRQ-04", True))
+                self.screen = SectionScreen("screen", 38.445, "liveviewer", "beamviewer", "limaccd", "screen")
 
-            self.quad_strength_list = [-0.7, -0.3, -3.6, 2.3]  # 0.4 mm size
+                self.quad_strength_list = [-0.7, -0.3, -3.6, 2.3]  # 0.4 mm size
 
-        elif section == "MS3":
-            self.gamma_energy = 3020e6 / 0.511e6
+            elif section == "MS3":
+                self.gamma_energy = 3020e6 / 0.511e6
 
-            self.quad_list = list()
-            self.quad_list.append(SectionQuad("QF-01", 275.719, 0.2, "MAG-01", "CRQ-01", True))
-            self.quad_list.append(SectionQuad("QF-02", 277.719, 0.2, "MAG-02", "CRQ-02", True))
-            self.quad_list.append(SectionQuad("QF-03", 278.919, 0.2, "MAG-03", "CRQ-03", True))
-            self.quad_list.append(SectionQuad("QF-04", 281.119, 0.2, "MAG-04", "CRQ-04", True))
-            self.quad_list.append(SectionQuad("QF-05", 281.619, 0.2, "MAG-03", "CRQ-05", True))
-            self.quad_list.append(SectionQuad("QF-06", 282.019, 0.2, "MAG-04", "CRQ-06", True))
-            self.screen = SectionScreen("screen", 282.456, "liveviewer", "beamviewer", "limaccd", "screen")
+                self.quad_list = list()
+                self.quad_list.append(SectionQuad("QF-01", 275.719, 0.2, "MAG-01", "CRQ-01", True))
+                self.quad_list.append(SectionQuad("QF-02", 277.719, 0.2, "MAG-02", "CRQ-02", True))
+                self.quad_list.append(SectionQuad("QF-03", 278.919, 0.2, "MAG-03", "CRQ-03", True))
+                self.quad_list.append(SectionQuad("QF-04", 281.119, 0.2, "MAG-04", "CRQ-04", True))
+                self.quad_list.append(SectionQuad("QF-05", 281.619, 0.2, "MAG-03", "CRQ-05", True))
+                self.quad_list.append(SectionQuad("QF-06", 282.019, 0.2, "MAG-04", "CRQ-06", True))
+                self.screen = SectionScreen("screen", 282.456, "liveviewer", "beamviewer", "limaccd", "screen")
 
-            self.quad_strength_list = [-0.7, -0.3, -3.6, 2.3, 1.0, 1.0]
+                self.quad_strength_list = [-0.7, -0.3, -3.6, 2.3, 1.0, 1.0]
 
-        if load:
-            self.load_lookup(section)
-        else:
-            self.generate_lookup()
+            if load_file:
+                self.load_lookup(section)
+            else:
+                self.generate_lookup()
 
     def set_k_values(self, k_list):
         self.k_list.append(k_list)
@@ -1199,6 +1201,7 @@ class MultiQuadTango(object):
             size = json.loads(beam_device.measurementruler)["size"]
             dx = beam_device.measurementrulerwidth
             self.px_cal = dx * 1e-3 / size[0]
+        self.mq.set_section(section, load_file=True)
         self.logger.info("Section {0}: \n"
                          "Electron energy = {1:.3f} MeV\n"
                          "Pixel resolution = {2:.3f} um".format(section, self.beamenergy, self.px_cal * 1e6))
@@ -1278,13 +1281,13 @@ class MultiQuadTango(object):
                                                     1e3 * (time.time() - t0), sigma_x * 1e3, sigma_y * 1e3))
         return sigma_x, sigma_y, image_p
 
-    def do_scan(self, save=True):
-        if save:
-            s = "Multiquad_{0}_{1}".format(time.strftime("%Y-%m-%d_%H-%M-%S"), self.section)
-            self.pathname = os.path.join(self.base_path, s)
-            os.makedirs(self.pathname)
-        self.set_section("MS1", sim=True)
+    def do_scan(self, section="MS1", n_steps=16, save=True):
+        self.n_steps = n_steps
+        self.set_section(section, sim=True)
         self.set_quad_magnets([4.9, -4.3, 1.4, 0.5])
+
+        if save:
+            self.generate_daq_info()
 
         sigma_x, sigma_y, image_p = self.process_image(self.camera_device.image, self.charge_ratio)
         self.sigma_target_x = sigma_x
@@ -1311,6 +1314,70 @@ class MultiQuadTango(object):
                 write_png(fh, image.astype(np.uint16), filter_type=1)
             except Exception as e:
                 self.logger.error("Image error: {0}".format(e))
+
+    def generate_daq_info(self):
+        """
+        Generate daq_info.txt file and AcceleratorParameters.
+        Init quad_scan_data_scan with these parameters.
+        :return: True is success
+        """
+        self.logger.info("Generating daq_info")
+
+        try:
+            s = "Multiquad_{0}_{1}".format(time.strftime("%Y-%m-%d_%H-%M-%S"), self.section)
+            self.pathname = os.path.join(self.base_path, s)
+            os.makedirs(self.pathname)
+        except OSError as e:
+            self.logger.exception("Error creating directory: {0}".format(e))
+            return False
+
+        roi_size = (self.roi[2], self.roi[3])
+        roi_pos = (self.roi[0], self.roi[1])
+        roi_center = [roi_pos[0] + roi_size[0] / 2.0, roi_pos[1] + roi_size[1] / 2.0]
+        roi_dim = [roi_size[0], roi_size[1]]
+
+        # Save daq_info_multi.txt:
+
+        save_dict = OrderedDict()
+        try:
+            save_dict["main_dir"] = self.base_path
+            save_dict["daq_dir"] = self.pathname
+            for ind, quad in enumerate(self.magnet_names):
+                save_dict["quad_{0}".format(ind)] = quad
+                save_dict["quad_{0}_length".format(ind)] = "{0:.3f}".format(self.mq.quad_list[ind].length)
+                save_dict["quad_{0}_pos".format(ind)] = "{0:.3f}".format(self.mq.quad_list[ind].position)
+            save_dict["screen"] = self.camera_name
+            save_dict["screen_pos"] = "{0:.3f}".format(self.mq.screen.position)
+            save_dict["pixel_dim"] = "{0} {1}".format(self.px_cal, self.px_cal)
+            save_dict["num_k_values"] = "{0}".format(self.n_steps)
+            save_dict["num_shots"] = "1"
+            save_dict["k_min"] = "{0}".format(-self.mq.max_k)
+            save_dict["k_max"] = "{0}".format(self.mq.max_k)
+            val = roi_center
+            save_dict["roi_center"] = "{0} {1}".format(val[0], val[1])
+            val = roi_dim
+            save_dict["roi_dim"] = "{0} {1}".format(val[0], val[1])
+            save_dict["beam_energy"] = "{0:.3f}".format(self.beamenergy * 1e-6)
+            save_dict["camera_bpp"] = 16
+        except KeyError as e:
+            msg = "Could not generate daq_info: {0}".format(e)
+            self.logger.exception(msg)
+            return False
+        except IndexError as e:
+            msg = "Could not generate daq_info: {0}".format(e)
+            self.logger.exception(msg)
+            return False
+
+        full_name = os.path.join(self.pathname, "daq_info_multi.txt")
+        with open(full_name, "w+") as f:
+            for key, value in save_dict.items():
+                s = "{0} : {1}\n".format(key.ljust(14, " "), value)
+                f.write(s)
+            f.write("***** Starting loop over quadrupole k-values *****\n")
+            f.write("+------+-------+----------+----------+----------------------+\n")
+            f.write("|  k   |  shot |    set   |   read   |        saved         |\n")
+            f.write("|  #   |   #   |  k-value |  k-value |     image file       |\n")
+        return True
 
 
 if __name__ == "__main__":
