@@ -873,18 +873,18 @@ class MultiQuadLookup(object):
             # self.logger.debug("Position s: {0} m".format(s))
             drift = quad - s
             M_d = np.array([[1.0, drift], [0.0, 1.0]])
-            M = np.einsum("...ij, ...jk -> ...ik", M_d, M)
+            M = np.einsum("...ij,...jk->...ik", M_d, M)
             L = 0.2
             k = quad_strengths[..., ind]
             k_sqrt = np.sqrt(k * (1 + 0j))
 
             M_q = np.real(np.array([[np.cos(k_sqrt * L), L * sinc(L * k_sqrt)],
                                     [-k_sqrt * np.sin(k_sqrt * L), np.cos(k_sqrt * L)]]))
-            M = np.einsum("ij..., ...jk -> ...ik", M_q, M)
+            M = np.einsum("ij...,...jk->...ik", M_q, M)
             s = quad + L
         drift = screen_position - s
         M_d = np.array([[1.0, drift], [0.0, 1.0]])
-        M = np.einsum("...ij, ...jk -> ...ik", M_d, M)
+        M = np.einsum("...ij,...jk->...ik", M_d, M)
         return M
 
     def calc_response_matrix(self, quad_strengths, quad_list, screen_position, axis="x"):
