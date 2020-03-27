@@ -471,7 +471,7 @@ class MultiQuadLookup(object):
             self.A_lu = npzfile["A_lu"]
             self.k_lu = npzfile["k_lu"]
         except FileNotFoundError:
-            self.logger.error("Lookup file {0} does not exist")
+            self.logger.error("Lookup file {0} does not exist".format(filename))
             self.set_section(section, load_file=False)
             self.save_lookup(section, self.A_lu, self.k_lu)
 
@@ -1224,10 +1224,9 @@ class MultiQuadTango(object):
         t0 = time.time()
         k_current = self.get_quad_magnets()
         dt = time.time() - self.last_shot_time
-        try:
+        if dt < self.shot_delay:
             time.sleep(self.shot_delay - dt)
-        except ValueError:
-            pass
+
         image = self.camera_device.image
 
         sigma_x, sigma_y, image_p = self.process_image(image, self.charge_ratio)
