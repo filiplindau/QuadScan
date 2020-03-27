@@ -1115,6 +1115,7 @@ class MultiQuadTango(object):
 
         self.mq = MultiQuadLookup()
         self.magnet_names = ["i-ms1/mag/qb-01", "i-ms1/mag/qb-02", "i-ms1/mag/qb-03", "i-ms1/mag/qb-04"]
+        self.crq_names = ["i-ms1/mag/crq-01", "i-ms1/mag/crq-02", "i-ms1/mag/crq-03", "i-ms1/mag/crq-04"]
         # self.screen_name = "i-ms1/dia/scrn-01"
         self.camera_name = "lima/liveviewer/i-ms1-dia-scrn-01"
         self.section = "MS1"
@@ -1142,6 +1143,7 @@ class MultiQuadTango(object):
         self.image_p_list = list()
 
         self.magnet_devices = list()
+        self.crq_devices = list()
         self.camera_device = None
         self.px_cal = None
         self.roi = None
@@ -1191,17 +1193,18 @@ class MultiQuadTango(object):
     def set_section(self, section="MS1", sim=True):
         if section == "MS1":
             self.magnet_names = ["i-ms1/mag/qb-01", "i-ms1/mag/qb-02", "i-ms1/mag/qb-03", "i-ms1/mag/qb-04"]
-            crq_name = "i-ms1/mag/crq-01"
+            self.crq_names = ["i-ms1/mag/crq-01", "i-ms1/mag/crq-02", "i-ms1/mag/crq-03", "i-ms1/mag/crq-04"]
             self.camera_name = "i-ms1-dia-scrn-01"
             self.beamenergy = 233.3e6
         elif section == "MS2":
             self.magnet_names = ["i-ms2/mag/qb-01", "i-ms2/mag/qb-02", "i-ms2/mag/qb-03", "i-ms2/mag/qb-04"]
-            crq_name = "i-ms2/mag/crq-01"
+            self.crq_names = ["i-ms2/mag/crq-01", "i-ms2/mag/crq-02", "i-ms2/mag/crq-03", "i-ms2/mag/crq-04"]
             self.camera_name = "i-ms2-dia-scrn-02"
             self.beamenergy = 233.3e6
         elif section == "MS3":
             self.magnet_names = ["i-ms3/mag/qf-03", "i-ms3/mag/qf-04", "i-ms3/mag/qf-05", "i-ms3/mag/qf-06"]
-            crq_name = "i-ms3/mag/crq-01"
+            self.crq_names = ["i-ms3/mag/crq-01", "i-ms3/mag/crq-02", "i-ms3/mag/crq-03", "i-ms3/mag/crq-04",
+                              "i-ms3/mag/crq-05", "i-ms3/mag/crq-06"]
             self.camera_name = "i-ms3-dia-scrn-01"
             self.beamenergy = 3020e6
         self.magnet_devices = list()
@@ -1209,6 +1212,7 @@ class MultiQuadTango(object):
             for mag in self.magnet_names:
                 dev = pt.DeviceProxy("127.0.0.1:10000/{0}#dbase=no".format(mag))
                 self.magnet_devices.append(dev)
+                self.crq_devices.append(dev)
                 self.logger.info("Connected to device {0}".format(mag))
             self.camera_device = pt.DeviceProxy("127.0.0.1:10002/lima/liveviewer/{0}#dbase=no".format(self.camera_name))
             self.logger.info("Connected to device {0}".format(self.camera_name))
@@ -1227,7 +1231,11 @@ class MultiQuadTango(object):
                 dev = pt.DeviceProxy(mag)
                 self.magnet_devices.append(dev)
                 self.logger.info("Connected to device {0}".format(mag))
-            crq_dev = pt.DeviceProxy(crq_name)
+            for crq in self.crq_names:
+                dev = pt.DeviceProxy(crq)
+                self.crq_devices.append(dev)
+                self.logger.info("Connected to device {0}".format(crq))
+            crq_dev = dev
             self.beamenergy = crq_dev.energy
             self.camera_device = pt.DeviceProxy("lima/liveviewer/{0}".format(self.camera_name))
             self.logger.info("Connected to device {0}".format(self.camera_name))
@@ -1242,12 +1250,12 @@ class MultiQuadTango(object):
                          "Pixel resolution = {2:.3f} um".format(section, self.beamenergy, self.px_cal * 1e6))
 
     def set_quad_magnets(self, k_list):
-        for ind, dev in enumerate(self.magnet_devices):
+        for ind, dev in enumerate(self.crq_devices):
             dev.mainfieldcomponent = k_list[ind]
         time.sleep(self.magnet_delay)
 
     def get_quad_magnets(self):
-        k_current = [dev.mainfieldcomponent for dev in self.magnet_devices]
+        k_current = [dev.mainfieldcomponent for dev in self.crq_devices]
         return k_current
 
     def do_step(self, save=True):
