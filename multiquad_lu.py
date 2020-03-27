@@ -1417,9 +1417,9 @@ class MultiQuadTango(object):
 if __name__ == "__main__":
 
     mt = MultiQuadTango()
-    theta, r_maj, r_min = mt.mq.calc_ellipse(mt.alpha, mt.beta, mt.eps_n / (mt.beamenergy / 0.511e6), mt.sigma_target_x)
-    theta_y, r_maj_y, r_min_y = mt.mq.calc_ellipse(mt.alpha_y, mt.beta_y, mt.eps_n_y / (mt.beamenergy / 0.511e6), mt.sigma_target_y)
-    psi_v = np.linspace(0, 2 * np.pi, 1000)
-    a_x, b_x = mt.mq.get_ab(psi_v, theta, r_maj, r_min)
-    a_y, b_y = mt.mq.get_ab(psi_v, theta_y, r_maj_y, r_min_y)
+    # theta, r_maj, r_min = mt.mq.calc_ellipse(mt.alpha, mt.beta, mt.eps_n / (mt.beamenergy / 0.511e6), mt.sigma_target_x)
+    # theta_y, r_maj_y, r_min_y = mt.mq.calc_ellipse(mt.alpha_y, mt.beta_y, mt.eps_n_y / (mt.beamenergy / 0.511e6), mt.sigma_target_y)
+    # psi_v = np.linspace(0, 2 * np.pi, 1000)
+    # a_x, b_x = mt.mq.get_ab(psi_v, theta, r_maj, r_min)
+    # a_y, b_y = mt.mq.get_ab(psi_v, theta_y, r_maj_y, r_min_y)
 
