@@ -1011,6 +1011,7 @@ class MultiQuadLookup(object):
         ind_q3 = np.logical_and(p1 < 0, p2 < 0)
         psi[ind_q3] = 2 * np.pi - psi[ind_q3]
         ind_q4 = np.logical_and(p1 > 0, p2 < 0)
+        self.logger.info("p1: {0}, p2: {1}, ind_q3: {2}, ind_q4: {3}, psi: {4}".format(p1, p2, ind_q3, ind_q4, psi))
         psi[ind_q4] = 2 * np.pi - psi[ind_q4]
         if psi.shape[0] == 1:
             psi = psi[0]
