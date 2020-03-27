@@ -37,6 +37,10 @@ fh.setFormatter(f)
 logger.addHandler(fh)
 logger.setLevel(logging.INFO)
 
+try:
+    FileNotFoundError
+except NameError:
+    FileNotFoundError = IOError
 
 try:
     import PyTango as pt
@@ -464,11 +468,12 @@ class MultiQuadLookup(object):
         filename = "{0}_lookup.npz".format(section)
         try:
             npzfile = np.load(filename)
+            self.A_lu = npzfile["A_lu"]
+            self.k_lu = npzfile["k_lu"]
         except FileNotFoundError:
             self.logger.error("Lookup file {0} does not exist")
             self.set_section(section, load_file=False)
-        self.A_lu = npzfile["A_lu"]
-        self.k_lu = npzfile["k_lu"]
+            self.save_lookup(section, self.A_lu, self.k_lu)
 
     def start_scan(self, current_sigma_x, current_sigma_y, current_charge, section="MS1", n_steps=16,
                    guess_alpha=0.0, guess_beta=40.0, guess_eps_n=2e-6):
