@@ -336,6 +336,8 @@ class MultiQuadLookup(object):
 
         self.a_range = None
         self.b_range = None
+        self.a_y_range = None
+        self.b_y_range = None
 
         self.A_lu = None
         self.k_lu = None
@@ -503,9 +505,19 @@ class MultiQuadLookup(object):
         self.guess_beta = guess_beta
         self.guess_eps_n = guess_eps_n
 
-        a_min, a_max, b_min, b_max = self.get_ab_range(self.max_k)
+        # a_min, a_max, b_min, b_max = self.get_ab_range(self.max_k)
+        a_min = self.A_lu[:, 0].min()
+        a_max = self.A_lu[:, 0].max()
+        b_min = self.A_lu[:, 1].min()
+        b_max = self.A_lu[:, 1].max()
         self.a_range = (a_min, a_max)
         self.b_range = (b_min, b_max)
+        a_min = self.A_lu[:, 2].min()
+        a_max = self.A_lu[:, 2].max()
+        b_min = self.A_lu[:, 3].min()
+        b_max = self.A_lu[:, 3].max()
+        self.a_y_range = (a_min, a_max)
+        self.b_y_range = (b_min, b_max)
 
         self.logger.info("Scan starting for section {0}. Target sigma: {1:.3f} mm".format(section, 1e3 * current_sigma_x))
 
@@ -962,6 +974,11 @@ class MultiQuadLookup(object):
         :param max_k: Magnet maximum k-value k = (-max_k, max_k)
         :return: Minimum a, maxmium a, minimum b, maximum b
         """
+        if axis == "x":
+            return self.a_range[0], self.a_range[1], self.b_range[0], self.b_range[1]
+        else:
+            return self.a_y_range[0], self.a_y_range[1], self.b_y_range[0], self.b_y_range[1]
+
         def ab_fun(x, a=True, maxmin=False, axis="x"):
             if a:
                 if maxmin:
