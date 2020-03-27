@@ -1278,7 +1278,7 @@ class MultiQuadTango(object):
 
     def process_image(self, image, keep_charge_ratio=0.95):
         t0 = time.time()
-        image_roi = image[self.roi[1]:self.roi[1]+self.roi[3], self.roi[0]:self.roi[0]+self.roi[2]]
+        image_roi = np.double(image[self.roi[1]:self.roi[1]+self.roi[3], self.roi[0]:self.roi[0]+self.roi[2]])
 
         # Median filter and background subtraction:
         image_p = medfilt2d(image_roi, 5)
