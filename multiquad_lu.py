@@ -1307,10 +1307,10 @@ class MultiQuadTango(object):
                                                     1e3 * (time.time() - t0), sigma_x * 1e3, sigma_y * 1e3))
         return sigma_x, sigma_y, image_p
 
-    def do_scan(self, section="MS1", n_steps=16, save=True):
+    def do_scan(self, section="MS1", n_steps=16, save=True, sim=True):
         self.n_steps = n_steps
-        self.set_section(section, sim=True)
-        self.set_quad_magnets([4.9, -4.3, 1.4, 0.5])
+        self.set_section(section, sim=sim)
+        # self.set_quad_magnets([4.9, -4.3, 1.4, 0.5])
 
         if save:
             self.generate_daq_info()
