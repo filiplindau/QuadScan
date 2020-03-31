@@ -391,6 +391,18 @@ class DummyLiveviewer(Device):
                            doc="Position",
                            default_value=10.0)
 
+    section = device_property(dtype=str,
+                              doc="Section",
+                              default_value="MS1")
+
+    magnet_names = device_property(dtype=(str, ),
+                                   doc="Magnet devices to simulate for this section",
+                                   default_value=("i-ms1/mag/qb-01", "i-ms1/mag/qb-02", "i-ms1/mag/qb-03",
+                                                  "i-ms1/mag/qb-04"))
+    screen_name = device_property(dtype=str,
+                                  doc="Screen device to simulate for this section",
+                                  default_value="i-ms1/dia/scrn-01")
+
     def __init__(self, klass, name):
         self.image_data = np.zeros((1280, 1024))
         self.width = 1280
@@ -400,8 +412,8 @@ class DummyLiveviewer(Device):
         self.charge_data = 100.0
         self.position_data = 0.0
         self.framerate_data = 2.0
-        self.magnet_names = ["i-ms1/mag/qb-01", "i-ms1/mag/qb-02", "i-ms1/mag/qb-03", "i-ms1/mag/qb-04"]
-        self.screen_name = "i-ms1/dia/scrn-01"
+        # self.magnet_names = ["i-ms1/mag/qb-01", "i-ms1/mag/qb-02", "i-ms1/mag/qb-03", "i-ms1/mag/qb-04"]
+        # self.screen_name = "i-ms1/dia/scrn-01"
         self.gamma_energy = 233e6 / 0.511e6
         self.alpha_data = 10.0
         self.beta_data = 27.0
@@ -433,6 +445,9 @@ class DummyLiveviewer(Device):
         self.info_stream("Attributes: {0}".format(self.screen_device.get_attribute_list()))
         pos = self.screen_device.position
         self.sim.set_screen_position(pos)
+
+        self.info_stream("Section {0}".format(self.section))
+        self.info_stream("Magnets: {0}".format(self.magnet_names))
 
         self.debug_stream("init_device finished")
 

@@ -1191,6 +1191,7 @@ class MultiQuadTango(object):
         self.last_shot_time = time.time()
 
     def set_section(self, section="MS1", sim=True):
+        self.section = section
         if section == "MS1":
             self.magnet_names = ["i-ms1/mag/qb-01", "i-ms1/mag/qb-02", "i-ms1/mag/qb-03", "i-ms1/mag/qb-04"]
             self.crq_names = ["i-ms1/mag/crq-01", "i-ms1/mag/crq-02", "i-ms1/mag/crq-03", "i-ms1/mag/crq-04"]
