@@ -593,7 +593,7 @@ class MultiQuadLookup(object):
         next_a_y, next_b_y = self.set_target_ab(self.current_step, theta_y, r_maj_y, r_min_y, axis="y")
 
         # Determine quad settings to achieve these a-b values
-        next_k = self.solve_quads(next_a, next_b, next_a_y, next_b_y)
+        next_k = self.solve_quads_sign(next_a, next_b, next_a_y, next_b_y)
         if next_k is None:
             self.logger.error("Could not find quad settings to match desired a-b values")
             self.k_list.pop()
@@ -893,6 +893,66 @@ class MultiQuadLookup(object):
                                                                              self.A_lu[ind_p, :][ind_si, 1],
                                                                              self.A_lu[ind_p, :][ind_si, 2],
                                                                              self.A_lu[ind_p, :][ind_si, 3]))
+        self.logger.debug("Time: {0:.3f} s".format(time.time() - t0))
+        return k_target
+
+    def solve_quads_sign(self, target_a, target_b, target_a_y, target_b_y):
+        t0 = time.time()
+
+        def calc_sigma(alpha, beta, eps, a, b):
+            sigma = np.sqrt(eps * (beta * a ** 2 - 2.0 * alpha * a * b + (1.0 + alpha ** 2) / beta * b ** 2))
+            return sigma
+
+        # 1) Find values close to target a, b
+        target_ap = np.array([target_a, target_b])
+        th_ab = 0.4
+        ind_p = ((self.A_lu[:, 0:2] - target_ap) ** 2).sum(1) < th_ab ** 2
+
+        # 2) Find values close to target beam size
+        sigma_x = calc_sigma(self.alpha_list[-1], self.beta_list[-1], self.eps_list[-1],
+                             self.A_lu[ind_p, 0], self.A_lu[ind_p, 1])
+        sigma_y = calc_sigma(self.alpha_y_list[-1], self.beta_y_list[-1], self.eps_y_list[-1],
+                             self.A_lu[ind_p, 2], self.A_lu[ind_p, 3])
+        try:
+            size_v = (sigma_x.flatten() * sigma_y.flatten()).reshape(-1, 1)
+        except ValueError as e:
+            self.logger.warning("Could not find quad values for a={0:.3f}, b={1:.3f}".format(target_a, target_b))
+            return None
+        target_size = np.array([self.target_sigma * self.target_sigma_y]).reshape(-1, 1)
+        th_size = 0.1e-3
+        try:
+            ind_size = ((size_v - target_size) ** 2).sum(-1) < th_size**2
+        except ValueError:
+            self.logger.warning("No quad values found in that is within threshold of "
+                                "target a={0:.3f}, b={1:.3f}.".format(target_a, target_b))
+            ind_size = ((size_v - target_size) ** 2).sum(-1).argmin()
+            self.logger.warning("Best effort: a={0:.3f}, b={1:.3f}".format(self.A_lu[ind_size, 0], self.A_lu[ind_size, 1]))
+            ind_p = range(self.A_lu.shape[0])
+
+        k_old = np.array(self.k_list[-1])
+        k_target = self.k_lu[ind_p, :][ind_size, :]
+
+        ind_sign = np.all([(k_target[:, ind] >= 0) == k_old[ind] for ind in range(len(k_old))], 0)
+        self.logger.debug("k_target: {0}, k_old {1}".format(k_target.shape, k_old))
+        self.logger.debug("ind_p: {0}, ind_size: {1}, ind_sign: {2}".format(ind_p.sum(), ind_size.sum(), ind_sign.sum()))
+        try:
+            ind_final = ((size_v[ind_size][ind_sign] - target_size) ** 2).sum(-1).argmin()
+            k_target = k_target[ind_final, :]
+        except ValueError:
+            ind_size = ((size_v - target_size) ** 2).sum(-1).argmin()
+            k_target = self.k_lu[ind_p, :][ind_size, :]
+
+        self.logger.info("{0}: Solving new quad strengths for \n\n"
+                         "Horizontal target a,b = {1:.3f}, {2:.3f}\n"
+                         "Vertical target   a,b = {3:.3f}, {4:.3f}\n\n"
+                         "Found quad strengths: {5}\n\n"
+                         "Horizontal        a,b = {6:.3f}, {7:.3f}\n"
+                         "Vertical          a,b = {8:.3f}, {9:.3f}\n".format(self, target_a, target_b,
+                                                                             target_a_y, target_b_y, k_target,
+                                                                             self.A_lu[ind_p, :][ind_size, 0],
+                                                                             self.A_lu[ind_p, :][ind_size, 1],
+                                                                             self.A_lu[ind_p, :][ind_size, 2],
+                                                                             self.A_lu[ind_p, :][ind_size, 3]))
         self.logger.debug("Time: {0:.3f} s".format(time.time() - t0))
         return k_target
 
@@ -1452,8 +1512,10 @@ if __name__ == "__main__":
     mt = MultiQuadTango()
     # mt.set_section("MS2", sim=True)
     # mt.set_quad_magnets([-0.480, 0.480, 2.720, -2.400])
-    mt.set_section("MS3", sim=True)
-    mt.set_quad_magnets([2.560, -4.960, 2.080, -2.560, 0, 0])
+    # mt.set_section("MS3", sim=True)
+    # mt.set_quad_magnets([2.560, -4.960, 2.080, -2.560, 0, 0])
+    mt.set_section("MS2", sim=True)
+    mt.set_quad_magnets([2.400, -2.080, 2.880, -2.880])
     mq = mt.mq
     sx, sy, pic_r = mt.process_image(mt.camera_device.image)
     theta, r_maj, r_min = mt.mq.calc_ellipse(mt.alpha, mt.beta, mt.eps_n / (mt.beamenergy / 0.511e6), sx)
