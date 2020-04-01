@@ -866,7 +866,19 @@ class MultiQuadLookup(object):
             self.logger.warning("Could not find quad values for a={0:.3f}, b={1:.3f}".format(target_a, target_b))
             return None
         target_asi = np.array([self.target_sigma * self.target_sigma_y]).reshape(-1, 1)
-        ind_si = ((Asi - target_asi) ** 2).sum(-1).argmin()
+        try:
+            ind_si = ((Asi - target_asi) ** 2).sum(-1).argmin()
+        except ValueError:
+            self.logger.warning("No quad values found in that is within threshold of "
+                                "target a={0:.3f}, b={1:.3f}.".format(target_a, target_b))
+            sigma_x = calc_sigma(self.alpha_list[-1], self.beta_list[-1], self.eps_list[-1],
+                                 self.A_lu[:, 0], self.A_lu[:, 1])
+            sigma_y = calc_sigma(self.alpha_y_list[-1], self.beta_y_list[-1], self.eps_y_list[-1],
+                                 self.A_lu[:, 2], self.A_lu[:, 3])
+            Asi = (sigma_x.flatten() * sigma_y.flatten()).reshape(-1, 1)
+            ind_si = ((Asi - target_asi) ** 2).sum(-1).argmin()
+            self.logger.warning("Best effort: a={0:.3f}, b={1:.3f}".format(self.A_lu[ind_si, 0], self.A_lu[ind_si, 1]))
+            ind_p = range(self.A_lu.shape[0])
 
         k_target = self.k_lu[ind_p, :][ind_si, :]
 
@@ -1077,11 +1089,12 @@ class MultiQuadLookup(object):
                 self.quad_list.append(SectionQuad("QF-02", 277.719, 0.2, "MAG-02", "CRQ-02", True))
                 self.quad_list.append(SectionQuad("QF-03", 278.919, 0.2, "MAG-03", "CRQ-03", True))
                 self.quad_list.append(SectionQuad("QF-04", 281.119, 0.2, "MAG-04", "CRQ-04", True))
-                self.quad_list.append(SectionQuad("QF-05", 281.619, 0.2, "MAG-03", "CRQ-05", True))
-                self.quad_list.append(SectionQuad("QF-06", 282.019, 0.2, "MAG-04", "CRQ-06", True))
+                # self.quad_list.append(SectionQuad("QF-05", 281.619, 0.2, "MAG-03", "CRQ-05", True))
+                # self.quad_list.append(SectionQuad("QF-06", 282.019, 0.2, "MAG-04", "CRQ-06", True))
                 self.screen = SectionScreen("screen", 282.456, "liveviewer", "beamviewer", "limaccd", "screen")
 
-                self.quad_strength_list = [-0.7, -0.3, -3.6, 2.3, 1.0, 1.0]
+                # self.quad_strength_list = [-0.7, -0.3, -3.6, 2.3, 1.0, 1.0]
+                self.quad_strength_list = [-0.7, -0.3, -3.6, 2.3]
 
             if load_file:
                 self.load_lookup(section)
@@ -1126,10 +1139,10 @@ class MultiQuadTango(object):
 
         self.alpha = -10.0
         self.beta = 20.0
-        self.eps_n = 5e-6
+        self.eps_n = 2e-6
         self.alpha_y = 0.0
         self.beta_y = 15.0
-        self.eps_n_y = 5e-6
+        self.eps_n_y = 2e-6
         self.beamenergy = 233.0e6
 
         self.charge_ratio = 0.90
@@ -1203,7 +1216,8 @@ class MultiQuadTango(object):
             self.camera_name = "i-ms2-dia-scrn-02"
             self.beamenergy = 233.3e6
         elif section == "MS3":
-            self.magnet_names = ["i-ms3/mag/qf-03", "i-ms3/mag/qf-04", "i-ms3/mag/qf-05", "i-ms3/mag/qf-06"]
+            self.magnet_names = ["i-ms3/mag/qf-01", "i-ms3/mag/qf-02", "i-ms3/mag/qf-03", "i-ms3/mag/qf-04",
+                                 "i-ms3/mag/qf-05", "i-ms3/mag/qf-06"]
             self.crq_names = ["i-ms3/mag/crq-01", "i-ms3/mag/crq-02", "i-ms3/mag/crq-03", "i-ms3/mag/crq-04",
                               "i-ms3/mag/crq-05", "i-ms3/mag/crq-06"]
             self.camera_name = "i-ms3-dia-scrn-01"
@@ -1282,9 +1296,14 @@ class MultiQuadTango(object):
         if save:
             self.save_image(image, self.current_step, k_current)
 
-        k_next = self.mq.scan_step(sigma_x, sigma_y, charge, k_current)
+        k_next = self.mq.scan_step(sigma_x, sigma_y, charge, k_current[0:4])
         if k_next is not None:
-            self.set_quad_magnets(k_next)
+            if len(k_current) > 4:
+                k_set = k_current
+                k_set[0:4] = k_next
+            else:
+                k_set = k_next
+            self.set_quad_magnets(k_set)
         # time.sleep(self.shot_delay)
         self.last_shot_time = time.time()
         self.current_step += 1
@@ -1431,9 +1450,15 @@ class MultiQuadTango(object):
 if __name__ == "__main__":
 
     mt = MultiQuadTango()
-    # theta, r_maj, r_min = mt.mq.calc_ellipse(mt.alpha, mt.beta, mt.eps_n / (mt.beamenergy / 0.511e6), mt.sigma_target_x)
-    # theta_y, r_maj_y, r_min_y = mt.mq.calc_ellipse(mt.alpha_y, mt.beta_y, mt.eps_n_y / (mt.beamenergy / 0.511e6), mt.sigma_target_y)
+    # mt.set_section("MS2", sim=True)
+    # mt.set_quad_magnets([-0.480, 0.480, 2.720, -2.400])
+    mt.set_section("MS3", sim=True)
+    mt.set_quad_magnets([2.560, -4.960, 2.080, -2.560, 0, 0])
+    mq = mt.mq
+    sx, sy, pic_r = mt.process_image(mt.camera_device.image)
+    theta, r_maj, r_min = mt.mq.calc_ellipse(mt.alpha, mt.beta, mt.eps_n / (mt.beamenergy / 0.511e6), sx)
+    theta_y, r_maj_y, r_min_y = mt.mq.calc_ellipse(mt.alpha_y, mt.beta_y, mt.eps_n_y / (mt.beamenergy / 0.511e6), sy)
     psi_v = np.linspace(0, 2 * np.pi, 1000)
-    # a_x, b_x = mt.mq.get_ab(psi_v, theta, r_maj, r_min)
-    # a_y, b_y = mt.mq.get_ab(psi_v, theta_y, r_maj_y, r_min_y)
+    a_x, b_x = mt.mq.get_ab(psi_v, theta, r_maj, r_min)
+    a_y, b_y = mt.mq.get_ab(psi_v, theta_y, r_maj_y, r_min_y)
 

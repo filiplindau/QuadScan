@@ -530,7 +530,7 @@ class Ui_Dialog(object):
 
     def retranslateUi(self, Dialog):
         _translate = QtCore.QCoreApplication.translate
-        Dialog.setWindowTitle(_translate("Dialog", "Dialog"))
+        Dialog.setWindowTitle(_translate("Dialog", "Matching section visualizer"))
         self.label_5.setText(_translate("Dialog", "energy / MeV"))
         self.label_4.setText(_translate("Dialog", "sigma_x / mm"))
         self.label_10.setText(_translate("Dialog", "screen pos"))
