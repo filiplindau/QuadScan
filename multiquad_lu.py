@@ -400,11 +400,11 @@ class MultiQuadLookup(object):
         self.guess_beta = None
         self.guess_eps_n = None
 
-    def generate_lookup(self):
+    def generate_lookup(self, n_k=40):
         self.logger.info("Generating lookup table for {0}".format(self.screen.screen))
         quad_positions = np.array([q.position for q in self.quad_list])
         screen_position = self.screen.position
-        q_v = np.linspace(-self.max_k, self.max_k, 40)
+        q_v = np.linspace(-self.max_k, self.max_k, n_k)
         q1, q2, q3, q4 = np.meshgrid(q_v, q_v, q_v, q_v)
         # quad_strengths = np.stack((q1, q2, q3, q4), -1)
         quad_strengths = np.concatenate((np.expand_dims(q1, q1.ndim), np.expand_dims(q2, q2.ndim),
@@ -426,11 +426,11 @@ class MultiQuadLookup(object):
         self.A_lu = A
         self.k_lu = k
 
-    def generate_lookup_mp(self):
+    def generate_lookup_mp(self, n_k=40):
         self.logger.info("Generating lookup table for {0}".format(self.screen.screen))
         quad_positions = np.array([q.position for q in self.quad_list])
         screen_position = self.screen.position
-        q_v = np.linspace(-self.max_k, self.max_k, 40)
+        q_v = np.linspace(-self.max_k, self.max_k, n_k)
         q1, q2, q3, q4 = np.meshgrid(q_v, q_v, q_v, q_v)
         quad_strengths = np.concatenate((np.expand_dims(q1, q1.ndim), np.expand_dims(q2, q2.ndim),
                                          np.expand_dims(q3, q3.ndim), np.expand_dims(q4, q4.ndim)), q1.ndim)
@@ -1160,6 +1160,7 @@ class MultiQuadLookup(object):
                 self.load_lookup(section)
             else:
                 self.generate_lookup()
+        self.section = section
 
     def set_k_values(self, k_list):
         self.k_list.append(k_list)
