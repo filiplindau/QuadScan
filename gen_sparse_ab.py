@@ -50,6 +50,8 @@ def generate_sparse_ab(data_filename="MS1_big.npz"):
     db = 0.2
     b_v = np.arange(5, 7, db)
     A_dict = dict()
+    d_a = np.digitize(A_lu[:, 0], a_v)
+    d_b = np.digitize(A_lu[:, 1], b_v)
     for a_x in a_v:
         for b_x in b_v:
             logger.debug("a_x {0:.1f}, b_x {1:.1f}".format(a_x, b_x))
@@ -71,3 +73,26 @@ def generate_sparse_ab(data_filename="MS1_big.npz"):
             if len(y_dict_tmp) > 0:
                 A_dict[(a_x, b_x)] = y_dict_tmp
     return A_dict
+
+
+import numpy as np
+from scipy.sparse import csr_matrix
+
+
+def func(x):
+    return x
+
+
+def binned_statistic(x, values, func, nbins, range):
+    '''The usage is nearly the same as scipy.stats.binned_statistic'''
+
+    N = len(values)
+    r0, r1 = range
+
+    digitized = (float(nbins)/(r1 - r0)*(x - r0)).astype(int)
+    S = csr_matrix((values, [digitized, np.arange(N)]), shape=(nbins, N))
+
+    return [func(group) for group in np.split(S.data, S.indptr[1:-1])]
+
+
+binned_statistic(A_lu[:, 0], A_lu[:, 0], func, 200, (-20, 20))
