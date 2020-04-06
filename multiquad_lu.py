@@ -470,6 +470,7 @@ class MultiQuadLookup(object):
         filename = "{0}_lookup.npz".format(section)
         try:
             npzfile = np.load(filename)
+            self.logger.info("Loaded file {0}".format(filename))
             self.A_lu = npzfile["A_lu"]
             self.k_lu = npzfile["k_lu"]
         except FileNotFoundError:
@@ -1116,50 +1117,49 @@ class MultiQuadLookup(object):
         return a, b
 
     def set_section(self, section, load_file=False, force_reload=False):
-        if self.section != section or force_reload is True:
-            if section == "MS1":
-                self.gamma_energy = 233e6 / 0.511e6
-                self.quad_list = list()
-                self.quad_list.append(SectionQuad("QB-01", 13.55, 0.2, "MAG-01", "CRQ-01", True))
-                self.quad_list.append(SectionQuad("QB-02", 14.45, 0.2, "MAG-02", "CRQ-02", True))
-                self.quad_list.append(SectionQuad("QB-03", 17.75, 0.2, "MAG-03", "CRQ-03", True))
-                self.quad_list.append(SectionQuad("QB-04", 18.65, 0.2, "MAG-04", "CRQ-04", True))
+        if section == "MS1":
+            self.gamma_energy = 233e6 / 0.511e6
+            self.quad_list = list()
+            self.quad_list.append(SectionQuad("QB-01", 13.55, 0.2, "MAG-01", "CRQ-01", True))
+            self.quad_list.append(SectionQuad("QB-02", 14.45, 0.2, "MAG-02", "CRQ-02", True))
+            self.quad_list.append(SectionQuad("QB-03", 17.75, 0.2, "MAG-03", "CRQ-03", True))
+            self.quad_list.append(SectionQuad("QB-04", 18.65, 0.2, "MAG-04", "CRQ-04", True))
 
-                self.screen = SectionScreen("screen", 19.223, "liveviewer", "beamviewer", "limaccd", "screen")
+            self.screen = SectionScreen("screen", 19.223, "liveviewer", "beamviewer", "limaccd", "screen")
 
-                self.quad_strength_list = [-0.7, -0.3, -3.6, 2.3]  # 0.4 mm size
+            self.quad_strength_list = [-0.7, -0.3, -3.6, 2.3]  # 0.4 mm size
 
-            elif section == "MS2":
-                self.gamma_energy = 233e6 / 0.511e6
+        elif section == "MS2":
+            self.gamma_energy = 233e6 / 0.511e6
 
-                self.quad_list = list()
-                self.quad_list.append(SectionQuad("QB-01", 33.52, 0.2, "MAG-01", "CRQ-01", True))
-                self.quad_list.append(SectionQuad("QB-02", 34.62, 0.2, "MAG-02", "CRQ-02", True))
-                self.quad_list.append(SectionQuad("QB-03", 35.62, 0.2, "MAG-03", "CRQ-03", True))
-                self.quad_list.append(SectionQuad("QB-04", 37.02, 0.2, "MAG-04", "CRQ-04", True))
-                self.screen = SectionScreen("screen", 38.445, "liveviewer", "beamviewer", "limaccd", "screen")
+            self.quad_list = list()
+            self.quad_list.append(SectionQuad("QB-01", 33.52, 0.2, "MAG-01", "CRQ-01", True))
+            self.quad_list.append(SectionQuad("QB-02", 34.62, 0.2, "MAG-02", "CRQ-02", True))
+            self.quad_list.append(SectionQuad("QB-03", 35.62, 0.2, "MAG-03", "CRQ-03", True))
+            self.quad_list.append(SectionQuad("QB-04", 37.02, 0.2, "MAG-04", "CRQ-04", True))
+            self.screen = SectionScreen("screen", 38.445, "liveviewer", "beamviewer", "limaccd", "screen")
 
-                self.quad_strength_list = [-0.7, -0.3, -3.6, 2.3]  # 0.4 mm size
+            self.quad_strength_list = [-0.7, -0.3, -3.6, 2.3]  # 0.4 mm size
 
-            elif section == "MS3":
-                self.gamma_energy = 3020e6 / 0.511e6
+        elif section == "MS3":
+            self.gamma_energy = 3020e6 / 0.511e6
 
-                self.quad_list = list()
-                self.quad_list.append(SectionQuad("QF-01", 275.719, 0.2, "MAG-01", "CRQ-01", True))
-                self.quad_list.append(SectionQuad("QF-02", 277.719, 0.2, "MAG-02", "CRQ-02", True))
-                self.quad_list.append(SectionQuad("QF-03", 278.919, 0.2, "MAG-03", "CRQ-03", True))
-                self.quad_list.append(SectionQuad("QF-04", 281.119, 0.2, "MAG-04", "CRQ-04", True))
-                # self.quad_list.append(SectionQuad("QF-05", 281.619, 0.2, "MAG-03", "CRQ-05", True))
-                # self.quad_list.append(SectionQuad("QF-06", 282.019, 0.2, "MAG-04", "CRQ-06", True))
-                self.screen = SectionScreen("screen", 282.456, "liveviewer", "beamviewer", "limaccd", "screen")
+            self.quad_list = list()
+            self.quad_list.append(SectionQuad("QF-01", 275.719, 0.2, "MAG-01", "CRQ-01", True))
+            self.quad_list.append(SectionQuad("QF-02", 277.719, 0.2, "MAG-02", "CRQ-02", True))
+            self.quad_list.append(SectionQuad("QF-03", 278.919, 0.2, "MAG-03", "CRQ-03", True))
+            self.quad_list.append(SectionQuad("QF-04", 281.119, 0.2, "MAG-04", "CRQ-04", True))
+            # self.quad_list.append(SectionQuad("QF-05", 281.619, 0.2, "MAG-03", "CRQ-05", True))
+            # self.quad_list.append(SectionQuad("QF-06", 282.019, 0.2, "MAG-04", "CRQ-06", True))
+            self.screen = SectionScreen("screen", 282.456, "liveviewer", "beamviewer", "limaccd", "screen")
 
-                # self.quad_strength_list = [-0.7, -0.3, -3.6, 2.3, 1.0, 1.0]
-                self.quad_strength_list = [-0.7, -0.3, -3.6, 2.3]
+            # self.quad_strength_list = [-0.7, -0.3, -3.6, 2.3, 1.0, 1.0]
+            self.quad_strength_list = [-0.7, -0.3, -3.6, 2.3]
 
-            if load_file:
-                self.load_lookup(section)
-            else:
-                self.generate_lookup()
+        if load_file:
+            self.load_lookup(section)
+        else:
+            self.generate_lookup()
         self.section = section
 
     def set_k_values(self, k_list):
@@ -1198,12 +1198,12 @@ class MultiQuadTango(object):
         beta0 = 10
         eps_n_0 = 1e-6
 
-        self.alpha = -10.0
-        self.beta = 20.0
-        self.eps_n = 2e-6
-        self.alpha_y = 0.0
-        self.beta_y = 15.0
-        self.eps_n_y = 2e-6
+        self.alpha = 4.0
+        self.beta = 14.0
+        self.eps_n = 3e-6
+        self.alpha_y = -3.0
+        self.beta_y = 23.0
+        self.eps_n_y = 3e-6
         self.beamenergy = 233.0e6
 
         self.charge_ratio = 0.90
@@ -1515,8 +1515,8 @@ if __name__ == "__main__":
     # mt.set_quad_magnets([-0.480, 0.480, 2.720, -2.400])
     # mt.set_section("MS3", sim=True)
     # mt.set_quad_magnets([2.560, -4.960, 2.080, -2.560, 0, 0])
-    mt.set_section("MS2", sim=True)
-    mt.set_quad_magnets([2.400, -2.080, 2.880, -2.880])
+    mt.set_section("MS1", sim=True)
+    mt.set_quad_magnets([-0.960, -0.320, 0.800, -0.960])
     mq = mt.mq
     sx, sy, pic_r = mt.process_image(mt.camera_device.image)
     theta, r_maj, r_min = mt.mq.calc_ellipse(mt.alpha, mt.beta, mt.eps_n / (mt.beamenergy / 0.511e6), sx)
