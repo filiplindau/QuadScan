@@ -4,4 +4,4 @@
 *.png
 *.npy
 *.npz
-
+*.pkl
