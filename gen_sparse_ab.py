@@ -290,14 +290,14 @@ def generate_sparse_ab_set(A_lu=None, k_lu=None, data_filename="MS1_big.npz"):
     ind_m = dict()
     k_m = dict()
     ka_m = dict()
-    for ia in np.arange(73, 75):
-    # for ia in range(len(a_v)):
+    # for ia in np.arange(74, 75):
+    for ia in range(len(a_v)):
         logger.info("ia {0}/{1}".format(ia, len(a_v)))
         for ib in range(len(b_v)):
             # logger.info("ia {0}/{1}       ib {2}/{3}".format(ia, len(a_v), ib, len(b_v)))
             ind_ab = np.intersect1d(ind_a[ia], ind_b[ib], assume_unique=True)
             if ind_ab.shape[0] > 0:
-                logger.info("{0} values".format(ind_ab.shape[0]))
+                # logger.info("{0} values".format(ind_ab.shape[0]))
                 a_y_tmp = A_lu[ind_ab, 2]
                 b_y_tmp = A_lu[ind_ab, 3]
                 # a_v_y = np.linspace(a_y_tmp.min(), a_y_tmp.max(), 10)
@@ -333,13 +333,17 @@ def generate_sparse_ab_set(A_lu=None, k_lu=None, data_filename="MS1_big.npz"):
 
                 for iay in range(len(a_v_y)):
                     for iby in range(len(b_v_y)):
-                        ind_abay = np.intersect1d(ind_ab, ind_ay[iay], assume_unique=True)
-                        ind_aby = np.intersect1d(ind_abay, ind_by[iby], assume_unique=True)
+                        # ind_abay = np.intersect1d(ind_ab, ind_ay[iay], assume_unique=True)
+                        ind_aby = np.intersect1d(ind_ay[iay], ind_by[iby], assume_unique=True)
+                        # logger.info("ab {0}, ay {1}, by {2}, abay {3}, aby {4}".format(ind_ab.shape[0],
+                        #                                                                ind_ay[iay].shape[0],
+                        #                                                                ind_by[iby].shape[0],
+                        #                                                                ind_aby.shape[0]))
                         if ind_aby.shape[0] > 0:
-                            logger.info("Found {0}, time {1:.1f} ms".format(ind_aby.shape[0], 1e3 * (time.time() - t0)))
+                            # logger.info("Found {0}".format(ind_aby.shape[0]))
                             ind_y_tmp[iay + ia_min, iby + ib_min] = ind_aby[0]
-                            k_y_tmp[iay + ia_min, iby + ib_min] = k_lu[ind_aby, :]
-                            ka_y_tmp.append(k_lu[ind_aby, :])
+                            k_y_tmp[iay + ia_min, iby + ib_min] = k_lu[ind_ab, :][ind_aby, :]
+                            ka_y_tmp.append(k_lu[ind_ab, :][ind_aby[0], :])
                 ind_m[ia, ib] = ind_y_tmp
                 k_m[ia, ib] = k_y_tmp
                 ka_m[ia, ib] = np.array(ka_y_tmp)

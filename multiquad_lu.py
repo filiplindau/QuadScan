@@ -897,6 +897,59 @@ class MultiQuadLookup(object):
         self.logger.debug("Time: {0:.3f} s".format(time.time() - t0))
         return k_target
 
+    def solve_quads_lu(self, target_a, target_b, target_a_y, target_b_y):
+        t0 = time.time()
+
+        def calc_sigma(alpha, beta, eps, a, b):
+            sigma = np.sqrt(eps * (beta * a ** 2 - 2.0 * alpha * a * b + (1.0 + alpha ** 2) / beta * b ** 2))
+            return sigma
+
+        target_ap = np.array([target_a, target_b])
+        th_ab = 0.2
+        ind_p = ((self.A_lu[:, 0:2] - target_ap) ** 2).sum(1) < th_ab ** 2
+
+        sigma_x = calc_sigma(self.alpha_list[-1], self.beta_list[-1], self.eps_list[-1],
+                             self.A_lu[ind_p, 0], self.A_lu[ind_p, 1])
+        sigma_y = calc_sigma(self.alpha_y_list[-1], self.beta_y_list[-1], self.eps_y_list[-1],
+                             self.A_lu[ind_p, 2], self.A_lu[ind_p, 3])
+        # Asi = np.stack((sigma_x.flatten()[ind_p] * sigma_y.flatten()[ind_p]), -1).reshape(-1, 1)
+        try:
+            # Asi = np.stack((sigma_x.flatten() * sigma_y.flatten()), -1).reshape(-1, 1)
+            Asi = (sigma_x.flatten() * sigma_y.flatten()).reshape(-1, 1)
+        except ValueError as e:
+            self.logger.warning("Could not find quad values for a={0:.3f}, b={1:.3f}".format(target_a, target_b))
+            return None
+        target_asi = np.array([self.target_sigma * self.target_sigma_y]).reshape(-1, 1)
+        try:
+            ind_si = ((Asi - target_asi) ** 2).sum(-1).argmin()
+        except ValueError:
+            self.logger.warning("No quad values found in that is within threshold of "
+                                "target a={0:.3f}, b={1:.3f}.".format(target_a, target_b))
+            sigma_x = calc_sigma(self.alpha_list[-1], self.beta_list[-1], self.eps_list[-1],
+                                 self.A_lu[:, 0], self.A_lu[:, 1])
+            sigma_y = calc_sigma(self.alpha_y_list[-1], self.beta_y_list[-1], self.eps_y_list[-1],
+                                 self.A_lu[:, 2], self.A_lu[:, 3])
+            Asi = (sigma_x.flatten() * sigma_y.flatten()).reshape(-1, 1)
+            ind_si = ((Asi - target_asi) ** 2).sum(-1).argmin()
+            self.logger.warning("Best effort: a={0:.3f}, b={1:.3f}".format(self.A_lu[ind_si, 0], self.A_lu[ind_si, 1]))
+            ind_p = range(self.A_lu.shape[0])
+
+        k_target = self.k_lu[ind_p, :][ind_si, :]
+
+        self.logger.info("{0}: Solving new quad strengths for \n\n"
+                         "Horizontal target a,b = {1:.3f}, {2:.3f}\n"
+                         "Vertical target   a,b = {3:.3f}, {4:.3f}\n\n"
+                         "Found quad strengths: {5}\n\n"
+                         "Horizontal        a,b = {6:.3f}, {7:.3f}\n"
+                         "Vertical          a,b = {8:.3f}, {9:.3f}\n".format(self, target_a, target_b,
+                                                                             target_a_y, target_b_y, k_target,
+                                                                             self.A_lu[ind_p, :][ind_si, 0],
+                                                                             self.A_lu[ind_p, :][ind_si, 1],
+                                                                             self.A_lu[ind_p, :][ind_si, 2],
+                                                                             self.A_lu[ind_p, :][ind_si, 3]))
+        self.logger.debug("Time: {0:.3f} s".format(time.time() - t0))
+        return k_target
+
     def solve_quads_sign(self, target_a, target_b, target_a_y, target_b_y):
         t0 = time.time()
 
