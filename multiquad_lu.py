@@ -594,7 +594,7 @@ class MultiQuadLookup(object):
         next_a_y, next_b_y = self.set_target_ab(self.current_step, theta_y, r_maj_y, r_min_y, axis="y")
 
         # Determine quad settings to achieve these a-b values
-        next_k = self.solve_quads_sign(next_a, next_b, next_a_y, next_b_y)
+        next_k = self.solve_quads_lu(next_a, next_b, next_a_y, next_b_y)
         if next_k is None:
             self.logger.error("Could not find quad settings to match desired a-b values")
             self.k_list.pop()
@@ -744,9 +744,9 @@ class MultiQuadLookup(object):
             eps = sigma[-1]**2 / (a[-1]**2 * beta - 2 * a[-1] * b[-1] * alpha + b[-1]**2 * (1 + alpha**2) / beta)
         else:
             if charge is None:
-                weights = 1.0
+                weights = np.ones_like(sigma)
             else:
-                s_q = np.sqrt(0.01 / np.log(2))
+                s_q = np.sqrt(0.004 / np.log(2))
                 weights = np.exp(-(charge / charge[0] - 1)**2 / s_q**2)
             Mw = M * np.sqrt(weights[:, np.newaxis])
             sw = sigma**2 * np.sqrt(weights)
