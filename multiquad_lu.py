@@ -1306,7 +1306,7 @@ class MultiQuadTango(object):
         # self.charge = image_p.sum()
 
         self.base_filename = "multiquad"
-        self.base_path = "..\\data"
+        self.base_path = os.path.join("..", "data")
         self.pathname = None
 
         # self.mq.start_scan(self.sigma_target_x, self.sigma_target_y, self.charge, self.section, self.n_steps,
