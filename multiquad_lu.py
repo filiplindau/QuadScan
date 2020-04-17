@@ -1314,7 +1314,7 @@ class MultiQuadTango(object):
         self.current_step = 0
 
         self.magnet_delay = 0.2     # Magnet settling time
-        self.shot_delay = 2.0
+        self.shot_delay = 3.0
         self.last_shot_time = time.time()
 
     def set_section(self, section="MS1", sim=True):
@@ -1485,7 +1485,7 @@ class MultiQuadTango(object):
     def save_image(self, image, step, k_values):
         self.logger.info("Saving image {0}".format(step))
         s = "_".join(["{0:.3f}".format(k) for k in k_values])
-        filename = "{0}_{1}_.png".format(step, s)
+        filename = "{0}_{1:02d}_{2}.png".format(self.section, step, s)
         full_name = os.path.join(self.pathname, filename)
         with open(full_name, "wb") as fh:
             try:
