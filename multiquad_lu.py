@@ -1314,7 +1314,7 @@ class MultiQuadTango(object):
         self.current_step = 0
 
         self.magnet_delay = 0.2     # Magnet settling time
-        self.shot_delay = 0.5
+        self.shot_delay = 2.0
         self.last_shot_time = time.time()
 
     def set_section(self, section="MS1", sim=True):
