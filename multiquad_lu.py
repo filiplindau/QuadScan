@@ -1394,10 +1394,10 @@ class MultiQuadTango(object):
 
     def do_step(self, save=True):
         t0 = time.time()
-        k_current = self.get_quad_magnets()
         dt = time.time() - self.last_shot_time
         if dt < self.shot_delay:
             time.sleep(self.shot_delay - dt)
+        k_current = self.get_quad_magnets()
 
         image = self.camera_device.image
 
