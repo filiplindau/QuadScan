@@ -1374,7 +1374,7 @@ class MultiQuadTango(object):
             self.logger.info("Connected to device {0}".format(self.camera_name))
             beam_device = pt.DeviceProxy("lima/beamviewer/{0}".format(self.camera_name))
             roi = json.loads(beam_device.roi)
-            self.roi = [roi[0], roi[1] - roi[0], roi[2], roi[3] - roi[2]]
+            self.roi = [roi[0], roi[2], roi[1] - roi[0], roi[3] - roi[2]]
             size = json.loads(beam_device.measurementruler)["size"]
             dx = beam_device.measurementrulerwidth
             self.px_cal = dx * 1e-3 / size[0]
