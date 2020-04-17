@@ -15,6 +15,7 @@ import json
 from collections import namedtuple, OrderedDict
 import pprint
 import traceback
+import re
 from scipy.signal import medfilt2d
 from scipy.optimize import minimize, leastsq # Bounds, least_squares, BFGS, NonlinearConstraint
 #from scipy.optimize import lsq_linear
@@ -1556,6 +1557,92 @@ class MultiQuadTango(object):
             f.write("|  k   |  shot |    set   |   read   |        saved         |\n")
             f.write("|  #   |   #   |  k-value |  k-value |     image file       |\n")
         return True
+
+    def load_scan(self, load_dir):
+        """
+        Load a saved scan and run the analysis.
+
+        :param load_dir: Location of the daq_info_multi.txt and images
+        :return:
+        """
+        filename = "daq_info_multi.txt"
+        if os.path.isfile(os.path.join(load_dir, filename)) is False:
+            e = "daq_info.txt not found in {0}".format(load_dir)
+            self.logger.error(e)
+            return
+
+        self.logger.info("{0}: Loading Jason format data".format(self))
+        data_dict = dict()
+        with open(os.path.join(load_dir, filename), "r") as daq_file:
+            while True:
+                line = daq_file.readline()
+                if line == "" or line[0:5] == "*****":
+                    break
+                try:
+                    key, value = line.split(":")
+                    data_dict[key.strip()] = value.strip()
+                except ValueError:
+                    pass
+        px = data_dict["pixel_dim"].split(" ")
+        self.px_cal = np.double(px[0])
+        rc = np.double(data_dict["roi_center"].split(" "))
+        rd = np.double(data_dict["roi_dim"].split(" "))
+        self.roi = [rc[0] - rd[0]/2, rd[0], rc[1] - rd[1]/2, rd[1]]
+        self.section = data_dict["daq_dir"].split("_")[-1]
+        self.beamenergy = np.double(data_dict["beam_energy"])
+
+        magnet_names = list()
+        quad_list = list()
+
+        p0 = re.compile("quad_\d$")
+        for k in data_dict.keys():
+            if p0.match(k):
+                name = data_dict[k]
+                pos = np.double(data_dict["{0}_pos".format(k)])
+                length = np.double(data_dict["{0}_length".format(k)])
+                magnet_names.append(name)
+                quad_list.append(SectionQuad(name, pos, length, name, name, True))
+        mq.quad_list = quad_list
+
+        self.camera_name = data_dict["screen"]
+        screen_pos = np.double(data_dict["screen_pos"])
+        mq.screen = SectionScreen(self.camera_name, screen_pos, "liveviewer", "beamviewer", "limaccd", "screen")
+
+        data_dict["pixel_size"] = [np.double(px[0]), np.double(px[1])]
+        rc = np.double(data_dict["roi_center"].split(" "))
+        data_dict["roi_center"] = [np.double(rc[1]), np.double(rc[0])]
+        rd = data_dict["roi_dim"].split(" ")
+        data_dict["roi_dim"] = [np.double(rd[1]), np.double(rd[0])]
+        try:
+            data_dict["bpp"] = np.int(data_dict["bpp"])
+        except KeyError:
+            data_dict["bpp"] = 16
+            self.logger.debug("{1} Loaded data_dict: \n{0}".format(pprint.pformat(data_dict), self))
+
+        file_list = os.listdir(load_dir)
+        image_file_list = list()
+        quad_strength_list = list()
+        load_task_list = list()  # List of tasks, each loading an image. Loading should be done in sequence
+        # as this in not sped up by paralellization
+        for file_name in file_list:
+            if file_name.endswith(".png"):
+                image_file_list.append(file_name)
+                comp = file_name.split(".png")[0].split("_")
+                if comp[0].isdecimal():
+                    # First part is NOT section name...
+                    sect = "--"
+                    shot = int(comp[0])
+                    ind_start = 1
+                else:
+                    # First part is section name
+                    sect = comp[0]
+                    shot = int(comp[1])
+                    ind_start = 2
+
+                k_v = list()
+                for c in comp[ind_start:]:
+                    k_v.append(np.double(c))
+                quad_strength_list.append(k_v)
 
 
 if __name__ == "__main__":
