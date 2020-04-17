@@ -1462,7 +1462,7 @@ class MultiQuadTango(object):
                                                     1e3 * (time.time() - t0), sigma_x * 1e3, sigma_y * 1e3))
         return sigma_x, sigma_y, image_p
 
-    def do_scan(self, section="MS1", n_steps=16, save=True, sim=True):
+    def do_scan(self, section="MS1", n_steps=16, save=True, sim=True, alpha0=0, beta0=10, eps_n_0=2e-6):
         self.n_steps = n_steps
         self.set_section(section, sim=sim)
         # self.set_quad_magnets([4.9, -4.3, 1.4, 0.5])
@@ -1475,9 +1475,6 @@ class MultiQuadTango(object):
         self.sigma_target_y = sigma_y
         self.charge = image_p.sum()
 
-        alpha0 = 0
-        beta0 = 10
-        eps_n_0 = 1e-6
         self.mq.start_scan(self.sigma_target_x, self.sigma_target_y, self.charge, self.section, self.n_steps,
                            alpha0, beta0, eps_n_0)
         self.current_step = 0
