@@ -16,6 +16,7 @@ from collections import namedtuple, OrderedDict
 import pprint
 import traceback
 import re
+import pickle
 from scipy.signal import medfilt2d
 from scipy.optimize import minimize, leastsq # Bounds, least_squares, BFGS, NonlinearConstraint
 #from scipy.optimize import lsq_linear
@@ -25,6 +26,9 @@ from operator import attrgetter
 #from tasks.GenericTasks import *
 from QuadScanDataStructs import *
 
+# import matplotlib
+# matplotlib.use("Agg")
+from matplotlib.pyplot import imread
 
 import logging
 
@@ -342,6 +346,10 @@ class MultiQuadLookup(object):
 
         self.A_lu = None
         self.k_lu = None
+        self.ab_lu = None
+        self.k_m_lu = None
+        self.a_v_lu = None
+        self.b_v_lu = None
 
         self.n_steps = 16
         self.current_step = 0
@@ -478,6 +486,16 @@ class MultiQuadLookup(object):
             self.logger.error("Lookup file {0} does not exist".format(filename))
             self.set_section(section, load_file=False)
             self.save_lookup(section, self.A_lu, self.k_lu)
+        filename = "{0}_k.pkl".format(section)
+        try:
+            with open(filename, "rb") as f:
+                data = pickle.load(f)
+                self.k_m_lu = data[0]
+                self.ab_lu = data[1]
+                self.a_v_lu = data[2]
+                self.b_v_lu = data[3]
+        except FileNotFoundError:
+            self.logger.error("Lookup file {0} does not exist".format(filename))
 
     def start_scan(self, current_sigma_x, current_sigma_y, current_charge, section="MS1", n_steps=16,
                    guess_alpha=0.0, guess_beta=40.0, guess_eps_n=2e-6):
@@ -595,7 +613,11 @@ class MultiQuadLookup(object):
         next_a_y, next_b_y = self.set_target_ab(self.current_step, theta_y, r_maj_y, r_min_y, axis="y")
 
         # Determine quad settings to achieve these a-b values
-        next_k = self.solve_quads_lu(next_a, next_b, next_a_y, next_b_y)
+        if not (np.isnan(next_a) or np.isnan(next_b)):
+            next_k = self.solve_quads_list(next_a, next_b, next_a_y, next_b_y)
+        else:
+            next_k = None
+
         if next_k is None:
             self.logger.error("Could not find quad settings to match desired a-b values")
             self.k_list.pop()
@@ -731,9 +753,12 @@ class MultiQuadLookup(object):
             beta0 = self.guess_beta
             c = np.sqrt(np.abs((sigma[-1]**2 / eps0 - b[-1]**2 / beta0) / (a[-1]**2 * beta0 - 2 * a[-1] * b[-1] * alpha0 +
                                                                     b[-1]**2 * alpha0**2 / beta0)))
-            alpha = c * alpha0
-            beta = c * beta0
-            eps = c * eps0
+            # alpha = c * alpha0
+            # beta = c * beta0
+            # eps = c * eps0
+            eps = sigma[-1]**2 / (beta0 * a[-1]**2 - 2 * alpha0 * a[-1] * b[-1] + (1 + alpha0) / beta0 * b[-1]**2)
+            alpha = alpha0
+            beta = beta0
         elif M.shape[0] == 2:
             theta = np.arctan(b[-1] / a[-1])
             if axis == "x":
@@ -742,7 +767,17 @@ class MultiQuadLookup(object):
             else:
                 alpha = self.alpha_y_list[-1]
                 beta = self.beta_y_list[-1]
-            eps = sigma[-1]**2 / (a[-1]**2 * beta - 2 * a[-1] * b[-1] * alpha + b[-1]**2 * (1 + alpha**2) / beta)
+            # eps = sigma[-1]**2 / (a[-1]**2 * beta - 2 * a[-1] * b[-1] * alpha + b[-1]**2 * (1 + alpha**2) / beta)
+            u1 = sigma[-2]**2 * a[-1]**2 - sigma[-1]**2 * a[-2]**2
+            u2 = -2 * alpha * (a[-1] * b[-1] * sigma[-2]**2 - a[-2] * b[-2] * sigma[-1]**2)
+            u3 = (1 + alpha**2) * (b[-1]**2 * sigma[-2]**2 + b[-2]**2 * sigma[-1]**2)
+            beta_p = (-u2 + np.sqrt(u2**2 - 4 * u1 * u3)) / (2 * u1)
+            beta_n = (-u2 - np.sqrt(u2 ** 2 - 4 * u1 * u3)) / (2 * u1)
+            if np.abs(beta_n - beta) < np.abs(beta_p - beta):
+                beta = beta_n
+            else:
+                beta = beta_p
+            eps = sigma[-2]**2 / (beta * a[-2]**2 - 2 * alpha * a[-2] * b[-2] + (1 + alpha) / beta * b[-2]**2)
         else:
             if charge is None:
                 weights = np.ones_like(sigma)
@@ -754,13 +789,23 @@ class MultiQuadLookup(object):
             ldata = np.linalg.lstsq(Mw, sw, -1)
 
             if axis == "x":
-                alpha0 = self.alpha_list[-1]
-                beta0 = self.beta_list[-1]
-                eps0 = self.eps_list[-1]
+                try:
+                    alpha0 = self.alpha_list[-1]
+                    beta0 = self.beta_list[-1]
+                    eps0 = self.eps_list[-1]
+                except IndexError:
+                    alpha0 = 0.0
+                    beta0 = 10.0
+                    eps0 = 2e-6
             else:
-                alpha0 = self.alpha_y_list[-1]
-                beta0 = self.beta_y_list[-1]
-                eps0 = self.eps_y_list[-1]
+                try:
+                    alpha0 = self.alpha_y_list[-1]
+                    beta0 = self.beta_y_list[-1]
+                    eps0 = self.eps_y_list[-1]
+                except IndexError:
+                    alpha0 = 0.0
+                    beta0 = 10.0
+                    eps0 = 2e-6
 
             self.logger.info("Least squares: {0}".format(ldata))
             self.residuals.append(ldata[1])
@@ -1011,6 +1056,63 @@ class MultiQuadLookup(object):
         self.logger.debug("Time: {0:.3f} s".format(time.time() - t0))
         return k_target
 
+    def solve_quads_list(self, target_a, target_b, target_a_y, target_b_y):
+        t0 = time.time()
+        self.logger.debug("Target a: {0:.3f}, target b: {1:.3f}".format(target_a, target_b))
+
+        def calc_sigma(alpha, beta, eps, a, b):
+            sigma = np.sqrt(eps * (beta * a ** 2 - 2.0 * alpha * a * b + (1.0 + alpha ** 2) / beta * b ** 2))
+            return sigma
+
+        # 1) Find values close to target a, b
+        try:
+            ind_a = np.abs(self.a_v_lu - target_a).argmin()
+            ind_b = np.abs(self.b_v_lu - target_b).argmin()
+            ab_val_y = self.ab_lu[ind_a][ind_b]
+        except TypeError:
+            self.logger.warning("No values found for targets")
+            return None
+
+        # 2) Find values close to target beam size
+        sigma_x = calc_sigma(self.alpha_list[-1], self.beta_list[-1], self.eps_list[-1],
+                             self.a_v_lu[ind_a], self.b_v_lu[ind_b])
+        sigma_y = calc_sigma(self.alpha_y_list[-1], self.beta_y_list[-1], self.eps_y_list[-1],
+                             ab_val_y[:, 0], ab_val_y[:, 1])
+        try:
+            size_v = (sigma_x.flatten() * sigma_y.flatten()).reshape(-1, 1)
+        except ValueError as e:
+            self.logger.warning("Could not find quad values for a={0:.3f}, b={1:.3f}".format(target_a, target_b))
+            return None
+        target_size = np.array([self.target_sigma * self.target_sigma_y]).reshape(-1, 1)
+        th_size = 0.5e-3
+        try:
+            # ind_size = ((size_v - target_size) ** 2).sum(-1) < th_size**4
+            ind_size = ((size_v - target_size) ** 2).sum(-1).argmin()
+        except ValueError:
+            self.logger.warning("No quad values found in that is within threshold of "
+                                "target a={0:.3f}, b={1:.3f}.".format(target_a, target_b))
+            ind_size = ((size_v - target_size) ** 2).sum(-1).argmin()
+            self.logger.warning("Best effort: a_y={0:.3f}, b_y={1:.3f}".format(ab_val_y[ind_size, 0], ab_val_y[ind_size, 1]))
+            return None
+
+        k_old = np.array(self.k_list[-1])
+        k_target = self.k_m_lu[ind_a][ind_b][ind_size, :]
+
+        self.logger.debug("k_target: {0}, k_old {1}".format(k_target.shape, k_old))
+
+        self.logger.info("{0}: Solving new quad strengths for \n\n"
+                         "Horizontal target a,b = {1:.3f}, {2:.3f}\n"
+                         "Vertical target   a,b = {3:.3f}, {4:.3f}\n\n"
+                         "Found quad strengths: {5}\n\n"
+                         "Horizontal        a,b = {6:.3f}, {7:.3f}\n"
+                         "Vertical          a,b = {8:.3f}, {9:.3f}\n".format(self, target_a, target_b,
+                                                                             target_a_y, target_b_y, k_target,
+                                                                             self.a_v_lu[ind_a], self.b_v_lu[ind_b],
+                                                                             ab_val_y[ind_size, 0],
+                                                                             ab_val_y[ind_size, 1]))
+        self.logger.debug("Time: {0:.3f} s".format(time.time() - t0))
+        return k_target
+
     def calc_response_matrix_v(self, quad_strengths, quad_positions, screen_position, axis="x"):
         # self.logger.debug("{0}: Calculating new response matrix".format(self))
         s = quad_positions[0]
@@ -1102,6 +1204,7 @@ class MultiQuadLookup(object):
         :param max_k: Magnet maximum k-value k = (-max_k, max_k)
         :return: Minimum a, maxmium a, minimum b, maximum b
         """
+        return self.a_v_lu[0], self.a_v_lu[-1], self.b_v_lu[0], self.b_v_lu[-1]
         if axis == "x":
             return self.a_range[0], self.a_range[1], self.b_range[0], self.b_range[1]
         else:
@@ -1155,7 +1258,8 @@ class MultiQuadLookup(object):
     def get_psi(self, a, b, theta, r_maj, r_min):
         p1 = (b * np.sin(theta) + a * np.cos(theta)) / r_maj
         p2 = (b * np.cos(theta) - a * np.sin(theta)) / r_min
-        psi = np.atleast_1d(np.arccos(p1))
+        c = np.sqrt(p1**2 + p2**2)
+        psi = np.atleast_1d(np.arccos(p1 / c))
         ind_q3 = np.atleast_1d(np.logical_and(p1 < 0, p2 < 0))
         psi[ind_q3] = 2 * np.pi - psi[ind_q3]
         ind_q4 = np.atleast_1d(np.logical_and(p1 > 0, p2 < 0))
@@ -1252,20 +1356,15 @@ class MultiQuadTango(object):
         beta0 = 10
         eps_n_0 = 1e-6
 
-        self.alpha = 4.0
-        self.beta = 14.0
-        self.eps_n = 3e-6
+        self.alpha = -4.0
+        self.beta = 17.0
+        self.eps_n = 0.7e-6
         self.alpha_y = -3.0
-        self.beta_y = 23.0
-        self.eps_n_y = 3e-6
+        self.beta_y = 14.0
+        self.eps_n_y = 1e-6
         self.beamenergy = 233.0e6
 
         self.charge_ratio = 0.90
-
-        k0 = [2.0, 1.3, -3.8, 0.3]
-        k0 = [-0.1, 0.1, -1.5, -1.4]
-        k0 = [-0.9, 0.7, 4.9, -3.0]
-        k0 = [4.9, -4.3, 1.4, 0.5]
 
         self.image_list = list()
         self.image_p_list = list()
@@ -1279,43 +1378,14 @@ class MultiQuadTango(object):
         self.sigma_target_y = None
         self.charge = None
 
-        # self.magnet_devices = list()
-        # for mag in self.magnet_names:
-        #     dev = pt.DeviceProxy("127.0.0.1:10000/{0}#dbase=no".format(mag))
-        #     self.magnet_devices.append(dev)
-        #     pos = dev.position
-        #     self.logger.info("Connected to device {0}".format(mag))
-        # for ind, dev in enumerate(self.magnet_devices):
-        #     dev.mainfieldcomponent = k0[ind]
-        #
-        # self.camera_device = pt.DeviceProxy("127.0.0.1:10002/{0}#dbase=no".format(self.camera_name))
-        # self.logger.info("Connected to device {0}".format(self.camera_name))
-        # camera_pos = self.camera_device.position
-        # self.px_cal = self.camera_device.pixel_cal
-        # self.roi = self.camera_device.roi
-        # self.roi = np.array([520, 400, 240, 240])
-        # self.camera_device.alpha = self.alpha
-        # self.camera_device.beta = self.beta
-        # self.camera_device.eps_n = self.eps_n * 1e6
-        # self.camera_device.alpha_y = self.alpha_y
-        # self.camera_device.beta_y = self.beta_y
-        # self.camera_device.eps_n_y = self.eps_n_y * 1e6
-        # self.camera_device.beamenergy = self.beamenergy * 1e-6
-        # sigma_x, sigma_y, image_p = self.process_image(self.camera_device.image, self.charge_ratio)
-        # self.sigma_target_x = sigma_x
-        # self.sigma_target_y = sigma_y
-        # self.charge = image_p.sum()
-
         self.base_filename = "multiquad"
         self.base_path = os.path.join("..", "data")
         self.pathname = None
 
-        # self.mq.start_scan(self.sigma_target_x, self.sigma_target_y, self.charge, self.section, self.n_steps,
-        #                    alpha0, beta0, eps_n_0)
         self.current_step = 0
 
         self.magnet_delay = 0.2     # Magnet settling time
-        self.shot_delay = 3.0
+        self.shot_delay = 0.1
         self.last_shot_time = time.time()
 
     def set_section(self, section="MS1", sim=True):
@@ -1567,11 +1637,11 @@ class MultiQuadTango(object):
         """
         filename = "daq_info_multi.txt"
         if os.path.isfile(os.path.join(load_dir, filename)) is False:
-            e = "daq_info.txt not found in {0}".format(load_dir)
+            e = "daq_info_multi.txt not found in {0}".format(load_dir)
             self.logger.error(e)
             return
 
-        self.logger.info("{0}: Loading Jason format data".format(self))
+        self.logger.info("Loading Jason format data")
         data_dict = dict()
         with open(os.path.join(load_dir, filename), "r") as daq_file:
             while True:
@@ -1587,12 +1657,14 @@ class MultiQuadTango(object):
         self.px_cal = np.double(px[0])
         rc = np.double(data_dict["roi_center"].split(" "))
         rd = np.double(data_dict["roi_dim"].split(" "))
-        self.roi = [rc[0] - rd[0]/2, rd[0], rc[1] - rd[1]/2, rd[1]]
+        self.roi = [int(rc[0] - rd[0]/2), int(rc[1] - rd[1]/2), int(rd[0]), int(rd[1])]
         self.section = data_dict["daq_dir"].split("_")[-1]
         self.beamenergy = np.double(data_dict["beam_energy"])
+        self.mq.gamma_energy = self.beamenergy / 0.511
 
         magnet_names = list()
         quad_list = list()
+        quad_pos_list = list()
 
         p0 = re.compile("quad_\d$")
         for k in data_dict.keys():
@@ -1602,6 +1674,7 @@ class MultiQuadTango(object):
                 length = np.double(data_dict["{0}_length".format(k)])
                 magnet_names.append(name)
                 quad_list.append(SectionQuad(name, pos, length, name, name, True))
+                quad_pos_list.append(pos)
         mq.quad_list = quad_list
 
         self.camera_name = data_dict["screen"]
@@ -1614,18 +1687,23 @@ class MultiQuadTango(object):
         rd = data_dict["roi_dim"].split(" ")
         data_dict["roi_dim"] = [np.double(rd[1]), np.double(rd[0])]
         try:
-            data_dict["bpp"] = np.int(data_dict["bpp"])
+            data_dict["camera_bpp"] = np.int(data_dict["camera_bpp"])
         except KeyError:
-            data_dict["bpp"] = 16
-            self.logger.debug("{1} Loaded data_dict: \n{0}".format(pprint.pformat(data_dict), self))
+            data_dict["camera_bpp"] = 16
+            self.logger.debug("No bpp. Loaded data_dict: \n{0}".format(pprint.pformat(data_dict)))
 
         file_list = os.listdir(load_dir)
         image_file_list = list()
         quad_strength_list = list()
-        load_task_list = list()  # List of tasks, each loading an image. Loading should be done in sequence
+        sx_list = list()
+        sy_list = list()
+        image_p_list = list()
+        charge_list = list()
+        image_list = list()
         # as this in not sped up by paralellization
-        for file_name in file_list:
+        for n, file_name in enumerate(file_list):
             if file_name.endswith(".png"):
+                self.logger.debug("Reading file {0}/{1}: {2}".format(n, len(file_list), file_name))
                 image_file_list.append(file_name)
                 comp = file_name.split(".png")[0].split("_")
                 if comp[0].isdecimal():
@@ -1638,11 +1716,46 @@ class MultiQuadTango(object):
                     sect = comp[0]
                     shot = int(comp[1])
                     ind_start = 2
-
+                self.logger.debug("Start ind {0}, comp {1}".format(ind_start, comp))
                 k_v = list()
                 for c in comp[ind_start:]:
-                    k_v.append(np.double(c))
+                    try:
+                        k_v.append(np.double(c))
+                    except ValueError:
+                        pass
                 quad_strength_list.append(k_v)
+
+                image = imread(os.path.join(load_dir, file_name))
+                sx, sy, image_p = self.process_image(image, self.charge_ratio)
+                sx_list.append(sx)
+                sy_list.append(sy)
+                image_list.append(image)
+                image_p_list.append(image_p)
+                charge_list.append(image_p.sum())
+        self.mq.x_list = sx_list
+        self.mq.y_list = sy_list
+        self.mq.k_list = quad_strength_list
+        self.mq.charge_list = charge_list
+        self.image_p_list = image_p_list
+        self.image_list = image_list
+        Mx = self.mq.calc_response_matrix_v(np.array(quad_strength_list), quad_pos_list, screen_pos, "x")
+        self.mq.a_list = Mx[:, 0, 0]
+        self.mq.b_list = Mx[:, 0, 1]
+        My = self.mq.calc_response_matrix_v(np.array(quad_strength_list), quad_pos_list, screen_pos, "y")
+        self.mq.a_y_list = My[:, 0, 0]
+        self.mq.b_y_list = My[:, 0, 1]
+        al_x, be_x, ep_x = self.mq.calc_twiss_lin(self.mq.a_list, self.mq.b_list, np.array(self.mq.x_list),
+                                                  np.array(self.mq.charge_list), axis="x")
+        al_y, be_y, ep_y = self.mq.calc_twiss_lin(self.mq.a_y_list, self.mq.b_y_list, np.array(self.mq.y_list),
+                                                  np.array(self.mq.charge_list), axis="y")
+        self.alpha = al_x
+        self.beta = be_x
+        self.eps_n = ep_x * self.mq.gamma_energy
+        self.alpha_y = al_y
+        self.beta_y = be_y
+        self.eps_n_y = ep_y * self.mq.gamma_energy
+
+        return al_x, be_x, ep_x * self.mq.gamma_energy
 
 
 if __name__ == "__main__":
@@ -1652,13 +1765,24 @@ if __name__ == "__main__":
     # mt.set_quad_magnets([-0.480, 0.480, 2.720, -2.400])
     # mt.set_section("MS3", sim=True)
     # mt.set_quad_magnets([2.560, -4.960, 2.080, -2.560, 0, 0])
-    mt.set_section("MS1", sim=True)
-    mt.set_quad_magnets([-0.960, -0.320, 0.800, -0.960])
     mq = mt.mq
-    sx, sy, pic_r = mt.process_image(mt.camera_device.image)
-    theta, r_maj, r_min = mt.mq.calc_ellipse(mt.alpha, mt.beta, mt.eps_n / (mt.beamenergy / 0.511e6), sx)
-    theta_y, r_maj_y, r_min_y = mt.mq.calc_ellipse(mt.alpha_y, mt.beta_y, mt.eps_n_y / (mt.beamenergy / 0.511e6), sy)
-    psi_v = np.linspace(0, 2 * np.pi, 1000)
-    a_x, b_x = mt.mq.get_ab(psi_v, theta, r_maj, r_min)
-    a_y, b_y = mt.mq.get_ab(psi_v, theta_y, r_maj_y, r_min_y)
+    try:
+        mt.alpha = -4.0
+        mt.beta = 17.0
+        mt.eps_n = 0.4e-6
+        mt.alpha_y = -3.0
+        mt.beta_y = 14.0
+        mt.eps_n_y = 0.6e-6
+        mt.set_section("MS1", sim=True)
+        # mt.set_quad_magnets([-0.960, -0.320, 0.800, -0.960])
+        mt.set_quad_magnets([3.520, -1.920, -2.720, 1.440])
+        mt.set_quad_magnets([0, 0, 0, 0])
+        sx, sy, pic_r = mt.process_image(mt.camera_device.image)
+        theta, r_maj, r_min = mt.mq.calc_ellipse(mt.alpha, mt.beta, mt.eps_n / (mt.beamenergy / 0.511e6), sx)
+        theta_y, r_maj_y, r_min_y = mt.mq.calc_ellipse(mt.alpha_y, mt.beta_y, mt.eps_n_y / (mt.beamenergy / 0.511e6), sy)
+        psi_v = np.linspace(0, 2 * np.pi, 1000)
+        a_x, b_x = mt.mq.get_ab(psi_v, theta, r_maj, r_min)
+        a_y, b_y = mt.mq.get_ab(psi_v, theta_y, r_maj_y, r_min_y)
+    except AttributeError:
+        pass
 

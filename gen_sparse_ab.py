@@ -24,6 +24,7 @@ from scipy.sparse import csr_matrix, dok_matrix
 # from QuadScanTasks import TangoReadAttributeTask, TangoMonitorAttributeTask, TangoWriteAttributeTask, work_func_local2
 from operator import attrgetter
 from functools import reduce
+import pickle
 
 #from tasks.GenericTasks import *
 from QuadScanDataStructs import *
@@ -290,10 +291,16 @@ def generate_sparse_ab_set(A_lu=None, k_lu=None, data_filename="MS1_big.npz"):
     ind_m = dict()
     k_m = dict()
     ka_m = dict()
+    ka_m_list = list()
+    a_ab_y_list = list()
     # for ia in np.arange(74, 75):
     for ia in range(len(a_v)):
         logger.info("ia {0}/{1}".format(ia, len(a_v)))
+        kb_m_list = list()
+        b_ab_y_list = list()
         for ib in range(len(b_v)):
+            ka_y_tmp = list()
+            ab_y_tmp = list()
             # logger.info("ia {0}/{1}       ib {2}/{3}".format(ia, len(a_v), ib, len(b_v)))
             ind_ab = np.intersect1d(ind_a[ia], ind_b[ib], assume_unique=True)
             if ind_ab.shape[0] > 0:
@@ -311,6 +318,9 @@ def generate_sparse_ab_set(A_lu=None, k_lu=None, data_filename="MS1_big.npz"):
                     ib_min = np.atleast_1d(b_v > b_y_tmp.min()).nonzero()[0][0]
                     ib_max = np.atleast_1d(b_v <= min(b_v[-1], b_y_tmp.max())).nonzero()[0][-1]
                 except IndexError:
+                    kb_m_list.append(np.array(ka_y_tmp))
+                    b_ab_y_list.append(np.array(ab_y_tmp))
+
                     continue
                 b_v_y = b_v[ib_min:ib_max]
                 d_a_y = np.digitize(a_y_tmp, a_v_y[:-1])
@@ -321,7 +331,7 @@ def generate_sparse_ab_set(A_lu=None, k_lu=None, data_filename="MS1_big.npz"):
                 nbins_b_y = b_v_y.shape[0]
                 ind_y_tmp = dict()
                 k_y_tmp = dict()
-                ka_y_tmp = list()
+
                 try:
                     S_ay = csr_matrix((a_y_tmp, [d_a_y, np.arange(N_a_y)]), shape=(nbins_a_y, N_a_y))
                     S_by = csr_matrix((b_y_tmp, [d_b_y, np.arange(N_b_y)]), shape=(nbins_b_y, N_b_y))
@@ -329,6 +339,9 @@ def generate_sparse_ab_set(A_lu=None, k_lu=None, data_filename="MS1_big.npz"):
                     ind_by = [group for group in np.split(S_by.indices, S_by.indptr[1:-1])]
                 except ValueError as e:
                     # logger.info("ia {0}     ib {1}\n{2}".format(ia, ib, e))
+                    kb_m_list.append(np.array(ka_y_tmp))
+                    b_ab_y_list.append(np.array(ab_y_tmp))
+
                     continue
 
                 for iay in range(len(a_v_y)):
@@ -344,11 +357,16 @@ def generate_sparse_ab_set(A_lu=None, k_lu=None, data_filename="MS1_big.npz"):
                             ind_y_tmp[iay + ia_min, iby + ib_min] = ind_aby[0]
                             k_y_tmp[iay + ia_min, iby + ib_min] = k_lu[ind_ab, :][ind_aby, :]
                             ka_y_tmp.append(k_lu[ind_ab, :][ind_aby[0], :])
+                            ab_y_tmp.append(A_lu[ind_ab, 2:][ind_aby[0], :])
                 ind_m[ia, ib] = ind_y_tmp
                 k_m[ia, ib] = k_y_tmp
                 ka_m[ia, ib] = np.array(ka_y_tmp)
+            kb_m_list.append(np.array(ka_y_tmp))
+            b_ab_y_list.append(np.array(ab_y_tmp))
+        ka_m_list.append(kb_m_list)
+        a_ab_y_list.append(b_ab_y_list)
 
-    return ind_m, k_m, ka_m
+    return ind_m, k_m, ka_m, ka_m_list, a_ab_y_list, a_v, b_v
 
 
 def binned_statistic(x, values, func, nbins, range):
@@ -361,3 +379,12 @@ def binned_statistic(x, values, func, nbins, range):
     S = csr_matrix((values, [digitized, np.arange(N)]), shape=(nbins, N))
 
     return [group for group in np.split(S.data, S.indptr[1:-1])]
+
+
+if __name__ == "__main__":
+    npzfile = np.load("MS1_lookup.npz")
+    A_lu = npzfile["A_lu"]
+    k_lu = npzfile["k_lu"]
+    ind_m, k_m, ka_m, ka_m_list, a_ab_y_list, a_v, b_v = generate_sparse_ab_set(A_lu, k_lu)
+    with open("MS1_k.pkl", "wb") as f:
+        pickle.dump((ka_m_list, a_ab_y_list, a_v, b_v), f)
