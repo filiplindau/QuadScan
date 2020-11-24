@@ -5,7 +5,7 @@ Created on May 18, 2018
 @author: Filip Lindau
 """
 
-from PyQt4 import QtGui, QtCore
+from PyQt5 import QtGui, QtCore, QtWidgets
 
 import pyqtgraph as pq
 import sys
@@ -62,7 +62,7 @@ class MyScatterPlotItem(pq.ScatterPlotItem):
             ev.ignore()
 
 
-class QuadScanGui(QtGui.QWidget):
+class QuadScanGui(QtWidgets.QWidget):
     """
     Class for scanning a motor while grabbing images to produce a frog trace. It can also analyse the scanned trace
     or saved traces.
@@ -70,7 +70,7 @@ class QuadScanGui(QtGui.QWidget):
 
     def __init__(self, parent=None):
         root.debug("Init")
-        QtGui.QWidget.__init__(self, parent)
+        QtWidgets.QWidget.__init__(self, parent)
         self.settings = QtCore.QSettings('Maxlab', 'QuadScan')
 
         self.current_state = "unknown"
@@ -114,7 +114,7 @@ class QuadScanGui(QtGui.QWidget):
         """
         # Plotting widgets:
         self.ui.camera_raw_widget.ui.histogram.gradient.loadPreset('thermalclip')
-        self.ui.camera_raw_widget.setSizePolicy(QtGui.QSizePolicy.Expanding, QtGui.QSizePolicy.Expanding)
+        self.ui.camera_raw_widget.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
         self.ui.camera_raw_widget.getView().setAspectLocked(False)
         self.ui.camera_raw_widget.setImage(np.random.random((64, 64)))
         self.ui.camera_raw_widget.ui.roiBtn.hide()
@@ -128,7 +128,7 @@ class QuadScanGui(QtGui.QWidget):
         self.ui.camera_raw_widget.roi.blockSignals(False)
 
         self.ui.camera_roi_widget.ui.histogram.gradient.loadPreset('thermalclip')
-        self.ui.camera_roi_widget.setSizePolicy(QtGui.QSizePolicy.Expanding, QtGui.QSizePolicy.Expanding)
+        self.ui.camera_roi_widget.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
         self.ui.camera_roi_widget.getView().setAspectLocked(False)
         self.ui.camera_roi_widget.setImage(np.random.random((64, 64)))
         self.ui.camera_roi_widget.ui.roiBtn.hide()
@@ -136,7 +136,7 @@ class QuadScanGui(QtGui.QWidget):
         self.ui.camera_roi_widget.roi.sigRegionChanged.disconnect()
 
         self.ui.image_raw_widget.ui.histogram.gradient.loadPreset('thermalclip')
-        self.ui.image_raw_widget.setSizePolicy(QtGui.QSizePolicy.Expanding, QtGui.QSizePolicy.Expanding)
+        self.ui.image_raw_widget.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
         self.ui.image_raw_widget.getView().setAspectLocked(False)
         self.ui.image_raw_widget.setImage(np.random.random((64, 64)))
         self.ui.image_raw_widget.ui.roiBtn.hide()
@@ -152,7 +152,7 @@ class QuadScanGui(QtGui.QWidget):
         self.ui.image_raw_widget.roi.blockSignals(False)
 
         self.ui.image_proc_widget.ui.histogram.gradient.loadPreset('thermalclip')
-        self.ui.image_proc_widget.setSizePolicy(QtGui.QSizePolicy.Expanding, QtGui.QSizePolicy.Expanding)
+        self.ui.image_proc_widget.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
         self.ui.image_proc_widget.getView().setAspectLocked(False)
         self.ui.image_proc_widget.setImage(np.random.random((64, 64)))
         self.ui.image_proc_widget.ui.roiBtn.hide()
@@ -306,12 +306,12 @@ class QuadScanGui(QtGui.QWidget):
 
     def change_state(self, new_state, new_status=None):
         root.info("Change state: {0}, status {1}".format(new_state, new_status))
-        self.ui.state_label.setText(QtCore.QString(new_state))
+        self.ui.state_label.setText(new_state)
         if new_status is not None:
-            self.ui.status_label.append(QtCore.QString(new_status))
+            self.ui.status_label.append(new_status)
             self.ui.status_label.verticalScrollBar().setValue(self.ui.status_label.verticalScrollBar().maximum())
             # st = self.ui.status_label.toPlainText()
-            # self.ui.status_label.setText(QtCore.QString(new_status) + "\n" + st)
+            # self.ui.status_label.setText(new_status + "\n" + st)
         if self.current_state == "load" and new_state != "load":
             self.update_parameter_data()
         elif self.current_state == "database" and new_state == "device_connect":
@@ -911,7 +911,7 @@ class QuadScanGui(QtGui.QWidget):
         :return:
         """
         root.info("Loading data")
-        load_dir = QtGui.QFileDialog.getExistingDirectory(self, "Select directory", self.last_load_dir)
+        load_dir = QtWidgets.QFileDialog.getExistingDirectory(self, "Select directory", self.last_load_dir)
         self.last_load_dir = load_dir
         root.debug("Loading from directory {0}".format(load_dir))
         self.controller.set_parameter("load", "path", str(load_dir))
@@ -1001,7 +1001,7 @@ class QuadScanGui(QtGui.QWidget):
 
     def set_base_dir(self):
         root.info("Setting data base directory")
-        base_dir = QtGui.QFileDialog.getExistingDirectory(self, "Select directory", self.data_base_dir)
+        base_dir = QtWidgets.QFileDialog.getExistingDirectory(self, "Select directory", self.data_base_dir)
         self.data_base_dir = base_dir
         root.debug("Setting base directory to {0}".format(base_dir))
         self.controller.set_parameter("save", "base_path", str(base_dir))
@@ -1050,7 +1050,7 @@ class QuadScanGui(QtGui.QWidget):
 
 
 if __name__ == "__main__":
-    app = QtGui.QApplication(sys.argv)
+    app = QtWidgets.QApplication(sys.argv)
     myapp = QuadScanGui()
     root.info("QuadScanGui object created")
     myapp.show()

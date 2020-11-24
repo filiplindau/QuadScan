@@ -84,6 +84,18 @@ class DummyMagnet(Device):
                    hw_memorized=False,
                    doc="Quad length", )
 
+    energy = attribute(label='energy',
+                   dtype=float,
+                   access=pt.AttrWriteType.READ,
+                   unit="MeV",
+                   format="%4.3f",
+                   min_value=0.0,
+                   max_value=3000.0,
+                   fget="get_energy",
+                   memorized=False,
+                   hw_memorized=False,
+                   doc="Electron energy at quad", )
+
     # --- Device properties
     #
     length = device_property(dtype=float,
@@ -97,6 +109,10 @@ class DummyMagnet(Device):
     __si = device_property(dtype=float,
                            doc="Position",
                            )
+
+    qe = device_property(dtype=float,
+                         doc="energy",
+                         default_value=240)
 
     def __init__(self, klass, name):
         self.mainfieldcomponent_data = 0.0
@@ -127,6 +143,9 @@ class DummyMagnet(Device):
 
     def get_ql(self):
         return self.length
+
+    def get_energy(self):
+        return self.qe
 
 
 class DummyScreen(Device):
@@ -427,6 +446,7 @@ class DummyLiveviewer(Device):
                                  add_noise=True)  # MS-1 QB-01, SCRN-01
         self.magnet_devices = list()
         self.screen_device = None
+        self.running = False
         Device.__init__(self, klass, name)
 
     def init_device(self):
@@ -460,22 +480,23 @@ class DummyLiveviewer(Device):
         self.sim.eps_y = self.eps_n_y_data * 1e-6 / self.gamma_energy
 
     def get_image(self):
-        k_list = list()
-        for dev in self.magnet_devices:
-            k_list.append(dev.mainfieldcomponent)
-        sigma_x = self.sim.get_screen_beamsize(k_list, "x")
-        sigma_y = self.sim.get_screen_beamsize(k_list, "y")
-        x = self.px * (np.arange(self.width) - self.width / 2)
-        y = self.px * (np.arange(self.height) - self.height / 2)
-        X, Y = np.meshgrid(x, y)
-        self.debug_stream("Beamsize: {0:.3f} x {1:.3f} mm".format(sigma_x * 1e3, sigma_y * 1e3))
-        beam_image = 2e-6 * self.charge_data / sigma_x / sigma_y * np.exp(-X**2/(2*sigma_x**2)) * np.exp(-Y**2/(2*sigma_y**2))
-        self.image_data = np.minimum((beam_image + self.noiselevel_data * np.random.random((self.height, self.width))).astype(np.uint16), 4096)
-        n_noise = np.maximum(0, 500 + self.noiselevel_data * np.random.normal(50, 25, 1)).astype(int)
-        xr = (self.width * np.random.random(n_noise)).astype(int)
-        yr = (self.height * np.random.random(n_noise)).astype(int)
-        ir = np.maximum(0, np.minimum(4096, np.random.normal(2560, 512, n_noise))).astype(np.uint16)
-        self.image_data[yr, xr] = ir
+        if self.running:
+            k_list = list()
+            for dev in self.magnet_devices:
+                k_list.append(dev.mainfieldcomponent)
+            sigma_x = self.sim.get_screen_beamsize(k_list, "x")
+            sigma_y = self.sim.get_screen_beamsize(k_list, "y")
+            x = self.px * (np.arange(self.width) - self.width / 2)
+            y = self.px * (np.arange(self.height) - self.height / 2)
+            X, Y = np.meshgrid(x, y)
+            self.debug_stream("Beamsize: {0:.3f} x {1:.3f} mm".format(sigma_x * 1e3, sigma_y * 1e3))
+            beam_image = 2e-6 * self.charge_data / sigma_x / sigma_y * np.exp(-X**2/(2*sigma_x**2)) * np.exp(-Y**2/(2*sigma_y**2))
+            self.image_data = np.minimum((beam_image + self.noiselevel_data * np.random.random((self.height, self.width))).astype(np.uint16), 4096)
+            n_noise = np.maximum(0, 500 + self.noiselevel_data * np.random.normal(50, 25, 1)).astype(int)
+            xr = (self.width * np.random.random(n_noise)).astype(int)
+            yr = (self.height * np.random.random(n_noise)).astype(int)
+            ir = np.maximum(0, np.minimum(4096, np.random.normal(2560, 512, n_noise))).astype(np.uint16)
+            self.image_data[yr, xr] = ir
         return self.image_data
 
     def get_framerate(self):
@@ -558,6 +579,18 @@ class DummyLiveviewer(Device):
         self.gamma_energy = value / 0.511
         self.update_sim()
 
+    @command
+    def start(self):
+        self.info_stream("Starting camera {0}".format(self.screen_name))
+        self.running = True
+        self.set_state(pt.DevState.RUNNING)
+
+    @command
+    def stop(self):
+        self.info_stream("Stopping camera {0}".format(self.screen_name))
+        self.running = False
+        self.set_state(pt.DevState.ON)
+
 
 class DummyBeamviewer(Device):
     __metaclass__ = DeviceMeta
@@ -597,6 +630,16 @@ class DummyBeamviewer(Device):
                          hw_memorized=True,
                          doc="Position in linac", )
 
+    roi = attribute(label='roi',
+                    dtype=[float],
+                    access=pt.AttrWriteType.READ,
+                    max_dim_x=4,
+                    unit="m",
+                    format="%4.3f",
+                    min_value=-2048.0,
+                    max_value=2048.0,
+                    fget="get_roi",
+                    doc="ROI for calibration", )
 
     # --- Device properties
     #
@@ -608,6 +651,7 @@ class DummyBeamviewer(Device):
         self.cal = "{\"angle\": 0.0, \"pos\": [258.5, 48.57], \"size\": [357.0, 357.0]}"
         self.position_data = 0.0
         self.width = 5.0
+        self.roi_data = [0, 200, 0, 200]
         logger.info("In DummyBeamViewer: {0} {1}".format(klass, name))
         Device.__init__(self, klass, name)
 
@@ -630,6 +674,9 @@ class DummyBeamviewer(Device):
     def set_position(self, new_pos):
         self.info_stream("In set_position: New position {0} m".format(new_pos))
         self.position_data = new_pos
+
+    def get_roi(self):
+        return self.roi_data
 
 
 class DummyLimaccd(Device):

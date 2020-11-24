@@ -7,14 +7,14 @@ Gui with splitters to set relative size of areas.
 @author: Filip Lindau
 """
 
-from PyQt4 import QtGui, QtCore
+from PyQt5 import QtGui, QtCore, QtWidgets
 
 import pyqtgraph as pq
 import sys
 import glob
 import numpy as np
 import itertools
-from quadscan_gui_splitter import Ui_QuadScanDialog
+from quadscan_gui_multi import Ui_QuadScanDialog
 from scandata_file_dialog import OpenScanFileDialog
 from collections import OrderedDict
 import threading
@@ -41,13 +41,45 @@ pq.graphicsItems.GradientEditorItem.Gradients['thermalclip'] = {
               (1, (255, 255, 255, 255))], 'mode': 'rgb'}
 
 
-no_database = False
+no_database = True
 dummy_name_dict = {"mag": "192.168.1.101:10000/i-ms1/mag/qb-01#dbase=no",
                    "crq": "192.168.1.101:10000/i-ms1/mag/qb-01#dbase=no",
                    "screen": "192.168.1.101:10001/i-ms1/dia/scrn-01#dbase=no",
-                   "beamviewer": "192.168.1.101:10002/lima/beamviewer/i-ms1-dia-scrn-01#dbase=no",
-                   "liveviewer": "192.168.1.101:10003/lima/liveviewer/i-ms1-dia-scrn-01#dbase=no",
+                   "beamviewer": "192.168.1.101:10003/lima/beamviewer/i-ms1-dia-scrn-01#dbase=no",
+                   "liveviewer": "192.168.1.101:10002/lima/liveviewer/i-ms1-dia-scrn-01#dbase=no",
                    "limaccd": "192.168.1.101:10004/lima/limaccd/i-ms1-dia-scrn-01#dbase=no"}
+
+ms1_dict = {"mag": ["192.168.1.101:10000/i-ms1/mag/qb-01#dbase=no",
+                    "192.168.1.101:10000/i-ms1/mag/qb-02#dbase=no",
+                    "192.168.1.101:10000/i-ms1/mag/qb-03#dbase=no",
+                    "192.168.1.101:10000/i-ms1/mag/qb-04#dbase=no"],
+                   "crq": "192.168.1.101:10000/i-ms1/mag/qb-01#dbase=no",
+                   "screen": "192.168.1.101:10001/i-ms1/dia/scrn-01#dbase=no",
+                   "beamviewer": "192.168.1.101:10003/lima/beamviewer/i-ms1-dia-scrn-01#dbase=no",
+                   "liveviewer": "192.168.1.101:10002/lima/liveviewer/i-ms1-dia-scrn-01#dbase=no",
+                   "limaccd": "192.168.1.101:10004/lima/limaccd/i-ms1-dia-scrn-01#dbase=no"}
+
+ms2_dict = {"mag": ["192.168.1.101:10000/i-ms2/mag/qb-01#dbase=no",
+                    "192.168.1.101:10000/i-ms2/mag/qb-02#dbase=no",
+                    "192.168.1.101:10000/i-ms2/mag/qb-03#dbase=no",
+                    "192.168.1.101:10000/i-ms2/mag/qb-04#dbase=no"],
+                   "crq": "192.168.1.101:10000/i-ms2/mag/qb-01#dbase=no",
+                   "screen": "192.168.1.101:10001/i-ms2/dia/scrn-02#dbase=no",
+                   "beamviewer": "192.168.1.101:10003/lima/beamviewer/i-ms2-dia-scrn-02#dbase=no",
+                   "liveviewer": "192.168.1.101:10002/lima/liveviewer/i-ms2-dia-scrn-02#dbase=no",
+                   "limaccd": "192.168.1.101:10004/lima/limaccd/i-ms2-dia-scrn-02#dbase=no"}
+
+ms3_dict = {"mag": ["192.168.1.101:10000/i-ms3/mag/qf-01#dbase=no",
+                    "192.168.1.101:10000/i-ms3/mag/qf-02#dbase=no",
+                    "192.168.1.101:10000/i-ms3/mag/qf-03#dbase=no",
+                    "192.168.1.101:10000/i-ms3/mag/qf-04#dbase=no"],
+                   "crq": "192.168.1.101:10000/i-ms3/mag/qb-01#dbase=no",
+                   "screen": "192.168.1.101:10001/i-ms3/dia/scrn-01#dbase=no",
+                   "beamviewer": "192.168.1.101:10003/lima/beamviewer/i-ms3-dia-scrn-01#dbase=no",
+                   "liveviewer": "192.168.1.101:10002/lima/liveviewer/i-ms3-dia-scrn-01#dbase=no",
+                   "limaccd": "192.168.1.101:10004/lima/limaccd/i-ms3-dia-scrn-01#dbase=no"}
+
+dummy_name_dict = {"MS1": ms1_dict, "MS2": ms2_dict, "MS3": ms3_dict, "SP02": ms3_dict}
 
 
 class MyScatterPlotItem(pq.ScatterPlotItem):
@@ -97,7 +129,7 @@ class MyHistogramItem(pq.HistogramLUTItem):
             self.region.setRegion([mn, mx])
 
 
-class QuadScanGui(QtGui.QWidget):
+class QuadScanGui(QtWidgets.QWidget):
     """
     Class for scanning a motor while grabbing images to produce a frog trace. It can also analyse the scanned trace
     or saved traces.
@@ -110,7 +142,7 @@ class QuadScanGui(QtGui.QWidget):
 
     def __init__(self, parent=None):
         root.debug("Init")
-        QtGui.QWidget.__init__(self, parent)
+        QtWidgets.QWidget.__init__(self, parent)
         self.settings = QtCore.QSettings('Maxlab', 'QuadScan')
 
         self.current_state = "unknown"
@@ -157,6 +189,8 @@ class QuadScanGui(QtGui.QWidget):
         self.screen_tasks = list()      # Repeat tasks for selected screen
         self.processing_tasks = list()
         self.scan_task = None
+        self.quad_min_value = -6.0
+        self.quad_max_value = 6.0
 
         self.gui_lock = threading.Lock()
 
@@ -193,7 +227,7 @@ class QuadScanGui(QtGui.QWidget):
         """
         # Plotting widgets:
         self.ui.camera_widget.ui.histogram.gradient.loadPreset('thermalclip')
-        self.ui.camera_widget.setSizePolicy(QtGui.QSizePolicy.Expanding, QtGui.QSizePolicy.Expanding)
+        self.ui.camera_widget.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
         self.ui.camera_widget.getView().setAspectLocked(False)
         self.ui.camera_widget.setImage(np.random.random((64, 64)))
         self.ui.camera_widget.ui.roiBtn.hide()
@@ -211,7 +245,7 @@ class QuadScanGui(QtGui.QWidget):
         # hw.setCentralItem(hw.item)
         # hw.item.setImageItem(self.ui.process_image_widget.getImageItem())
         self.ui.process_image_widget.ui.histogram.gradient.loadPreset('thermalclip')
-        self.ui.process_image_widget.setSizePolicy(QtGui.QSizePolicy.Expanding, QtGui.QSizePolicy.Expanding)
+        self.ui.process_image_widget.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
         self.ui.process_image_widget.getView().setAspectLocked(False)
         self.ui.process_image_widget.setImage(np.random.random((64, 64)))
         self.ui.process_image_widget.ui.roiBtn.hide()
@@ -263,6 +297,20 @@ class QuadScanGui(QtGui.QWidget):
         # Scan status init
         self.ui.scan_status_label.setText("STOPPED: k -/- image -/-")
         self.ui.scan_progress_label.setText("[----------]")
+
+        # Quad input init
+        self.ui.quad1_spinbox.editingFinished.connect(self.update_quad_spinbox)
+        self.ui.quad2_spinbox.editingFinished.connect(self.update_quad_spinbox)
+        self.ui.quad3_spinbox.editingFinished.connect(self.update_quad_spinbox)
+        self.ui.quad4_spinbox.editingFinished.connect(self.update_quad_spinbox)
+        self.ui.quad5_spinbox.editingFinished.connect(self.update_quad_spinbox)
+        self.ui.quad6_spinbox.editingFinished.connect(self.update_quad_spinbox)
+        self.ui.quad1_slider.valueChanged.connect(self.update_quad_slider)
+        self.ui.quad2_slider.valueChanged.connect(self.update_quad_slider)
+        self.ui.quad3_slider.valueChanged.connect(self.update_quad_slider)
+        self.ui.quad4_slider.valueChanged.connect(self.update_quad_slider)
+        self.ui.quad5_slider.valueChanged.connect(self.update_quad_slider)
+        self.ui.quad6_slider.valueChanged.connect(self.update_quad_slider)
 
         sections = ["MS1", "MS2", "MS3", "SP02"]
         for sect in sections:
@@ -323,7 +371,7 @@ class QuadScanGui(QtGui.QWidget):
 
         val = self.settings.value("electron_energy", "200", type=float)
         self.ui.electron_energy_spinbox.setValue(val)
-        val = self.settings.value("rep_ate", "2", type=float)
+        val = self.settings.value("rep_rate", "2", type=float)
         self.ui.reprate_spinbox.setValue(val)
 
         # Signal connections
@@ -510,7 +558,7 @@ class QuadScanGui(QtGui.QWidget):
         filedialog.setGeometry(g.left()+20, g.top()+20, 1000, 700)
         res = filedialog.exec_()
         root.debug("Load dir return value: {0}".format(res))
-        if res != QtGui.QDialog.Accepted:
+        if res != QtWidgets.QDialog.Accepted:
             return
         load_dir = filedialog.get_selected_path()
         self.last_load_dir = load_dir
@@ -730,14 +778,29 @@ class QuadScanGui(QtGui.QWidget):
         self.ui.quad_combobox.blockSignals(True)
         self.ui.screen_combobox.blockSignals(True)
         if sect != self.current_section or self.section_init_flag is True:
-            root.debug("New section, populating comboboxes")
-            root.debug("Number of quads: {0}".format(len(quads)))
+            root.info("New section, populating comboboxes")
+            root.info("Number of quads: {0}".format(len(quads)))
             self.ui.quad_combobox.clear()
             self.ui.screen_combobox.clear()
 
             # root.debug("Quad combobox count: {0}".format(self.ui.quad_combobox.count()))
-            for qd in quads:
+            for ind, qd in enumerate(quads):
+                getattr(self.ui, "quad{0}_label".format(ind+1)).setText("--")
+                getattr(self.ui, "quad{0}_slider".format(ind+1)).setEnabled(False)
+                getattr(self.ui, "quad{0}_spinbox".format(ind+1)).setEnabled(False)
+
                 self.ui.quad_combobox.addItem(qd.name.upper())
+                # Connect to device:
+                try:
+                    dev = self.device_handler.get_device(qd.crq)
+                except pt.DevFailed as e:
+                    self.logger.error("{0}: Could not connect. {1}".format(self, e))
+                # Update write values in a task:
+                k_task = TangoReadAttributeTask("mainfieldcomponent", qd.crq, self.device_handler,
+                                                name="k_read_quad{0}_{1}".format(ind+1, qd.name),
+                                                callback_list=[self.read_k_init])
+                k_task.start()
+
             for sc in screens:
                 self.ui.screen_combobox.addItem(sc.name.upper())
             try:
@@ -786,6 +849,46 @@ class QuadScanGui(QtGui.QWidget):
         else:
             screen_name = None
 
+        self.ui.quad1_label.setText("--")
+        self.ui.quad1_slider.setEnabled(False)
+        self.ui.quad1_spinbox.setEnabled(False)
+        self.ui.quad2_label.setText("--")
+        self.ui.quad2_slider.setEnabled(False)
+        self.ui.quad2_spinbox.setEnabled(False)
+        self.ui.quad3_label.setText("--")
+        self.ui.quad3_slider.setEnabled(False)
+        self.ui.quad3_spinbox.setEnabled(False)
+        self.ui.quad4_label.setText("--")
+        self.ui.quad4_slider.setEnabled(False)
+        self.ui.quad4_spinbox.setEnabled(False)
+        self.ui.quad5_label.setText("--")
+        self.ui.quad5_slider.setEnabled(False)
+        self.ui.quad5_spinbox.setEnabled(False)
+        self.ui.quad6_label.setText("--")
+        self.ui.quad6_slider.setEnabled(False)
+        self.ui.quad6_spinbox.setEnabled(False)
+        try:
+            self.ui.quad1_label.setText(quads[0].name)
+            self.ui.quad1_slider.setEnabled(True)
+            self.ui.quad1_spinbox.setEnabled(True)
+            self.ui.quad2_label.setText(quads[1].name)
+            self.ui.quad2_slider.setEnabled(True)
+            self.ui.quad2_spinbox.setEnabled(True)
+            self.ui.quad3_label.setText(quads[2].name)
+            self.ui.quad3_slider.setEnabled(True)
+            self.ui.quad3_spinbox.setEnabled(True)
+            self.ui.quad4_label.setText(quads[3].name)
+            self.ui.quad4_slider.setEnabled(True)
+            self.ui.quad4_spinbox.setEnabled(True)
+            self.ui.quad5_label.setText(quads[4].name)
+            self.ui.quad5_slider.setEnabled(True)
+            self.ui.quad5_spinbox.setEnabled(True)
+            self.ui.quad6_label.setText(quads[5].name)
+            self.ui.quad6_slider.setEnabled(True)
+            self.ui.quad6_spinbox.setEnabled(True)
+        except IndexError:
+            pass
+
         # Set the quad and screen selected:
         if quad_name is not None and screen_name is not None:
             if self.current_screen is None:
@@ -825,6 +928,82 @@ class QuadScanGui(QtGui.QWidget):
         if load_quad:
             for t in self.quad_tasks:
                 t.cancel()
+            self.quad_tasks = list()
+            k_task = TangoReadAttributeTask("mainfieldcomponent", new_quad.crq, self.device_handler,
+                                            name="k_read", callback_list=[self.read_k])
+            # k_task.start()
+            k_rep_task = RepeatTask(k_task, -1, 0.3, name="k_repeat")
+            k_rep_task.start()
+            self.quad_init_flag = True
+            self.quad_tasks.append(k_rep_task)
+            self.current_quad = new_quad
+            self.ui.current_quad_sel_label.setText("{0}".format(new_quad.mag.upper()))
+            # Add more device connections here
+            e_task = TangoReadAttributeTask("energy", new_quad.crq, self.device_handler,
+                                            name="e_read", callback_list=[self.read_k])
+            e_task.start()
+
+        try:
+            load_screen = new_screen.name != self.current_screen.name
+        except AttributeError:
+            load_screen = True
+        if load_screen:
+            for t in self.screen_tasks:
+                t.cancel()
+            self.screen_tasks = list()
+            image_task = TangoReadAttributeTask("image", new_screen.liveviewer, self.device_handler,
+                                                name="cam_image_read", callback_list=[self.read_image])
+            rep_task = RepeatTask(image_task, -1, 0.3, name="cam_image_repeat")
+            rep_task.start()
+            self.screen_tasks.append(rep_task)
+            cam_state_task = TangoReadAttributeTask("state", new_screen.liveviewer, self.device_handler,
+                                                    name="cam_state_read", callback_list=[self.read_image])
+            rep_task = RepeatTask(cam_state_task, -1, 0.5, name="cam_state_repeat")
+            rep_task.start()
+            self.screen_tasks.append(rep_task)
+            cam_state_task = TangoReadAttributeTask("framerate", new_screen.liveviewer, self.device_handler,
+                                                    name="cam_reprate_read", callback_list=[self.read_image])
+            rep_task = RepeatTask(cam_state_task, -1, 0.5, name="cam_reprate_repeat")
+            rep_task.start()
+            self.screen_tasks.append(rep_task)
+            screen_in_task = TangoReadAttributeTask("statusin", new_screen.screen, self.device_handler,
+                                                    name="screen_in_read", callback_list=[self.read_image])
+            rep_task = RepeatTask(screen_in_task, -1, 0.5, name="screen_in_repeat")
+            rep_task.start()
+            self.screen_tasks.append(rep_task)
+            cam_cal_task = BagOfTasksTask([TangoReadAttributeTask("measurementruler", new_screen.beamviewer,
+                                                                  self.device_handler, name="cam_cal_ruler"),
+                                           TangoReadAttributeTask("measurementrulerwidth", new_screen.beamviewer,
+                                                                  self.device_handler, name="cam_cal_width"),
+                                           TangoReadAttributeTask("roi", new_screen.beamviewer,
+                                                                  self.device_handler, name="cam_cal_roi")
+                                           ],
+                                          name="cam_cal_read", callback_list=[self.read_image])
+            cam_cal_task.start()
+            self.current_screen = new_screen
+
+            # Add more device connections here
+
+    def set_section_all_quads(self, quad_list, new_screen):
+        """
+        Setup hardware access to section from current_sect, current_quad, current_screen:
+
+        Will add devices to the device handler for quad mag, crq + scrn, liveviewer, beamviewer
+
+        Stop current monitor of k-value, image
+
+        Start new monitor task of k-value, image
+
+        :param quad_list:
+        :param new_screen:
+        :return:
+        """
+        root.info("Set section {0} with {1} and {2}".format(self.current_section,
+                                                            [q.name for q in quad_list],
+                                                            new_screen.name))
+        for t in self.quad_tasks:
+            t.cancel()
+        for new_quad in quad_list:
             self.quad_tasks = list()
             k_task = TangoReadAttributeTask("mainfieldcomponent", new_quad.crq, self.device_handler,
                                             name="k_read", callback_list=[self.read_k])
@@ -1100,6 +1279,68 @@ class QuadScanGui(QtGui.QWidget):
             self.ui.camera_widget.setImage(np.transpose(new_image), autoRange=False, autoLevels=False)
         self.ui.camera_widget.roi.show()
         self.ui.camera_widget.update()
+
+    def update_quad_slider(self):
+        sender = self.sender()
+        if sender == self.ui.quad1_slider:
+            val = self.ui.quad1_slider.value()
+            spinbox = self.ui.quad1_spinbox
+        elif sender == self.ui.quad2_slider:
+            val = self.ui.quad2_slider.value()
+            spinbox = self.ui.quad2_spinbox
+        elif sender == self.ui.quad3_slider:
+            val = self.ui.quad3_slider.value()
+            spinbox = self.ui.quad3_spinbox
+        elif sender == self.ui.quad4_slider:
+            val = self.ui.quad4_slider.value()
+            spinbox = self.ui.quad4_spinbox
+        elif sender == self.ui.quad5_slider:
+            val = self.ui.quad5_slider.value()
+            spinbox = self.ui.quad5_spinbox
+        elif sender == self.ui.quad6_slider:
+            val = self.ui.quad6_slider.value()
+            spinbox = self.ui.quad6_spinbox
+        spinbox.setValue(self.quad_min_value + 0.01 * val * (self.quad_max_value - self.quad_min_value))
+        spinbox.editingFinished.emit()
+
+    def update_quad_spinbox(self):
+        sender = self.sender()
+        val = sender.value()
+        quads = self.section_devices.sect_quad_dict[self.current_section]
+        try:
+            if sender == self.ui.quad1_spinbox:
+                root.debug("Quad1 spinbox updated to {0:.2f}".format(val))
+                slider = self.ui.quad1_slider
+                task = TangoWriteAttributeTask("mainfieldcomponent", quads[0].crq, self.device_handler, val, "write_k")
+            elif sender == self.ui.quad2_spinbox:
+                root.debug("Quad2 spinbox updated to {0:.2f}".format(val))
+                slider = self.ui.quad2_slider
+                task = TangoWriteAttributeTask("mainfieldcomponent", quads[1].crq, self.device_handler, val, "write_k")
+            elif sender == self.ui.quad3_spinbox:
+                root.debug("Quad3 spinbox updated to {0:.2f}".format(val))
+                slider = self.ui.quad3_slider
+                task = TangoWriteAttributeTask("mainfieldcomponent", quads[2].crq, self.device_handler, val, "write_k")
+            elif sender == self.ui.quad4_spinbox:
+                root.debug("Quad4 spinbox updated to {0:.2f}".format(val))
+                slider = self.ui.quad4_slider
+                task = TangoWriteAttributeTask("mainfieldcomponent", quads[3].crq, self.device_handler, val, "write_k")
+            elif sender == self.ui.quad5_spinbox:
+                root.debug("Quad5 spinbox updated to {0:.2f}".format(val))
+                slider = self.ui.quad5_slider
+                task = TangoWriteAttributeTask("mainfieldcomponent", quads[4].crq, self.device_handler, val, "write_k")
+            elif sender == self.ui.quad6_spinbox:
+                root.debug("Quad6 spinbox updated to {0:.2f}".format(val))
+                slider = self.ui.quad6_slider
+                task = TangoWriteAttributeTask("mainfieldcomponent", quads[5].crq, self.device_handler, val, "write_k")
+        except IndexError:
+            pass
+        try:
+            task.start()
+        except NameError:
+            pass
+        slider.blockSignals(True)
+        slider.setValue(100 * (val - self.quad_min_value) / (self.quad_max_value - self.quad_min_value))
+        slider.blockSignals(False)
 
     def plot_sigma_data(self):
         root.info("Plotting sigma data")
@@ -1710,6 +1951,10 @@ class QuadScanGui(QtGui.QWidget):
             root.warning("{0}: Not valid task... {1}".format(name, e))
             return
 
+        if result is None:
+            root.warning("{0} returned None".format(name))
+            return None
+
         if "cam_image_read" in name:
             if task.is_cancelled():
                 root.info("Image task cancelled.")
@@ -1736,7 +1981,10 @@ class QuadScanGui(QtGui.QWidget):
                 meas_rul = eval(result[0].value)
                 meas_w = result[1].value
                 cal = meas_w / meas_rul["size"][0]
-                roi = eval(result[2].value)
+                try:
+                    roi = eval(result[2].value)
+                except ValueError:
+                    roi = [0, 200, 0, 200]
                 root.debug("Camera ROI: {0}".format(roi))
                 self.ui.camera_widget.roi.setPos([roi[0], roi[2]])
                 self.ui.camera_widget.roi.setSize([roi[1]-roi[0], roi[3]-roi[2]])
@@ -1752,9 +2000,24 @@ class QuadScanGui(QtGui.QWidget):
         else:
             root.error("Task {0} not useful for camera updating".format(name))
 
+    def read_k_init(self, task):
+        try:
+            name = task.get_name()
+            result = task.get_result(wait=False)
+        except AttributeError as e:
+            root.warning("{0}: Not valid task... {1}".format(name, e))
+            return
+
+        quad_ind = name.split("_")[-2]
+        quad_name = name.split("_")[-1]
+        getattr(self.ui, "{0}_label".format(quad_ind)).setText(quad_name)
+        getattr(self.ui, "{0}_spinbox".format(quad_ind)).setEnabled(True)
+        getattr(self.ui, "{0}_slider".format(quad_ind)).setEnabled(True)
+        getattr(self.ui, "{0}_spinbox".format(quad_ind)).setValue(result.value)
+
 
 if __name__ == "__main__":
-    app = QtGui.QApplication(sys.argv)
+    app = QtWidgets.QApplication(sys.argv)
     myapp = QuadScanGui()
     root.info("QuadScanGui object created")
     myapp.show()

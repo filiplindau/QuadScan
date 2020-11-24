@@ -20,7 +20,7 @@ except ImportError:
 import QuadScanState as qs
 import numpy as np
 from scipy.signal import medfilt2d
-from PyQt4 import QtCore
+from PyQt5 import QtCore
 from multiprocessing import Pool
 
 # logger = logging.getLogger("QuadScanController")

@@ -10,7 +10,7 @@ import logging
 import threading
 import sys
 import time
-from PyQt4 import QtGui, QtCore
+from PyQt5 import QtGui, QtCore, QtWidgets
 
 root = logging.getLogger()
 while len(root.handlers):
@@ -23,9 +23,9 @@ root.addHandler(fh)
 root.setLevel(logging.DEBUG)
 
 
-class TestGui(QtGui.QWidget):
+class TestGui(QtWidgets.QWidget):
     def __init__(self, parent=None):
-        QtGui.QWidget.__init__(self, parent)
+        QtWidgets.QWidget.__init__(self, parent)
         self.label = None
         self.layout = None
         self.setup_layout()
@@ -44,14 +44,14 @@ class TestGui(QtGui.QWidget):
         root.info("Exiting target. Counter: {0}".format(counter))
 
     def setup_layout(self):
-        self.layout = QtGui.QVBoxLayout(self)
-        self.label = QtGui.QLabel("yo yo yo")
+        self.layout = QtWidgets.QVBoxLayout(self)
+        self.label = QtWidgets.QLabel("yo yo yo")
         self.layout.addWidget(self.label)
         self.show()
 
 
 if __name__ == "__main__":
-    app = QtGui.QApplication(sys.argv)
+    app = QtWidgets.QApplication(sys.argv)
     myapp = TestGui()
     root.info("Gui object created")
     myapp.show()

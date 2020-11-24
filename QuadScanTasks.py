@@ -14,6 +14,8 @@ import time
 import ctypes
 import inspect
 import PIL
+from PIL import Image
+import cv2
 import numpy as np
 from numpngw import write_png
 import os
@@ -245,7 +247,7 @@ class LoadQuadImageTask(Task):
             self.cancel()
             return False
         filename = os.path.join(self.path, self.image_name)
-        image = np.array(PIL.Image.open(filename))
+        image = np.array(Image.open(filename))
         self.result = QuadImage(k_ind, k_value, image_ind, image)
 
 
@@ -1246,6 +1248,254 @@ def work_func_shared2(mem_ind, im_ind, im_size, threshold, roi_cent, roi_dim,
     return mem_ind, im_ind, x_cent, sigma_x, y_cent, sigma_y, q, enabled
 
 
+def work_func_shared_cv2(mem_ind, im_ind, im_size, threshold, roi_cent, roi_dim,
+                     cal=[1.0, 1.0], kernel=3, bpp=12, normalize=False, keep_charge_ratio=1.0):
+    t0 = time.time()
+    try:
+        shape = var_dict["image_shape"]
+        # logger.debug("Processing image {0} in pool".format(mem_ind))
+        image = np.frombuffer(var_dict["image"], "i", shape[1] * shape[2],
+                              shape[1] * shape[2] * mem_ind * np.dtype("i").itemsize).reshape((shape[1], shape[2]))
+        roi = np.frombuffer(var_dict["roi"], "f", roi_dim[0] * roi_dim[1],
+                            shape[1] * shape[2] * mem_ind * np.dtype("f").itemsize).reshape(roi_dim)
+        t1 = time.time()
+        # logger.debug("{0}: Mem copy time {1:.2f} ms".format(mem_ind, (t1 - t0) * 1e3))
+        try:
+            x = np.array([int(roi_cent[0] - roi_dim[0] / 2.0), int(roi_cent[0] + roi_dim[0] / 2.0)])
+            y = np.array([int(roi_cent[1] - roi_dim[1] / 2.0), int(roi_cent[1] + roi_dim[1] / 2.0)])
+            # Extract ROI and convert to double:
+            pic_roi = np.float32(image[x[0]:x[1], y[0]:y[1]])
+        except IndexError:
+            pic_roi = np.float32(image)
+        n = 2 ** bpp
+        # t2 = time.time()
+        # logger.debug("{0}: Pic roi time {1:.2f} ms".format(im_ind, (t2-t1)*1e3))
+
+        # Median filtering:
+        try:
+            pic_roi = cv2.medianBlur(pic_roi, kernel)
+        except ValueError as e:
+            logger.warning("{0}======================================".format(mem_ind))
+            logger.warning("{1}: Medfilt kernel value error: {0}".format(e, mem_ind))
+
+        if normalize is True:
+            pic_roi = pic_roi / n
+
+        # Threshold image
+        try:
+            if threshold is None:
+                threshold = pic_roi[0:20, 0:20].mean() * 3 + pic_roi[-20:, -20:].mean() * 3
+            pic_roi[pic_roi < threshold] = 0.0
+        except Exception:
+            logger.warning("{0}======================================".format(mem_ind))
+            logger.exception("{0}: Could not threshold.".format(mem_ind))
+            pic_roi = pic_roi
+
+        # t4 = time.time()
+        # logger.debug("{0}: Threshold time {1:.2f} ms".format(im_ind, (t4-t3)*1e3))
+
+        # Filter out charge:
+        if normalize:
+            n_bins = np.unique(pic_roi.flatten()).shape[0]
+        else:
+            n_bins = int(pic_roi.max())
+        if n_bins < 1:
+            n_bins = 1
+        h = np.histogram(pic_roi, n_bins)
+        hq = (h[0]*h[1][:-1]).cumsum()
+        hq = hq / np.float(hq.max())
+        # hq = (hq.astype(np.float) / hq.max()).cumsum()
+        th_ind = np.searchsorted(hq, 1-keep_charge_ratio)
+        d = (h[1][1] - h[1][0])/2.0
+        th_q = h[1][th_ind] - d
+        pic_roi[pic_roi < th_q] = 0.0
+        # logger.debug("Pic_roi max: {0}, threshold index: {1}, threshold: {2}, ch ratio: {3}\n"
+        #              "hq: {4}".format(n_bins, th_ind, th_q, keep_charge_ratio, hq[0:20]))
+
+        # Centroid and sigma calculations:
+        line_x = pic_roi.sum(0)
+        line_y = pic_roi.sum(1)
+        q = line_x.sum()  # Total signal (charge) in the image
+        l_x_n = np.sum(line_x)
+        l_y_n = np.sum(line_y)
+        # Enable point only if there is data:
+        if l_x_n <= 0.0:
+            enabled = False
+        else:
+            enabled = True
+        try:
+            x_v = cal[0] * np.arange(line_x.shape[0])
+            y_v = cal[1] * np.arange(line_y.shape[0])
+            x_cent = np.sum(x_v * line_x) / l_x_n
+            sigma_x = np.sqrt(np.sum((x_v - x_cent) ** 2 * line_x) / l_x_n)
+            y_cent = np.sum(y_v * line_y) / l_y_n
+            sigma_y = np.sqrt(np.sum((y_v - y_cent) ** 2 * line_y) / l_y_n)
+        except Exception as e:
+            print(e)
+            sigma_x = None
+            sigma_y = None
+            x_cent = 0
+            y_cent = 0
+
+        # t5 = time.time()
+        # logger.debug("{0}: Sigma time {1:.2f} ms".format(im_ind, (t5-t4)*1e3))
+
+        np.copyto(roi, pic_roi)
+    except Exception as e:
+        logger.warning("{0}======================================".format(mem_ind))
+        logger.exception("{0} Work function error".format(mem_ind))
+        return mem_ind, e
+    # logger.debug("{1}: Process time {0:.2f} ms".format((time.time()-t0) * 1e3, mem_ind))
+    return mem_ind, im_ind, x_cent, sigma_x, y_cent, sigma_y, q, enabled
+
+
+def work_func_shared_cv2_mask(mem_ind, im_ind, im_size, threshold, roi_cent, roi_dim,
+                     cal=[1.0, 1.0], kernel=3, bpp=16, normalize=False, keep_charge_ratio=1.0):
+    """
+
+    :param mem_ind: Image index into the shared memory
+    :type mem_ind: int
+    :param im_ind:
+    :type im_ind:
+    :param im_size:
+    :type im_size:
+    :param threshold: Background subtraction threshold. None if automatic thresholding
+    :type threshold:
+    :param roi_cent: Center pixel of ROI, x,y tuple
+    :type roi_cent:
+    :param roi_dim: ROI dimensions, width, height tuple
+    :type roi_dim:
+    :param cal: Pixel size calibration tuple
+    :type cal:
+    :param kernel: Median filter kernel size
+    :type kernel: Odd int
+    :param bpp: Bits per pixel
+    :type bpp:
+    :param normalize: True if the image should be normalized to [0:1]
+    :type normalize:
+    :param keep_charge_ratio: Amount of charge to keep after thresholding
+    :type keep_charge_ratio: float [0:1]
+    :return:
+    :rtype:
+    """
+    t0 = time.time()
+    mask_kern = 5      # Vertical median filter size for mask creation
+    try:
+        shape = var_dict["image_shape"]
+        # logger.debug("Processing image {0} in pool".format(mem_ind))
+        image = np.frombuffer(var_dict["image"], "i", shape[1] * shape[2],
+                              shape[1] * shape[2] * mem_ind * np.dtype("i").itemsize).reshape((shape[1], shape[2]))
+        roi = np.frombuffer(var_dict["roi"], "f", roi_dim[0] * roi_dim[1],
+                            shape[1] * shape[2] * mem_ind * np.dtype("f").itemsize).reshape(roi_dim)
+        t1 = time.time()
+        # logger.debug("{0}: Mem copy time {1:.2f} ms".format(mem_ind, (t1 - t0) * 1e3))
+        try:
+            x = np.array([int(roi_cent[0] - roi_dim[0] / 2.0), int(roi_cent[0] + roi_dim[0] / 2.0)])
+            y = np.array([int(roi_cent[1] - roi_dim[1] / 2.0), int(roi_cent[1] + roi_dim[1] / 2.0)])
+            # Extract ROI and convert to double:
+            pic_roi = np.float32(image[x[0]:x[1], y[0]:y[1]])
+        except IndexError:
+            pic_roi = np.float32(image)
+        n = 2 ** bpp
+
+        # Median filtering:
+        try:
+            pic_roi = cv2.medianBlur(pic_roi, kernel)
+        except ValueError as e:
+            logger.warning("{0}======================================".format(mem_ind))
+            logger.warning("{1}: Medfilt kernel value error: {0}".format(e, mem_ind))
+
+        if normalize is True:
+            pic_roi = pic_roi / n
+
+        if threshold is None:
+            # Background level from first 20 columns, one level for each row (the background structure is banded):
+            if y[0] > 20:
+                pic_bkg = np.float32(image[x[0]:x[1], y[0]-20:y[0]])
+                bkg_level = cv2.medianBlur(pic_bkg, kernel).mean(1)
+                if normalize:
+                    bkg_level /= n
+            elif y[1] < image.shape[1] - 20:
+                pic_bkg = np.float32(image[x[0]:x[1], y[1]:y[1] + 20])
+                bkg_level = cv2.medianBlur(pic_bkg, kernel).mean(1)
+                if normalize:
+                    bkg_level /= n
+            else:
+                bkg_level = pic_roi[:, 0:20].mean(1)
+            logger.debug("{0:.1f}".format(bkg_level.max()))
+            bkg_cut = bkg_level.max() + bkg_level.std() * 3
+            logger.debug("Bkg level: {0:.1f}, bkg_cut: {1:.1f}".format(bkg_level.max(), bkg_cut))
+        else:
+            bkg_cut = threshold
+
+        pic_proc2 = cv2.threshold(pic_roi - (bkg_cut), thresh=0, maxval=1, type=cv2.THRESH_TOZERO)[1]
+        # Create mask around the signal spot by heavily median filtering in the vertical direction (mask_kern ~ 25)
+        # mask = cv2.threshold(cv2.boxFilter(pic_roi, -1, ksize=(np.maximum(kernel, 7), mask_kern)),
+        #                      thresh=bkg_cut, maxval=1, type=cv2.THRESH_BINARY)[1]
+        mask = cv2.threshold(cv2.boxFilter(cv2.medianBlur(pic_roi, ksize=5), -1, ksize=(mask_kern, mask_kern)),
+                             thresh=bkg_cut, maxval=1, type=cv2.THRESH_BINARY)[1]
+        pic_proc3 = cv2.multiply(pic_proc2, mask)
+
+        logger.info("pic_roi max: {0}, mask sum: {1}, pic_proc3 max: {2}".format(pic_roi.max(), mask.sum(), pic_proc3.max()))
+
+        # t4 = time.time()
+        # logger.debug("{0}: Threshold time {1:.2f} ms".format(im_ind, (t4-t3)*1e3))
+
+        # Filter out charge:
+        if normalize:
+            n_bins = np.unique(pic_proc3.flatten()).shape[0]
+        else:
+            n_bins = int(pic_proc3.max())
+        if n_bins < 1:
+            n_bins = 1
+        h = np.histogram(pic_proc3, n_bins)
+        hq = (h[0]*h[1][:-1]).cumsum()
+        hq = hq / np.float(hq.max())
+        # hq = (hq.astype(np.float) / hq.max()).cumsum()
+        th_ind = np.searchsorted(hq, 1-keep_charge_ratio)
+        d = (h[1][1] - h[1][0])/2.0
+        th_q = h[1][th_ind] - d
+        pic_proc3[pic_proc3 < th_q] = 0.0
+        # logger.debug("Pic_roi max: {0}, threshold index: {1}, threshold: {2}, ch ratio: {3}\n"
+        #              "hq: {4}".format(n_bins, th_ind, th_q, keep_charge_ratio, hq[0:20]))
+
+        # Centroid and sigma calculations:
+        line_x = pic_proc3.sum(0)
+        line_y = pic_proc3.sum(1)
+        q = line_x.sum()  # Total signal (charge) in the image
+        l_x_n = np.sum(line_x)
+        l_y_n = np.sum(line_y)
+        # Enable point only if there is data:
+        if l_x_n <= 0.0:
+            enabled = False
+        else:
+            enabled = True
+        try:
+            x_v = cal[0] * np.arange(line_x.shape[0])
+            y_v = cal[1] * np.arange(line_y.shape[0])
+            x_cent = np.sum(x_v * line_x) / l_x_n
+            sigma_x = np.sqrt(np.sum((x_v - x_cent) ** 2 * line_x) / l_x_n)
+            y_cent = np.sum(y_v * line_y) / l_y_n
+            sigma_y = np.sqrt(np.sum((y_v - y_cent) ** 2 * line_y) / l_y_n)
+        except Exception as e:
+            print(e)
+            sigma_x = None
+            sigma_y = None
+            x_cent = 0
+            y_cent = 0
+
+        # t5 = time.time()
+        # logger.debug("{0}: Sigma time {1:.2f} ms".format(im_ind, (t5-t4)*1e3))
+
+        np.copyto(roi, pic_proc3)
+    except Exception as e:
+        logger.warning("{0}======================================".format(mem_ind))
+        logger.exception("{0} Work function error".format(mem_ind))
+        return mem_ind, e
+    # logger.debug("{1}: Process time {0:.2f} ms".format((time.time()-t0) * 1e3, mem_ind))
+    return mem_ind, im_ind, x_cent, sigma_x, y_cent, sigma_y, q, enabled
+
+
 def work_func_local2(image, im_ind, threshold, roi_cent, roi_dim,
                      cal=[1.0, 1.0], kernel=3, bpp=16, normalize=False, keep_charge_ratio=1.0):
     t0 = time.time()
@@ -1359,7 +1609,7 @@ class ProcessAllImagesTask2(Task):
         Task.__init__(self, name, timeout=timeout, trigger_dict=trigger_dict, callback_list=callback_list)
         self.logger.setLevel(logging.INFO)
 
-        self.work_func = work_func_shared2
+        self.work_func = work_func_shared_cv2_mask
 
         self.image_size = image_size
         self.quad_scan_data = None    # type: QuadScanData
@@ -1910,7 +2160,8 @@ class PopulateDummyDeviceList(Task):
         # Loop through sections to find matching devices based on their names:
         for s in sections:
             # Quad names are e.g. i-ms1/mag/qb-01
-            quad_dev_list = [self.dummy_name_dict["mag"]]
+            sect_dict = self.dummy_name_dict[s]
+            quad_dev_list = sect_dict["mag"]
             quad_list = list()
             for mag_name in quad_dev_list:
                 quad = dict()
@@ -1921,7 +2172,8 @@ class PopulateDummyDeviceList(Task):
                     position = 5.0
                     length = 0.2
                     polarity = 1.0
-                    crq = self.dummy_name_dict["crq"]
+                    #crq = self.dummy_name_dict["crq"]
+                    crq = mag_name
                     quad = SectionQuad(name, position, length, mag_name, crq, polarity)
                     quad_list.append(quad)
                 except IndexError as e:
@@ -1933,7 +2185,7 @@ class PopulateDummyDeviceList(Task):
                     pass
 
             # Screen names are e.g. i-ms1/dia/scrn-01
-            screen_dev_list = [self.dummy_name_dict["screen"]]
+            screen_dev_list = [sect_dict["screen"]]
             screen_list = list()
             for sc_name in screen_dev_list:
                 scr = dict()
@@ -1941,9 +2193,9 @@ class PopulateDummyDeviceList(Task):
                     # Extract data for each found screen
                     name = sc_name.split("/")[-1].lower()
                     position = 10.0
-                    liveviewer = self.dummy_name_dict["liveviewer"]
-                    beamviewer = self.dummy_name_dict["beamviewer"]
-                    limaccd = self.dummy_name_dict["limaccd"]
+                    liveviewer = sect_dict["liveviewer"]
+                    beamviewer = sect_dict["beamviewer"]
+                    limaccd = sect_dict["limaccd"]
                     scr = SectionScreen(name, position, liveviewer, beamviewer, limaccd, sc_name)
                     screen_list.append(scr)
                 # If name and/or position for the screen is not retrievable we cannot use it:

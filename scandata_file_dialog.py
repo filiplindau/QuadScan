@@ -12,22 +12,22 @@ from tasks.GenericTasks import Task
 import threading
 import time
 from QuadScanDataStructs import *
-from PyQt4 import QtGui, QtCore
+from PyQt5 import QtGui, QtCore, QtWidgets
 from open_scan_dialog_ui import Ui_QuadFileDialog
 
 import logging
-# logger = logging.getLogger("Task")
-# while len(logger.handlers):
-#     logger.removeHandler(logger.handlers[0])
-#
-# f = logging.Formatter("%(asctime)s - %(name)s.   %(funcName)s - %(levelname)s - %(message)s")
-# fh = logging.StreamHandler()
-# fh.setFormatter(f)
-# logger.addHandler(fh)
-# logger.setLevel(logging.WARNING)
+logger = logging.getLogger("Task")
+while len(logger.handlers):
+    logger.removeHandler(logger.handlers[0])
+
+f = logging.Formatter("%(asctime)s - %(name)s.   %(funcName)s - %(levelname)s - %(message)s")
+fh = logging.StreamHandler()
+fh.setFormatter(f)
+logger.addHandler(fh)
+logger.setLevel(logging.DEBUG)
 
 
-class ScanDataFileSystemModel(QtGui.QFileSystemModel):
+class ScanDataFileSystemModel(QtWidgets.QFileSystemModel):
     def columnCount(self, parent=QtCore.QModelIndex()):
         return super(ScanDataFileSystemModel, self).columnCount() + 1
 
@@ -57,7 +57,7 @@ class ScanDataFileSystemModel(QtGui.QFileSystemModel):
                     im_count = str(d.count())
                 else:
                     im_count = "--"
-                return QtCore.QString(im_count)
+                return im_count
             if role == QtCore.Qt.TextAlignmentRole:
                 return QtCore.Qt.AlignHCenter
         else:
@@ -65,9 +65,9 @@ class ScanDataFileSystemModel(QtGui.QFileSystemModel):
             return super(ScanDataFileSystemModel, self).data(idx, role)
 
 
-class OpenScanFileDialog(QtGui.QDialog):
+class OpenScanFileDialog(QtWidgets.QDialog):
     def __init__(self, start_dir=None, parent=None):
-        QtGui.QWidget.__init__(self, parent)
+        QtWidgets.QWidget.__init__(self, parent)
 
         self.logger = logging.getLogger("FileDialog")
         self.logger.setLevel(logging.WARNING)
@@ -92,7 +92,7 @@ class OpenScanFileDialog(QtGui.QDialog):
         self.ui.file_treeview.setModel(self.model)
         self.logger.debug("UI model {0}".format(self.ui.file_treeview.selectionModel()))
         self.ui.file_treeview.setSortingEnabled(True)
-        self.ui.file_treeview.sortByColumn(0)
+        self.ui.file_treeview.sortByColumn(0, QtCore.Qt.AscendingOrder)
         self.ui.file_treeview.setAnimated(False)
         self.ui.file_treeview.setIndentation(20)
         self.ui.file_treeview.setColumnWidth(0, self.settings.value("filename_col", 400, type=int))
@@ -100,6 +100,7 @@ class OpenScanFileDialog(QtGui.QDialog):
         self.ui.file_treeview.selectionModel().selectionChanged.connect(self.update_selection_from_tree)
 
         self.logger.info("Current path: {0}".format(start_dir))
+        self.target_path_list = list()
         self.expand_to_path(start_dir)
 
         self.ui.cancel_button.clicked.connect(self.reject)
@@ -134,6 +135,7 @@ class OpenScanFileDialog(QtGui.QDialog):
 
     def dir_loaded(self, dir_str):
         self.logger.info("Dir {0} loaded".format(str(dir_str)))
+        self.logger.info("Target path list:\n{0}".format(self.target_path_list))
 
         # Expand to path code:
         if self.target_path_index < len(self.target_path_list):
@@ -153,7 +155,7 @@ class OpenScanFileDialog(QtGui.QDialog):
                 else:
                     self.dir_loaded(self.target_path_list[self.target_path_index])
             else:
-                self.ui.file_treeview.selectionModel().select(ind, QtGui.QItemSelectionModel.SelectCurrent)
+                self.ui.file_treeview.selectionModel().select(ind, QtCore.QItemSelectionModel.SelectCurrent)
 
     def expand_to_path(self, path_name):
         self.target_path_list = str(path_name).split("/")
@@ -169,11 +171,11 @@ class OpenScanFileDialog(QtGui.QDialog):
         row = sel_ind.row()
         sel_string = self.model.fileInfo(sel_ind).canonicalFilePath()
         parent = sel_ind.parent()
-        sel_images = self.model.data(self.model.index(row, 1, parent), QtCore.Qt.DisplayRole).toInt()
-        if sel_images[1] is False:
+        try:
+            sel_images = int(self.model.data(self.model.index(row, 1, parent), QtCore.Qt.DisplayRole))
+            image_count = sel_images
+        except ValueError:
             image_count = None
-        else:
-            image_count = sel_images[0]
         # logger.info("Data: {0}, {1}, {2}".format(str(sel_string), row, sel_images))
         self.ui.dir_lineedit.setText(sel_string)
         self.load_daqinfo(sel_string, image_count)
@@ -261,7 +263,8 @@ class OpenScanFileDialog(QtGui.QDialog):
 
 
 if __name__ == "__main__":
-    app = QtGui.QApplication(sys.argv)
+    app = QtWidgets.QApplication(sys.argv)
     myapp = OpenScanFileDialog("D:/Programming/emittancesinglequad/saved-images")
-    sys.exit(app)
+    myapp.show()
+    sys.exit(app.exec_())
 

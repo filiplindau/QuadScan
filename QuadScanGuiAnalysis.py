@@ -1,13 +1,14 @@
 # -*- coding: utf-8 -*-
 """
 Created 2019-08-19
+Modified 2020-11-20: For Qt5 + OpenCV
 
 Gui with splitters to set relative size of areas.
 
 @author: Filip Lindau
 """
 
-from PyQt4 import QtGui, QtCore
+from PyQt5 import QtGui, QtCore, QtWidgets
 
 import pyqtgraph as pq
 import sys
@@ -98,7 +99,7 @@ class MyHistogramItem(pq.HistogramLUTItem):
             self.region.setRegion([mn, mx])
 
 
-class QuadScanGui(QtGui.QWidget):
+class QuadScanGui(QtWidgets.QWidget):
     """
     Class for scanning a motor while grabbing images to produce a frog trace. It can also analyse the scanned trace
     or saved traces.
@@ -111,7 +112,7 @@ class QuadScanGui(QtGui.QWidget):
 
     def __init__(self, parent=None):
         root.debug("Init")
-        QtGui.QWidget.__init__(self, parent)
+        QtWidgets.QWidget.__init__(self, parent)
         self.settings = QtCore.QSettings('Maxlab', 'QuadScanAnalysis')
 
         self.current_state = "unknown"
@@ -197,7 +198,7 @@ class QuadScanGui(QtGui.QWidget):
         :return:
         """
         self.ui.process_image_widget.ui.histogram.gradient.loadPreset('thermalclip')
-        self.ui.process_image_widget.setSizePolicy(QtGui.QSizePolicy.Expanding, QtGui.QSizePolicy.Expanding)
+        self.ui.process_image_widget.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
         self.ui.process_image_widget.getView().setAspectLocked(False)
         self.ui.process_image_widget.setImage(np.random.random((64, 64)))
         self.ui.process_image_widget.ui.roiBtn.hide()
@@ -402,7 +403,7 @@ class QuadScanGui(QtGui.QWidget):
         filedialog.setGeometry(g.left()+20, g.top()+20, 1000, 700)
         res = filedialog.exec_()
         root.debug("Load dir return value: {0}".format(res))
-        if res != QtGui.QDialog.Accepted:
+        if res != QtWidgets.QDialog.Accepted:
             return
         load_dir = filedialog.get_selected_path()
         self.last_load_dir = load_dir
@@ -672,7 +673,7 @@ class QuadScanGui(QtGui.QWidget):
                 self.start_fit()
 
     def update_image_selection(self, image=None, auto_levels=False, auto_range=False):
-        root.info("Updating selected image, autolevels {0}, autorange {1}".format(auto_levels, auto_range))
+        root.debug("Updating selected image, autolevels {0}, autorange {1}".format(auto_levels, auto_range))
         if image is None or isinstance(image, int):
             im_ind = self.ui.p_image_index_slider.value()
             if self.ui.p_raw_image_radio.isChecked():
@@ -1000,7 +1001,7 @@ class QuadScanGui(QtGui.QWidget):
 
 
 if __name__ == "__main__":
-    app = QtGui.QApplication(sys.argv)
+    app = QtWidgets.QApplication(sys.argv)
     myapp = QuadScanGui()
     root.info("QuadScanGui object created")
     myapp.show()

@@ -196,10 +196,11 @@ class Task(object):
     def get_result(self, wait, timeout=-1):
         if self.completed is not True:
             if wait is True:
-                if timeout > 0:
-                    self.event_done.wait(timeout)
-                else:
-                    self.event_done.wait()
+                if timeout is not None:
+                    if timeout > 0:
+                        self.event_done.wait(timeout)
+                    else:
+                        self.event_done.wait()
         return self.result
 
     def get_name(self):
