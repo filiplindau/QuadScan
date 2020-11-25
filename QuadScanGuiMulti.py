@@ -849,46 +849,6 @@ class QuadScanGui(QtWidgets.QWidget):
         else:
             screen_name = None
 
-        self.ui.quad1_label.setText("--")
-        self.ui.quad1_slider.setEnabled(False)
-        self.ui.quad1_spinbox.setEnabled(False)
-        self.ui.quad2_label.setText("--")
-        self.ui.quad2_slider.setEnabled(False)
-        self.ui.quad2_spinbox.setEnabled(False)
-        self.ui.quad3_label.setText("--")
-        self.ui.quad3_slider.setEnabled(False)
-        self.ui.quad3_spinbox.setEnabled(False)
-        self.ui.quad4_label.setText("--")
-        self.ui.quad4_slider.setEnabled(False)
-        self.ui.quad4_spinbox.setEnabled(False)
-        self.ui.quad5_label.setText("--")
-        self.ui.quad5_slider.setEnabled(False)
-        self.ui.quad5_spinbox.setEnabled(False)
-        self.ui.quad6_label.setText("--")
-        self.ui.quad6_slider.setEnabled(False)
-        self.ui.quad6_spinbox.setEnabled(False)
-        try:
-            self.ui.quad1_label.setText(quads[0].name)
-            self.ui.quad1_slider.setEnabled(True)
-            self.ui.quad1_spinbox.setEnabled(True)
-            self.ui.quad2_label.setText(quads[1].name)
-            self.ui.quad2_slider.setEnabled(True)
-            self.ui.quad2_spinbox.setEnabled(True)
-            self.ui.quad3_label.setText(quads[2].name)
-            self.ui.quad3_slider.setEnabled(True)
-            self.ui.quad3_spinbox.setEnabled(True)
-            self.ui.quad4_label.setText(quads[3].name)
-            self.ui.quad4_slider.setEnabled(True)
-            self.ui.quad4_spinbox.setEnabled(True)
-            self.ui.quad5_label.setText(quads[4].name)
-            self.ui.quad5_slider.setEnabled(True)
-            self.ui.quad5_spinbox.setEnabled(True)
-            self.ui.quad6_label.setText(quads[5].name)
-            self.ui.quad6_slider.setEnabled(True)
-            self.ui.quad6_spinbox.setEnabled(True)
-        except IndexError:
-            pass
-
         # Set the quad and screen selected:
         if quad_name is not None and screen_name is not None:
             if self.current_screen is None:
@@ -951,35 +911,48 @@ class QuadScanGui(QtWidgets.QWidget):
             for t in self.screen_tasks:
                 t.cancel()
             self.screen_tasks = list()
+            task_list = list()
             image_task = TangoReadAttributeTask("image", new_screen.liveviewer, self.device_handler,
                                                 name="cam_image_read", callback_list=[self.read_image])
             rep_task = RepeatTask(image_task, -1, 0.3, name="cam_image_repeat")
-            rep_task.start()
+            task_list.append(image_task)
             self.screen_tasks.append(rep_task)
             cam_state_task = TangoReadAttributeTask("state", new_screen.liveviewer, self.device_handler,
                                                     name="cam_state_read", callback_list=[self.read_image])
             rep_task = RepeatTask(cam_state_task, -1, 0.5, name="cam_state_repeat")
-            rep_task.start()
+            task_list.append(cam_state_task)
             self.screen_tasks.append(rep_task)
-            cam_state_task = TangoReadAttributeTask("framerate", new_screen.liveviewer, self.device_handler,
+            cam_framerate_task = TangoReadAttributeTask("framerate", new_screen.liveviewer, self.device_handler,
                                                     name="cam_reprate_read", callback_list=[self.read_image])
-            rep_task = RepeatTask(cam_state_task, -1, 0.5, name="cam_reprate_repeat")
-            rep_task.start()
+            rep_task = RepeatTask(cam_framerate_task, -1, 0.5, name="cam_reprate_repeat")
+            task_list.append(cam_framerate_task)
             self.screen_tasks.append(rep_task)
             screen_in_task = TangoReadAttributeTask("statusin", new_screen.screen, self.device_handler,
                                                     name="screen_in_read", callback_list=[self.read_image])
             rep_task = RepeatTask(screen_in_task, -1, 0.5, name="screen_in_repeat")
-            rep_task.start()
+            task_list.append(screen_in_task)
             self.screen_tasks.append(rep_task)
+            # task_list.append(TangoReadAttributeTask("measurementruler", new_screen.beamviewer, self.device_handler,
+            #                                         name="cam_cal_ruler", callback_list=[self.read_image]))
+            # task_list.append(TangoReadAttributeTask("measurementrulerwidth", new_screen.beamviewer,
+            #                                         self.device_handler, name="cam_cal_width", callback_list=[self.read_image]))
+            # task_list.append(TangoReadAttributeTask("roi", new_screen.beamviewer, self.device_handler,
+            #                                         name="cam_cal_read", callback_list=[self.read_image]))
+            task_list.append(TangoReadAttributeTask("roi", new_screen.liveviewer, self.device_handler,
+                                                    name="cam_roi_read", callback_list=[self.read_image]))
             cam_cal_task = BagOfTasksTask([TangoReadAttributeTask("measurementruler", new_screen.beamviewer,
                                                                   self.device_handler, name="cam_cal_ruler"),
                                            TangoReadAttributeTask("measurementrulerwidth", new_screen.beamviewer,
                                                                   self.device_handler, name="cam_cal_width"),
                                            TangoReadAttributeTask("roi", new_screen.beamviewer,
-                                                                  self.device_handler, name="cam_cal_roi")
+                                                                  self.device_handler, name="cam_cal_read"),
                                            ],
                                           name="cam_cal_read", callback_list=[self.read_image])
-            cam_cal_task.start()
+            task_list.append(cam_cal_task)
+            cam_seq_task = SequenceTask(task_list, name="cam_init_seq")
+            cam_seq_task.start()
+            # cam_cal_task.add_trigger(cam_state_task)
+            # cam_cal_task.start()
             self.current_screen = new_screen
 
             # Add more device connections here
@@ -1156,6 +1129,13 @@ class QuadScanGui(QtWidgets.QWidget):
 
     def update_camera_roi(self):
         root.info("Updating ROI for camera image")
+        cam = self.current_screen.liveviewer
+        pos = self.ui.camera_widget.roi.pos()
+        size = self.ui.camera_widget.roi.size()
+        roi = [int(pos[0]), int(pos[0] + size[0]), int(pos[1]), int(pos[1] + size[1])]
+
+        task = TangoWriteAttributeTask("roi", cam, self.device_handler, roi, "write_cam_roi")
+        task.start()
 
     def update_image_processing(self, task=None):
         if task is not None:
@@ -1981,13 +1961,16 @@ class QuadScanGui(QtWidgets.QWidget):
                 meas_rul = eval(result[0].value)
                 meas_w = result[1].value
                 cal = meas_w / meas_rul["size"][0]
+                root.info("\n=============================\n"
+                          "Cam cal: {0}\n\n"
+                          "=============================\n".format(cal))
                 try:
-                    roi = eval(result[2].value)
+                    roi = result[2].value
                 except ValueError:
                     roi = [0, 200, 0, 200]
                 root.debug("Camera ROI: {0}".format(roi))
-                self.ui.camera_widget.roi.setPos([roi[0], roi[2]])
-                self.ui.camera_widget.roi.setSize([roi[1]-roi[0], roi[3]-roi[2]])
+                # self.ui.camera_widget.roi.setPos([roi[0], roi[2]])
+                # self.ui.camera_widget.roi.setSize([roi[1]-roi[0], roi[3]-roi[2]])
             except TypeError as e:
                 s = "Could not read calibration. Got {0}".format(result)
                 root.exception(s)
@@ -1997,6 +1980,16 @@ class QuadScanGui(QtWidgets.QWidget):
                 return
             root.debug("Camera calibration: {0} mm/pixel".format(cal))
             self.camera_cal = [cal, cal]
+        elif "cam_roi_read" in name:
+            root.info("\n=============================\n"
+                      "Camera ROI: {0}\n\n"
+                      "=============================\n".format(result.value))
+            roi = result.value
+            root.info("\n=============================\n"
+                      "Camera ROI: {0}\n\n"
+                      "=============================\n".format(roi))
+            self.ui.camera_widget.roi.setPos([roi[0], roi[2]])
+            self.ui.camera_widget.roi.setSize([roi[1] - roi[0], roi[3] - roi[2]])
         else:
             root.error("Task {0} not useful for camera updating".format(name))
 
@@ -2014,6 +2007,7 @@ class QuadScanGui(QtWidgets.QWidget):
         getattr(self.ui, "{0}_spinbox".format(quad_ind)).setEnabled(True)
         getattr(self.ui, "{0}_slider".format(quad_ind)).setEnabled(True)
         getattr(self.ui, "{0}_spinbox".format(quad_ind)).setValue(result.value)
+        getattr(self.ui, "{0}_spinbox".format(quad_ind)).editingFinished.emit()
 
 
 if __name__ == "__main__":

@@ -2397,11 +2397,17 @@ class DeviceHandler(object):
         self.logger.info("{0} Adding device {1} to device handler".format(self, device_name))
         if device_name in self.devices:
             self.logger.debug("Device already in dict. No need")
-            return True
+            task = Task(name="DEV_DONE")
+            task.start()
+            task.get_result(wait=True)
+            task.result = self.devices[device_name]
+            return task
         if self.tango_host is not None:
             full_dev_name = "{0}/{1}".format(self.tango_host, device_name)
         else:
             full_dev_name = device_name
+
+        # Create task that connects to device, then trigger another task that adds it to device dict:
         task = TangoDeviceConnectTask(full_dev_name, name="CONNECT_{0}".format(device_name))
         task.start()
 
