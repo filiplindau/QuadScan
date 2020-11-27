@@ -964,7 +964,7 @@ class Ui_QuadScanDialog(object):
 
     def retranslateUi(self, QuadScanDialog):
         _translate = QtCore.QCoreApplication.translate
-        QuadScanDialog.setWindowTitle(_translate("QuadScanDialog", "Dialog"))
+        QuadScanDialog.setWindowTitle(_translate("QuadScanDialog", "Quad scan"))
         self.label_7.setText(_translate("QuadScanDialog", "Camera"))
         self.quad4_label.setText(_translate("QuadScanDialog", "Quad 4"))
         self.label_3.setText(_translate("QuadScanDialog", "Screen"))

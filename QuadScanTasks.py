@@ -218,7 +218,7 @@ class TangoMonitorAttributeTask(Task):
                 return
             t1 = time.time()
             wait_time = self.interval - (t1 - t0)
-
+        self.logger.info("{0} monitor completed: Target {1:.3f}, Measured {2:.3f}.".format(self, self.target_value, current_value))
         self.result = read_task.get_result(wait=False)
 
 
@@ -1996,7 +1996,7 @@ class TangoScanTask(Task):
             measure_task_list = list()
             for meas_ind, meas_attr in enumerate(self.scan_param.measure_attr_name_list):
                 # m_name = "read_{0}_{1}_{2}".format(meas_attr, pos_ind, self.last_step_result)
-                m_name = "read_{0}_{1}_{2}_{3}".format(meas_attr, pos_ind, next_pos, meas_ind)
+                m_name = "read_{0}_{1}_{2:.3f}_{3}".format(meas_attr, pos_ind, next_pos, meas_ind)
                 self.logger.info("Measuring {0} on {1} using device handler {2}".format(meas_attr,
                                                                                         self.scan_param.measure_device_list[meas_ind],
                                                                                         self.device_handler))

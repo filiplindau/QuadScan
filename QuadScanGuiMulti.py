@@ -910,34 +910,8 @@ class QuadScanGui(QtWidgets.QWidget):
         if load_screen:
             for t in self.screen_tasks:
                 t.cancel()
-            self.screen_tasks = list()
+
             task_list = list()
-            image_task = TangoReadAttributeTask("image", new_screen.liveviewer, self.device_handler,
-                                                name="cam_image_read", callback_list=[self.read_image])
-            rep_task = RepeatTask(image_task, -1, 0.3, name="cam_image_repeat")
-            task_list.append(image_task)
-            self.screen_tasks.append(rep_task)
-            cam_state_task = TangoReadAttributeTask("state", new_screen.liveviewer, self.device_handler,
-                                                    name="cam_state_read", callback_list=[self.read_image])
-            rep_task = RepeatTask(cam_state_task, -1, 0.5, name="cam_state_repeat")
-            task_list.append(cam_state_task)
-            self.screen_tasks.append(rep_task)
-            cam_framerate_task = TangoReadAttributeTask("framerate", new_screen.liveviewer, self.device_handler,
-                                                    name="cam_reprate_read", callback_list=[self.read_image])
-            rep_task = RepeatTask(cam_framerate_task, -1, 0.5, name="cam_reprate_repeat")
-            task_list.append(cam_framerate_task)
-            self.screen_tasks.append(rep_task)
-            screen_in_task = TangoReadAttributeTask("statusin", new_screen.screen, self.device_handler,
-                                                    name="screen_in_read", callback_list=[self.read_image])
-            rep_task = RepeatTask(screen_in_task, -1, 0.5, name="screen_in_repeat")
-            task_list.append(screen_in_task)
-            self.screen_tasks.append(rep_task)
-            # task_list.append(TangoReadAttributeTask("measurementruler", new_screen.beamviewer, self.device_handler,
-            #                                         name="cam_cal_ruler", callback_list=[self.read_image]))
-            # task_list.append(TangoReadAttributeTask("measurementrulerwidth", new_screen.beamviewer,
-            #                                         self.device_handler, name="cam_cal_width", callback_list=[self.read_image]))
-            # task_list.append(TangoReadAttributeTask("roi", new_screen.beamviewer, self.device_handler,
-            #                                         name="cam_cal_read", callback_list=[self.read_image]))
             task_list.append(TangoReadAttributeTask("roi", new_screen.liveviewer, self.device_handler,
                                                     name="cam_roi_read", callback_list=[self.read_image]))
             cam_cal_task = BagOfTasksTask([TangoReadAttributeTask("measurementruler", new_screen.beamviewer,
@@ -951,8 +925,43 @@ class QuadScanGui(QtWidgets.QWidget):
             task_list.append(cam_cal_task)
             cam_seq_task = SequenceTask(task_list, name="cam_init_seq")
             cam_seq_task.start()
-            # cam_cal_task.add_trigger(cam_state_task)
-            # cam_cal_task.start()
+
+            self.screen_tasks = list()
+
+            image_task = TangoReadAttributeTask("image", new_screen.liveviewer, self.device_handler,
+                                                name="cam_image_read", callback_list=[self.read_image])
+            rep_task = RepeatTask(image_task, -1, 0.3, name="cam_image_repeat")
+            rep_task.add_trigger(cam_seq_task)
+            self.screen_tasks.append(rep_task)
+            rep_task.start()
+
+            cam_state_task = TangoReadAttributeTask("state", new_screen.liveviewer, self.device_handler,
+                                                    name="cam_state_read", callback_list=[self.read_image])
+            rep_task = RepeatTask(cam_state_task, -1, 0.5, name="cam_state_repeat")
+            rep_task.add_trigger(cam_seq_task)
+            self.screen_tasks.append(rep_task)
+            rep_task.start()
+
+            cam_framerate_task = TangoReadAttributeTask("framerate", new_screen.liveviewer, self.device_handler,
+                                                    name="cam_reprate_read", callback_list=[self.read_image])
+            rep_task = RepeatTask(cam_framerate_task, -1, 0.5, name="cam_reprate_repeat")
+            rep_task.add_trigger(cam_seq_task)
+            self.screen_tasks.append(rep_task)
+            rep_task.start()
+
+            screen_in_task = TangoReadAttributeTask("statusin", new_screen.screen, self.device_handler,
+                                                    name="screen_in_read", callback_list=[self.read_image])
+            rep_task = RepeatTask(screen_in_task, -1, 0.5, name="screen_in_repeat")
+            rep_task.add_trigger(cam_seq_task)
+            self.screen_tasks.append(rep_task)
+            rep_task.start()
+
+            # task_list.append(TangoReadAttributeTask("measurementruler", new_screen.beamviewer, self.device_handler,
+            #                                         name="cam_cal_ruler", callback_list=[self.read_image]))
+            # task_list.append(TangoReadAttributeTask("measurementrulerwidth", new_screen.beamviewer,
+            #                                         self.device_handler, name="cam_cal_width", callback_list=[self.read_image]))
+            # task_list.append(TangoReadAttributeTask("roi", new_screen.beamviewer, self.device_handler,
+            #                                         name="cam_cal_read", callback_list=[self.read_image]))
             self.current_screen = new_screen
 
             # Add more device connections here
@@ -1440,6 +1449,14 @@ class QuadScanGui(QtWidgets.QWidget):
                 self.scan_task.start()
                 if self.ui.update_analysis_radiobutton.isChecked():
                     # Should also update roi from camera roi
+                    roi_size = self.ui.camera_widget.roi.size()
+                    roi_pos = self.ui.camera_widget.roi.pos()
+                    roi_center = [roi_pos[0] + roi_size[0] / 2.0, roi_pos[1] + roi_size[1] / 2.0]
+                    roi_dim = [roi_size[0], roi_size[1]]
+                    self.ui.p_roi_size_w_spinbox.setValue(roi_dim[0])
+                    self.ui.p_roi_size_h_spinbox.setValue(roi_dim[1])
+                    self.ui.p_roi_cent_x_spinbox.setValue(roi_center[1])
+                    self.ui.p_roi_cent_y_spinbox.setValue(roi_center[0])
                     source_name = "Scan data {0}-{1}".format(self.current_quad.mag, self.current_screen.screen)
                     self.ui.data_source_label.setText(source_name)
 
@@ -1504,20 +1521,21 @@ class QuadScanGui(QtWidgets.QWidget):
         k0 = self.ui.k_start_spinbox.value()
         k1 = self.ui.k_end_spinbox.value()
         dk = (k1 - k0) / np.maximum(1, self.ui.num_k_spinbox.value() - 1)
-
         roi_size = self.ui.camera_widget.roi.size()
         roi_pos = self.ui.camera_widget.roi.pos()
         roi_center = [roi_pos[0] + roi_size[0] / 2.0, roi_pos[1] + roi_size[1] / 2.0]
         roi_dim = [roi_size[0], roi_size[1]]
         root.info("ROI: pos {0}, size {1}, center {2}".format(roi_pos, roi_size, roi_center))
+        quad_name = "/".join(self.current_quad.mag.split("/")[-3:]).split("#")[0]
+        screen_name = "/".join(self.current_screen.screen.split("/")[-3:]).split("#")[0]
         acc_params = AcceleratorParameters(electron_energy=self.ui.electron_energy_spinbox.value(),
                                            quad_length=float(self.ui.quad_length_label.text()),
                                            quad_screen_dist=float(self.ui.quad_screen_dist_label.text()),
                                            k_max=k1, k_min=k0, cal=self.camera_cal,
                                            num_k=self.ui.num_k_spinbox.value(),
                                            num_images=self.ui.num_images_spinbox.value(),
-                                           quad_name=self.current_quad.mag,
-                                           screen_name=self.current_screen.screen,
+                                           quad_name=quad_name,
+                                           screen_name=screen_name,
                                            roi_center=roi_center,
                                            roi_dim=roi_dim)
         self.quad_scan_data_scan = QuadScanData(acc_params=acc_params, images=[], proc_images=[])
@@ -1528,11 +1546,11 @@ class QuadScanGui(QtWidgets.QWidget):
         try:
             save_dict["main_dir"] = self.ui.save_path_linedit.text()
             save_dict["daq_dir"] = self.ui.save_path_linedit.text()
-            save_dict["quad"] = self.current_quad.mag
+            save_dict["quad"] = quad_name
             save_dict["quad_length"] = "{0}".format(self.ui.quad_length_label.text())
             save_dict["quad_2_screen"] = "{0}".format(self.ui.quad_screen_dist_label.text())
-            save_dict["screen"] = self.current_screen.screen
-            save_dict["pixel_dim"] = "{0} {1}".format(self.camera_cal[0], self.camera_cal[1])
+            save_dict["screen"] = screen_name
+            save_dict["pixel_dim"] = "{0:.4f} {1:.4f}".format(self.camera_cal[0], self.camera_cal[1])
             save_dict["num_k_values"] = "{0}".format(self.ui.num_k_spinbox.value())
             save_dict["num_shots"] = "{0}".format(self.ui.num_images_spinbox.value())
             save_dict["k_min"] = "{0}".format(k0)
@@ -1560,9 +1578,11 @@ class QuadScanGui(QtWidgets.QWidget):
             root.exception(e)
             return False
         base_path = str(self.ui.save_path_linedit.text())
-        time_str = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(time.time()))
+        time_str = time.strftime("%Y-%m-%d_%H-%M-%S", time.localtime(time.time()))
         dev_str = "{0}_{1}".format(self.current_quad.mag, self.current_screen.screen)
-        save_path = "{0}/{1}_{2}".format(base_path, time_str, dev_str.replace("/", "-"))
+        dev_str = dev_str.replace(":", "_").replace("#", "").replace("/", "_")
+        save_path = os.path.join(base_path, "{0}_{1}".format(time_str, dev_str))
+        root.info("Save path: {0}".format(save_path))
         try:
             os.makedirs(save_path)
             self.scan_save_path = save_path
@@ -1574,7 +1594,7 @@ class QuadScanGui(QtWidgets.QWidget):
             return False
         full_name = os.path.join(save_path, "daq_info.txt")
         with open(full_name, "w+") as f:
-            for key, value in save_dict.iteritems():
+            for key, value in save_dict.items():
                 s = "{0} : {1}\n".format(key.ljust(13, " "), value)
                 f.write(s)
             f.write("***** Starting loop over quadrupole k-values *****\n")
@@ -1616,7 +1636,7 @@ class QuadScanGui(QtWidgets.QWidget):
 
     def scan_image_callback(self, task):
         """
-        Callback for a new image that had been read. This image is saved and shown in the GUI.
+        Callback for a new image that has been read. This image is saved and shown in the GUI.
         The name of the task contains the index of k and image, and k value.
 
         :param task: TangoReadAttributeTask returning an image.
@@ -1625,7 +1645,7 @@ class QuadScanGui(QtWidgets.QWidget):
         root.debug("Scan image callback")
         name_elements = task.get_name().split("_")
         try:
-            image = task.get_result(wait=False).value
+            image = task.get_result(wait=False).value.astype(np.uint16)
         except AttributeError as e:
             root.error("Scan image not valid task. {0}".format(e))
             return
@@ -1658,15 +1678,17 @@ class QuadScanGui(QtWidgets.QWidget):
             except Exception as e:
                 root.exception("Error when np.maximum")
 
-            # Put image for processing is update while scan is selected:
+            # Put image for processing if update-while-scan is selected:
             if self.ui.update_analysis_radiobutton.isChecked():
-                self.image_processor.set_roi(self.quad_scan_data_scan.acc_params.roi_center,
-                                             self.quad_scan_data_scan.acc_params.roi_dim)
-                threshold = self.ui.p_threshold_spinbox.value()
-                kernel = self.ui.p_median_kernel_spinbox.value()
-                self.image_processor.set_processing_parameters(threshold, self.quad_scan_data_scan.acc_params.cal, kernel)
-                root.debug("Starting processing quadimage {0}".format(quadimage))
-                self.image_processor.process_image(quadimage, enabled=True)
+                th = self.ui.p_threshold_spinbox.value()
+                kern = self.ui.p_median_kernel_spinbox.value()
+                keep_charge_ratio = 0.01 * self.ui.p_keep_charge_ratio_spinbox.value()
+                self.image_processor.clear_callback_list()
+                self.image_processor.add_callback(self.update_image_processing)
+                enabled_list = [True] * len(self.quad_scan_data_scan.images)
+                self.image_processor.process_images(self.quad_scan_data_scan,
+                                                    threshold=th, kernel=kern, enabled_list=enabled_list,
+                                                    keep_charge_ratio=keep_charge_ratio)
 
                 # Show image if raw radio is selected:
                 ind = k_ind + self.quad_scan_data_scan.acc_params.num_k * im_ind
@@ -1914,7 +1936,8 @@ class QuadScanGui(QtWidgets.QWidget):
                 self.quad_init_flag = False
         elif "e_read" in name:
             e = task.get_result(wait=False)
-            self.ui.electron_energy_spinbox.setValue(e.value * 1e-6)
+            root.info("Energy read as: {0}".format(e.value))
+            self.ui.electron_energy_spinbox.setValue(e.value)
 
     def read_image(self, task):
         """
@@ -1959,16 +1982,11 @@ class QuadScanGui(QtWidgets.QWidget):
         elif "cam_cal_read" in name:
             try:
                 meas_rul = eval(result[0].value)
-                meas_w = result[1].value
+                meas_w = result[1].value * 1e-3
                 cal = meas_w / meas_rul["size"][0]
                 root.info("\n=============================\n"
-                          "Cam cal: {0}\n\n"
+                          "Cam cal: {0:.4f}\n\n"
                           "=============================\n".format(cal))
-                try:
-                    roi = result[2].value
-                except ValueError:
-                    roi = [0, 200, 0, 200]
-                root.debug("Camera ROI: {0}".format(roi))
                 # self.ui.camera_widget.roi.setPos([roi[0], roi[2]])
                 # self.ui.camera_widget.roi.setSize([roi[1]-roi[0], roi[3]-roi[2]])
             except TypeError as e:
@@ -1978,16 +1996,11 @@ class QuadScanGui(QtWidgets.QWidget):
                 self.ui.status_textedit.append("\n{0}: \n"
                                                "{1}\n".format(time_str, s))
                 return
-            root.debug("Camera calibration: {0} mm/pixel".format(cal))
+            root.debug("Camera calibration: {0} mm/pixel".format(cal * 1e3))
             self.camera_cal = [cal, cal]
         elif "cam_roi_read" in name:
-            root.info("\n=============================\n"
-                      "Camera ROI: {0}\n\n"
-                      "=============================\n".format(result.value))
             roi = result.value
-            root.info("\n=============================\n"
-                      "Camera ROI: {0}\n\n"
-                      "=============================\n".format(roi))
+            root.debug("Camera ROI: {0}".format(roi))
             self.ui.camera_widget.roi.setPos([roi[0], roi[2]])
             self.ui.camera_widget.roi.setSize([roi[1] - roi[0], roi[3] - roi[2]])
         else:

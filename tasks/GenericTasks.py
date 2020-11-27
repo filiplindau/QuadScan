@@ -495,6 +495,7 @@ class SequenceTask(Task):
                 return
 
         self.result = res
+        self.logger.info("{0} task sequence completed.".format(self))
 
 
 class BagOfTasksTask(Task):
