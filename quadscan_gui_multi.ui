@@ -51,7 +51,7 @@
           </sizepolicy>
          </property>
          <property name="currentIndex">
-          <number>0</number>
+          <number>1</number>
          </property>
          <widget class="QWidget" name="quad_tab">
           <attribute name="title">
@@ -752,7 +752,7 @@
                   </size>
                  </property>
                  <property name="text">
-                  <string>START</string>
+                  <string>SCAN</string>
                  </property>
                 </widget>
                </item>
@@ -2060,7 +2060,7 @@ QSplitter::handle:horizontal {
  </resources>
  <connections/>
  <buttongroups>
-  <buttongroup name="buttonGroup_2"/>
   <buttongroup name="buttonGroup"/>
+  <buttongroup name="buttonGroup_2"/>
  </buttongroups>
 </ui>

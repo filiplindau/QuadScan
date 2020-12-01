@@ -920,7 +920,7 @@ class Ui_QuadScanDialog(object):
         self.verticalLayout.addWidget(self.scan_analysis_splitter)
 
         self.retranslateUi(QuadScanDialog)
-        self.tabWidget.setCurrentIndex(0)
+        self.tabWidget.setCurrentIndex(1)
         QtCore.QMetaObject.connectSlotsByName(QuadScanDialog)
         QuadScanDialog.setTabOrder(self.tabWidget, self.section_combobox)
         QuadScanDialog.setTabOrder(self.section_combobox, self.quad_combobox)
@@ -1001,7 +1001,7 @@ class Ui_QuadScanDialog(object):
         self.set_start_k_button.setText(_translate("QuadScanDialog", "<╝"))
         self.label_21.setText(_translate("QuadScanDialog", "Scan"))
         self.label_20.setText(_translate("QuadScanDialog", "Save name"))
-        self.scan_start_button.setText(_translate("QuadScanDialog", "START"))
+        self.scan_start_button.setText(_translate("QuadScanDialog", "SCAN"))
         self.scan_stop_button.setText(_translate("QuadScanDialog", "STOP"))
         self.label_22.setText(_translate("QuadScanDialog", "TextLabel"))
         self.label_9.setText(_translate("QuadScanDialog", "Analysis"))

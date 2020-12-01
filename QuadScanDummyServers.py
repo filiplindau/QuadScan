@@ -246,11 +246,14 @@ class DummyLiveviewer(Device):
 
     framerate = attribute(label='framerate',
                           dtype=float,
-                          access=pt.AttrWriteType.READ,
+                          access=pt.AttrWriteType.READ_WRITE,
                           display_level=pt.DispLevel.OPERATOR,
                           unit="Hz",
                           format="%5.2f",
                           fget="get_framerate",
+                          fset="set_framerate",
+                          memorized=True,
+                          hw_memorized=True,
                           doc="Camera framerate", )
 
     pixel_cal = attribute(label='Pixel calibration',
@@ -501,6 +504,10 @@ class DummyLiveviewer(Device):
 
     def get_framerate(self):
         return self.framerate_data
+
+    def set_framerate(self, data):
+        self.info_stream("In set_framerate: New framerate {0} Hz".format(data))
+        self.framerate_data = data
 
     def get_pixel_cal(self):
         return self.px
