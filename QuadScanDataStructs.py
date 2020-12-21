@@ -88,6 +88,39 @@ the measured attributes for each scan position. This in turn contains a list of 
 :param timestamp_list: List of timestamps were the scan positions were reached.
 """
 
+ScanParamMulti = namedtuple("ScanParamMulti", "section target_sigma_x target_sigma_y "
+                                              "charge_ratio background_level "
+                                              "guess_alpha guess_beta guess_eps_n "
+                                              "n_steps scan_pos_tol scan_pos_check_interval "
+                                              "screen_name roi_center roi_dim "
+                                              "measure_number measure_interval "
+                                              "base_path save ")
+"""
+Scan parameters defining a multiquad scan.
+:param section: Name of the section, i.e. MS1, MS2, MS3, or SP-02 (not yet implemented).
+:param target_sigma_x: Target horizontal beam size during scan.
+:param target_sigma_y: Target vertical beam size during scan.
+:param charge_ratio: Relative amount of charge to keep in the image after thresholding.
+:param background_level: Background level at which the camera image is thresholded.
+:param guess_alpha: Initial guess of alpha.
+:param guess_beta: Initial guess of beta.
+:param guess_eps_n: Initial guess of normalized emittance.
+:param n_steps: Number of steps in the scan.
+:param scan_pos_tol: Absolute tolerance of the k-value to check if a step is ready.
+:param scan_pos_check_interval: Number of seconds between polling the quad positions.
+:param screen_name: Short name of the screen to use in the section, e.g. SCRN-01.
+:param roi_center: Center pixel coordinates of ROI.
+:param roi_dim: Width and height of ROI.
+:param measure_number: Number of images to capture for each position.
+:param measure_interval: Number of seconds between image captures if multiple images are captured for each position.
+:param base_path: Pathname where a new save directory will be created. The name will include section and timestamp.
+:param save: Boolean, True if images from the scan shall be saved.
+
+"""
+
+ScanMultiStepResult = namedtuple("ScanMultiStepResult", ["k_values", "image", "image_p", "timestamp",
+                                                         "a_list", "b_list", "beta_list", "eps_list"])
+
 AcceleratorParameters = namedtuple("AcceleratorParameters", "electron_energy quad_length quad_screen_dist k_max k_min "
                                                             "num_k num_images cal quad_name screen_name "
                                                             "roi_center roi_dim")

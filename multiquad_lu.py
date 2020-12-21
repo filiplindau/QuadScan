@@ -353,7 +353,7 @@ class MultiQuadLookup(object):
 
         self.n_steps = 16
         self.current_step = 0
-        self.target_sigma = None
+        self.target_sigma_x = None
         self.target_sigma_y = None
 
         self.guess_alpha = None
@@ -403,7 +403,7 @@ class MultiQuadLookup(object):
 
         self.n_steps = 16
         self.current_step = 0
-        self.target_sigma = None
+        self.target_sigma_x = None
 
         self.guess_alpha = None
         self.guess_beta = None
@@ -497,7 +497,7 @@ class MultiQuadLookup(object):
         except FileNotFoundError:
             self.logger.error("Lookup file {0} does not exist".format(filename))
 
-    def start_scan(self, current_sigma_x, current_sigma_y, current_charge, section="MS1", n_steps=16,
+    def start_scan(self, current_sigma_x, current_sigma_y, current_charge=None, section="MS1", n_steps=16,
                    guess_alpha=0.0, guess_beta=40.0, guess_eps_n=2e-6):
         """
         Start a new multi-quad scan using current beam size as target beam size. Initial guess should be provided
@@ -517,7 +517,7 @@ class MultiQuadLookup(object):
         self.logger.info("Start scan: sigma {0:.3f} x {1:.3f} mm".format(current_sigma_x*1e3, current_sigma_y*1e3))
         self.reset_data()
         self.set_section(section, load_file=True)
-        self.target_sigma = current_sigma_x
+        self.target_sigma_x = current_sigma_x
         self.target_sigma_y = current_sigma_y
         self.target_charge = current_charge
 
@@ -575,7 +575,7 @@ class MultiQuadLookup(object):
         self.eps_n_list.append(eps * self.gamma_energy)
 
         # Calculate new estimate of ellipse from the updated twiss parameters
-        theta, r_maj, r_min = self.calc_ellipse(alpha, beta, eps, self.target_sigma)
+        theta, r_maj, r_min = self.calc_ellipse(alpha, beta, eps, self.target_sigma_x)
         if np.isnan(theta):
             theta = self.theta_list[-1]
         if np.isnan(r_maj):
@@ -831,7 +831,7 @@ class MultiQuadLookup(object):
         self.logger.debug("{0}: Determine new target a,b for axis {1}, step {2}".format(self, axis, step))
         if axis == "x":
             x_list = self.x_list
-            target_sigma = self.target_sigma
+            target_sigma = self.target_sigma_x
             a_list = self.a_list
             b_list = self.b_list
         else:
@@ -912,7 +912,7 @@ class MultiQuadLookup(object):
         except ValueError as e:
             self.logger.warning("Could not find quad values for a={0:.3f}, b={1:.3f}".format(target_a, target_b))
             return None
-        target_asi = np.array([self.target_sigma * self.target_sigma_y]).reshape(-1, 1)
+        target_asi = np.array([self.target_sigma_x * self.target_sigma_y]).reshape(-1, 1)
         try:
             ind_si = ((Asi - target_asi) ** 2).sum(-1).argmin()
         except ValueError:
@@ -965,7 +965,7 @@ class MultiQuadLookup(object):
         except ValueError as e:
             self.logger.warning("Could not find quad values for a={0:.3f}, b={1:.3f}".format(target_a, target_b))
             return None
-        target_asi = np.array([self.target_sigma * self.target_sigma_y]).reshape(-1, 1)
+        target_asi = np.array([self.target_sigma_x * self.target_sigma_y]).reshape(-1, 1)
         try:
             ind_si = ((Asi - target_asi) ** 2).sum(-1).argmin()
         except ValueError:
@@ -1018,7 +1018,7 @@ class MultiQuadLookup(object):
         except ValueError as e:
             self.logger.warning("Could not find quad values for a={0:.3f}, b={1:.3f}".format(target_a, target_b))
             return None
-        target_size = np.array([self.target_sigma * self.target_sigma_y]).reshape(-1, 1)
+        target_size = np.array([self.target_sigma_x * self.target_sigma_y]).reshape(-1, 1)
         th_size = 0.1e-3
         try:
             ind_size = ((size_v - target_size) ** 2).sum(-1) < th_size**2
@@ -1083,7 +1083,7 @@ class MultiQuadLookup(object):
         except ValueError as e:
             self.logger.warning("Could not find quad values for a={0:.3f}, b={1:.3f}".format(target_a, target_b))
             return None
-        target_size = np.array([self.target_sigma * self.target_sigma_y]).reshape(-1, 1)
+        target_size = np.array([self.target_sigma_x * self.target_sigma_y]).reshape(-1, 1)
         th_size = 0.5e-3
         try:
             # ind_size = ((size_v - target_size) ** 2).sum(-1) < th_size**4

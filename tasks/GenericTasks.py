@@ -185,6 +185,7 @@ class Task(object):
         with self.lock:
             if callback in self.callback_list:
                 self.callback_list.remove(callback)
+        return
 
     def clear_callback_list(self):
         with self.lock:

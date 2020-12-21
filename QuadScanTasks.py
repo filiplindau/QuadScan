@@ -26,6 +26,7 @@ from scipy.signal import medfilt2d
 
 from tasks.GenericTasks import *
 from QuadScanDataStructs import *
+from multiquad_lu import MultiQuadLookup
 
 
 try:
@@ -2383,7 +2384,6 @@ class DeviceHandler(object):
             dev = task.get_result(wait=True, timeout=self.timeout)
             if task.is_cancelled():
                 raise pt.DevFailed(dev)
-
         return dev
 
     def add_device(self, device_name):

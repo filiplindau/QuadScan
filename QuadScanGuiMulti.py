@@ -21,6 +21,7 @@ import threading
 import time
 from QuadScanTasks import *
 from QuadScanDataStructs import *
+from QuadScanMultiTasks import TangoMultiQuadScanTask
 
 import logging
 
@@ -139,6 +140,7 @@ class QuadScanGui(QtWidgets.QWidget):
     update_fit_signal = QtCore.Signal()
     update_camera_signal = QtCore.Signal(object)
     update_proc_image_signal = QtCore.Signal(object)
+    update_ab_signal = QtCore.Signal()
 
     def __init__(self, parent=None):
         root.debug("Init")
@@ -161,6 +163,14 @@ class QuadScanGui(QtWidgets.QWidget):
         self.fit_x_plot = None
         self.charge_plot = None
         self.fit_plot_vb = None
+
+        self.eps_curve = None
+        self.eps_vb = None
+        self.beta_curve = None
+        self.beta_vb = None
+        self.multi_sigma_x_curve = None
+        self.multi_sigma_x_vb = None
+
         self.process_image_view = None       # ROI for when viewing raw process image
         self.load_image_max = 0.0
         self.scan_image_max = 0.0
@@ -172,6 +182,7 @@ class QuadScanGui(QtWidgets.QWidget):
 
         self.quad_scan_data_analysis = QuadScanData(acc_params=None, images=None, proc_images=None)
         self.quad_scan_data_scan = QuadScanData(acc_params=None, images=None, proc_images=None)
+        self.quad_scan_step_result = None
         self.fit_result = FitResult(poly=None, alpha=None, beta=None, eps=None, eps_n=None,
                                     gamma_e=None, fit_data=None, residual=None)
         self.section_devices = SectionDevices(sect_quad_dict=None, sect_screen_dict=None)
@@ -374,11 +385,19 @@ class QuadScanGui(QtWidgets.QWidget):
         val = self.settings.value("rep_rate", "2", type=float)
         self.ui.reprate_spinbox.setValue(val)
 
+        val = self.settings.value("scan_type", True, type=str)
+        if str(val) is "single":
+            self.ui.single_quadscan_radiobutton.setChecked(True)
+        else:
+            self.ui.multi_quadscan_radiobutton.setChecked(True)
+
+
         # Signal connections
         self.ui.set_start_k_button.clicked.connect(self.set_start_k)
         self.ui.set_end_k_button.clicked.connect(self.set_end_k)
         self.ui.k_current_spinbox.editingFinished.connect(self.set_current_k)
         # self.ui.data_base_dir_button.clicked.connect(self.set_base_dir)
+        self.ui.single_quadscan_radiobutton.toggled.connect(self.change_scan_type)
         self.ui.camera_start_button.clicked.connect(self.start_camera)
         self.ui.camera_stop_button.clicked.connect(self.stop_camera)
         self.ui.camera_widget.roi.sigRegionChangeFinished.connect(self.update_camera_roi)
@@ -456,6 +475,7 @@ class QuadScanGui(QtWidgets.QWidget):
                                            rateLimit=30, slot=self.camera_mouse_moved)
         self.process_image_proxy = pq.SignalProxy(self.ui.process_image_widget.scene.sigMouseMoved,
                                                   rateLimit=30, slot=self.process_image_mouse_moved)
+        self.change_scan_type()
 
     def eventFilter(self, obj, event):
         """
@@ -523,6 +543,10 @@ class QuadScanGui(QtWidgets.QWidget):
         self.settings.setValue("num_k", self.ui.num_k_spinbox.value())
         self.settings.setValue("electron_energy", self.ui.electron_energy_spinbox.value())
         self.settings.setValue("rep_rate", self.ui.reprate_spinbox.value())
+        if self.ui.single_quadscan_radiobutton.isChecked():
+            self.settings.setValue("scan_type", "single")
+        else:
+            self.settings.setValue("scan_type", "multi")
 
         self.settings.setValue("section", self.ui.section_combobox.currentText())
         self.settings.setValue("section_quad", self.ui.quad_combobox.currentText())
@@ -1392,6 +1416,19 @@ class QuadScanGui(QtWidgets.QWidget):
             self.ui.fit_widget.update()
             self.ui.charge_widget.update()
 
+    def plot_ab_data(self):
+        root.info("Plotting ab data")
+        mq: MultiQuadLookup = self.quad_scan_step_result["multiquad"]
+        psi = np.linspace(0, 2 * np.pi, 500)
+        ae, be = mq.get_ab(psi, mq.theta_list[-1], mq.r_maj_list[-1], mq.r_min_list[-1])
+        a = mq.a_list
+        b = mq.b_list
+        self.sigma_x_plot.setData(x=a, y=b, symbol="t", brush=pq.mkBrush(150, 170, 250, 220), size=10, pen=None)
+        self.fit_x_plot.setData(x=ae, y=be, pen=pq.mkPen(180, 170, 50, width=2.0))
+        root.info("eps {0}".format(mq.eps_n_list))
+        self.eps_curve.setData(x=np.arange(len(mq.eps_n_list)), y=mq.eps_n_list, symbol="s",
+                               brush=pq.mkBrush(150, 210, 50, 220), size=10, pen=None)
+
     def set_algo(self):
         root.info("Setting fit algo")
         self.start_fit()
@@ -1411,6 +1448,18 @@ class QuadScanGui(QtWidgets.QWidget):
         task = TangoWriteAttributeTask("mainfieldcomponent", self.current_quad.crq, self.device_handler, value,
                                        "write_k")
         task.start()
+
+    def change_scan_type(self):
+        if self.ui.single_quadscan_radiobutton.isChecked():
+            self.ui.targetsize_spinbox.setEnabled(False)
+            self.ui.k_current_spinbox.setEnabled(True)
+            self.ui.k_start_spinbox.setEnabled(True)
+            self.ui.k_end_spinbox.setEnabled(True)
+        else:
+            self.ui.targetsize_spinbox.setEnabled(True)
+            self.ui.k_current_spinbox.setEnabled(False)
+            self.ui.k_start_spinbox.setEnabled(False)
+            self.ui.k_end_spinbox.setEnabled(False)
 
     def set_base_dir(self):
         root.info("Setting base save directory")
@@ -1442,48 +1491,95 @@ class QuadScanGui(QtWidgets.QWidget):
         """
         root.info("Start scan pressed")
         if self.assert_scan_start_conditions():
-            if self.generate_daq_info():
-                self.scan_image_max = 0.0
-                k0 = self.ui.k_start_spinbox.value()
-                k1 = self.ui.k_end_spinbox.value()
-                dk = (k1 - k0) / np.maximum(1, self.ui.num_k_spinbox.value() - 1)
-                scan_param = ScanParam(scan_attr_name="mainfieldcomponent", scan_device_name=self.current_quad.crq,
-                                       scan_start_pos=k0, scan_end_pos=k1, scan_step=dk,
-                                       scan_pos_tol=np.maximum(dk*0.01, 0.001), scan_pos_check_interval=0.1,
-                                       measure_attr_name_list=["image"], measure_device_list=[self.current_screen.liveviewer],
-                                       measure_number=self.ui.num_images_spinbox.value(),
-                                       measure_interval=1.0 / self.ui.reprate_spinbox.value())
-                # callback_list=[self.scan_callback] is called for each completed step.
-                # read_callback=self.scan_image_callback is called for every measurement (image taken)
-                self.scan_task = TangoScanTask(scan_param=scan_param, device_handler=self.device_handler, name="scan",
-                                               timeout=5.0, callback_list=[self.scan_callback],
-                                               read_callback=self.scan_image_callback)
-                self.scan_task.start()
-                if self.ui.update_analysis_radiobutton.isChecked():
-                    # Should also update roi from camera roi
-                    # roi_size = self.ui.camera_widget.roi.size()
-                    # roi_pos = self.ui.camera_widget.roi.pos()
-                    # roi_center = [roi_pos[0] + roi_size[0] / 2.0, roi_pos[1] + roi_size[1] / 2.0]
-                    # roi_dim = [roi_size[0], roi_size[1]]
-                    # root.info("Scan ROI:\nWidth: {0}   Height: {1}\nx0: {2}      y0:  {3}".format(
-                    #     roi_dim[0], roi_dim[1], roi_center[0], roi_center[1]
-                    # ))
-                    # self.ui.p_roi_size_w_spinbox.setValue(roi_dim[0])
-                    # self.ui.p_roi_size_h_spinbox.setValue(roi_dim[1])
-                    # self.ui.p_roi_cent_x_spinbox.setValue(roi_center[1])
-                    # self.ui.p_roi_cent_y_spinbox.setValue(roi_center[0])
-                    source_name = "Scan data {0}-{1}".format(self.current_quad.mag, self.current_screen.screen)
-                    self.ui.data_source_label.setText(source_name)
-
-                    self.quad_scan_data_analysis = self.quad_scan_data_scan
-                    self.update_analysis_parameters()
-                    self.image_processor.clear_callback_list()
-                    self.image_processor.add_callback(self.scan_image_processed_callback)
-                root.info("Scan started. Parameters: {0}".format(scan_param))
+            if self.ui.single_quadscan_radiobutton.isChecked():
+                root.info("\n\nStarting SINGLE quad scan")
+                self.start_single_scan()
             else:
-                root.error("Scan not started. Could not generate daq_info")
+                root.info("\n\nStarting MULTI quad scan")
+                self.start_multi_scan()
+
         else:
             root.error("Scan not started. Start conditions not met.")
+
+    def start_single_scan(self):
+        if self.generate_daq_info():
+            self.scan_image_max = 0.0
+            k0 = self.ui.k_start_spinbox.value()
+            k1 = self.ui.k_end_spinbox.value()
+            dk = (k1 - k0) / np.maximum(1, self.ui.num_k_spinbox.value() - 1)
+            scan_param = ScanParam(scan_attr_name="mainfieldcomponent", scan_device_name=self.current_quad.crq,
+                                   scan_start_pos=k0, scan_end_pos=k1, scan_step=dk,
+                                   scan_pos_tol=np.maximum(dk * 0.01, 0.001), scan_pos_check_interval=0.1,
+                                   measure_attr_name_list=["image"],
+                                   measure_device_list=[self.current_screen.liveviewer],
+                                   measure_number=self.ui.num_images_spinbox.value(),
+                                   measure_interval=1.0 / self.ui.reprate_spinbox.value())
+            # callback_list=[self.scan_callback] is called for each completed step.
+            # read_callback=self.scan_image_callback is called for every measurement (image taken)
+            self.scan_task = TangoScanTask(scan_param=scan_param, device_handler=self.device_handler, name="scan",
+                                           timeout=5.0, callback_list=[self.scan_callback],
+                                           read_callback=self.scan_image_callback)
+            self.scan_task.start()
+            if self.ui.update_analysis_radiobutton.isChecked():
+                source_name = "Scan data {0}-{1}".format(self.current_quad.mag, self.current_screen.screen)
+                self.ui.data_source_label.setText(source_name)
+
+                self.quad_scan_data_analysis = self.quad_scan_data_scan
+                self.update_analysis_parameters()
+                self.image_processor.clear_callback_list()
+                self.image_processor.add_callback(self.scan_image_processed_callback)
+            root.info("Scan started. Parameters: {0}".format(scan_param))
+        else:
+            root.error("Scan not started. Could not generate daq_info")
+
+    def start_multi_scan(self):
+        image = self.ui.camera_widget.getImageItem().image
+        sigma_x = self.ui.targetsize_spinbox.value() * 1e-6
+        sigma_y = self.ui.targetsize_spinbox.value() * 1e-6
+        charge = None
+        roi_size = self.ui.camera_widget.roi.size()
+        roi_pos = self.ui.camera_widget.roi.pos()
+        # roi_center = [roi_pos[1] + roi_size[1] / 2.0, roi_pos[0] + roi_size[0] / 2.0]
+        # roi_dim = [roi_size[1], roi_size[0]]
+        roi_center = [roi_pos[0] + roi_size[0] / 2.0, roi_pos[1] + roi_size[1] / 2.0]
+        roi_dim = [roi_size[0], roi_size[1]]
+
+        pi_main = self.ui.charge_widget.getPlotItem()
+        if self.eps_curve is not None:
+            self.eps_vb.removeItem(self.eps_curve)
+            pi_main.removeItem(self.eps_vb)
+        vb = pq.ViewBox()
+        vb.setZValue(-100)
+        ax = pq.AxisItem("right")
+        ax.linkToView(vb)
+        ax1 = pq.AxisItem("bottom")
+        ax1.linkToView(vb)
+        pi_main.scene().addItem(vb)
+        vb.setXLink(pi_main)
+
+        self.eps_curve = pq.PlotCurveItem(name="eps", antialias=True)
+        self.eps_curve.setPen(150, 220, 70, width=2.0)
+        self.eps_curve.setClickable(True)
+        self.eps_curve.setZValue(-100)
+        vb.addItem(self.eps_curve)
+        self.eps_vb = vb
+
+        scan_param = ScanParamMulti(self.current_section, sigma_x, sigma_y,
+                                    charge_ratio=self.ui.p_keep_charge_ratio_spinbox.value(),
+                                    background_level=self.ui.p_threshold_spinbox.value(),
+                                    guess_alpha=0.0, guess_beta=10.0, guess_eps_n=1e-6,
+                                    n_steps=self.ui.num_k_spinbox.value(), scan_pos_tol=0.01, scan_pos_check_interval=0.2,
+                                    screen_name=self.ui.screen_combobox.currentText(),
+                                    roi_center=roi_center, roi_dim=roi_dim,
+                                    measure_number=self.ui.num_images_spinbox.value(),
+                                    measure_interval=1.0 / self.ui.reprate_spinbox.value(),
+                                    base_path=self.ui.save_path_linedit.text(), save=True)
+        self.scan_task = TangoMultiQuadScanTask(scan_param, self.device_handler, self.section_devices, name="MultiQuadScan",
+                                                callback_list=[self.multiquad_scan_callback],
+                                                read_callback=self.multiquad_scan_image_callback,
+                                                timeout=5.0)
+        self.update_ab_signal.connect(self.plot_ab_data)
+        self.scan_task.start()
 
     def stop_scan(self):
         root.info("Stop scan pressed")
@@ -1767,6 +1863,45 @@ class QuadScanGui(QtWidgets.QWidget):
             #                                                                                    result))
             return
 
+    def multiquad_scan_image_callback(self, task):
+        """
+        Callback for when there is a new image during a multi quad scan
+
+        :param task: The TangoMultiQuadScanTask that called the method
+        :return:
+        """
+        logger.info("Multi quad scan image callback")
+
+    def multiquad_scan_callback(self, task):
+        """
+        Callback for each step of the scan and also when the scan is completed.
+        Update scan info.
+
+        :param task: scan task
+        :return:
+        """
+        root.info("Multiquad Scan callback")
+        if not task.is_done():
+            res = task.get_result(wait=False)       # Result contains: [write_pos_res, read_pos_res, measure_list]
+            step = task.get_last_step_result()
+            root.info("Current step result: k_step {0}".format(step["k_list"][-1]))
+            if not task.is_cancelled():
+                try:
+                    # root.info("eps: {0}, beta: {1}".format(step.eps_list, step.beta_list))
+                    pass
+                except TypeError as e:
+                    root.exception("Scan callback result error: ")
+                self.quad_scan_step_result = step
+                self.update_proc_image_signal.emit(step["image_p"])
+                self.update_ab_signal.emit()
+                # measure_list = res[2]
+                # quad_image_list = [QuadImage(k_ind=0, k_value=pos, image_ind=ind, image=im)
+                #                    for ind, im in enumerate(measure_list)]
+                # images = self.quad_scan_data_scan.images + quad_image_list
+                # self.quad_scan_data_scan._replace(images=images)
+        else:
+            self.ui.scan_status_label.setText("DONE")
+
     def start_processing(self):
         # if len(self.processing_tasks) > 0:
         #     for task in self.processing_tasks:
@@ -1784,7 +1919,7 @@ class QuadScanGui(QtWidgets.QWidget):
             acc_params = acc_params._replace(roi_center=roi_center)
             acc_params = acc_params._replace(roi_dim=roi_size)
             self.quad_scan_data_analysis = self.quad_scan_data_analysis._replace(acc_params=acc_params)
-            self.quad_scan_data_analysis = self.quad_scan_data_analysis._replace(acc_params=acc_params)
+            # self.quad_scan_data_analysis = self.quad_scan_data_analysis._replace(acc_params=acc_params)
         # root.info("Start processing. Accelerator params: {0}".format(acc_params))
         try:
             root.info("Start processing. Num images: {0}".format(len(self.quad_scan_data_analysis.images)))
