@@ -14,7 +14,7 @@ import sys
 import glob
 import numpy as np
 import itertools
-from quadscan_gui_multi import Ui_QuadScanDialog
+from quadscan_gui_striptool import Ui_QuadScanDialog
 from scandata_file_dialog import OpenScanFileDialog
 from collections import OrderedDict
 import threading
@@ -22,6 +22,7 @@ import time
 from QuadScanTasks import *
 from QuadScanDataStructs import *
 from QuadScanMultiTasks import TangoMultiQuadScanTask
+from striptool import QTangoStripTool
 
 import logging
 
@@ -293,11 +294,14 @@ class QuadScanGui(QtWidgets.QWidget):
 
         # self.charge_plot = self.ui.charge_widget.plot()
         self.charge_plot = MyScatterPlotItem()
-        self.ui.charge_widget.getPlotItem().addItem(self.charge_plot)
+        # self.ui.charge_widget.getPlotItem().addItem(self.charge_plot)
+        # self.ui.charge_widget = QTangoStripTool("charge", "right")
+        self.ui.charge_widget.set_legend_position("right")
+        self.ui.charge_widget.add_curve("eps", self.charge_plot)
         self.charge_plot.setPen((180, 250, 180))
-        self.ui.charge_widget.setLabel("bottom", "K", " 1/m²")
-        self.ui.charge_widget.setLabel("left", "charge", "a.u.")
-        self.ui.charge_widget.getPlotItem().showGrid(alpha=0.3)
+        # self.ui.charge_widget.setLabel("bottom", "K", " 1/m²")
+        # self.ui.charge_widget.setLabel("left", "charge", "a.u.")
+        # self.ui.charge_widget.getPlotItem().showGrid(alpha=0.3)
         # self.ui.charge_widget.disableAutoRange()
 
         # Combobox init
@@ -1426,8 +1430,9 @@ class QuadScanGui(QtWidgets.QWidget):
         self.sigma_x_plot.setData(x=a, y=b, symbol="t", brush=pq.mkBrush(150, 170, 250, 220), size=10, pen=None)
         self.fit_x_plot.setData(x=ae, y=be, pen=pq.mkPen(180, 170, 50, width=2.0))
         root.info("eps {0}".format(mq.eps_n_list))
-        self.eps_curve.setData(x=np.arange(len(mq.eps_n_list)), y=mq.eps_n_list, symbol="s",
-                               brush=pq.mkBrush(150, 210, 50, 220), size=10, pen=None)
+        self.ui.charge_widget.set_data(x_data=np.arange(len(mq.eps_n_list)), y_data=mq.eps_n_list, curve_index=1)
+        # self.eps_curve.setData(x=np.arange(len(mq.eps_n_list)), y=mq.eps_n_list, symbol="s",
+        #                        brush=pq.mkBrush(150, 210, 50, 220), size=10, pen=None)
 
     def set_algo(self):
         root.info("Setting fit algo")
@@ -1544,25 +1549,28 @@ class QuadScanGui(QtWidgets.QWidget):
         roi_center = [roi_pos[0] + roi_size[0] / 2.0, roi_pos[1] + roi_size[1] / 2.0]
         roi_dim = [roi_size[0], roi_size[1]]
 
-        pi_main = self.ui.charge_widget.getPlotItem()
-        if self.eps_curve is not None:
-            self.eps_vb.removeItem(self.eps_curve)
-            pi_main.removeItem(self.eps_vb)
-        vb = pq.ViewBox()
-        vb.setZValue(-100)
-        ax = pq.AxisItem("right")
-        ax.linkToView(vb)
-        ax1 = pq.AxisItem("bottom")
-        ax1.linkToView(vb)
-        pi_main.scene().addItem(vb)
-        vb.setXLink(pi_main)
-
+        # pi_main = self.ui.charge_widget.getPlotItem()
+        # if self.eps_curve is not None:
+        #     self.eps_vb.removeItem(self.eps_curve)
+        #     pi_main.removeItem(self.eps_vb)
+        # vb = pq.ViewBox()
+        # vb.setZValue(-100)
+        # ax = pq.AxisItem("right")
+        # ax.linkToView(vb)
+        # ax1 = pq.AxisItem("bottom")
+        # ax1.linkToView(vb)
+        # pi_main.scene().addItem(vb)
+        # vb.setXLink(pi_main)
+        #
         self.eps_curve = pq.PlotCurveItem(name="eps", antialias=True)
-        self.eps_curve.setPen(150, 220, 70, width=2.0)
-        self.eps_curve.setClickable(True)
-        self.eps_curve.setZValue(-100)
-        vb.addItem(self.eps_curve)
-        self.eps_vb = vb
+        # self.eps_curve.setPen(150, 220, 70, width=2.0)
+        # self.eps_curve.setClickable(True)
+        # self.eps_curve.setZValue(-100)
+        # vb.addItem(self.eps_curve)
+        # self.eps_vb = vb
+        root.info("\n\nCharge widget: {0}\n Legend widget: {1}"
+                  "\n Legend layout: {2}\n".format(self.ui.charge_widget, self.ui.charge_widget.legend_widget, self.ui.charge_widget.legend_widget.legend_gridlayout))
+        self.ui.charge_widget.add_curve("eps", self.eps_curve)
 
         scan_param = ScanParamMulti(self.current_section, sigma_x, sigma_y,
                                     charge_ratio=self.ui.p_keep_charge_ratio_spinbox.value(),
@@ -1884,7 +1892,10 @@ class QuadScanGui(QtWidgets.QWidget):
         if not task.is_done():
             res = task.get_result(wait=False)       # Result contains: [write_pos_res, read_pos_res, measure_list]
             step = task.get_last_step_result()
-            root.info("Current step result: k_step {0}".format(step["k_list"][-1]))
+            try:
+                root.info("Current step result: k_step {0}".format(step["k_list"][-1]))
+            except TypeError:
+                root.info("Current step result: None")
             if not task.is_cancelled():
                 try:
                     # root.info("eps: {0}, beta: {1}".format(step.eps_list, step.beta_list))

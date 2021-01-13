@@ -395,7 +395,7 @@ class TangoMultiQuadScanTask(Task):
 
     def process_image(self, image, keep_charge_ratio=0.95):
         t0 = time.time()
-        self.logger.info("Process image roi: {0}".format(self.roi))
+        self.logger.info("Process image roi: {0}\n image size: {1}x{2}".format(self.roi, image.shape[0], image.shape[1]))
         image_roi = np.double(image[self.roi[1]:self.roi[1]+self.roi[3], self.roi[0]:self.roi[0]+self.roi[2]])
 
         # Median filter and background subtraction:
