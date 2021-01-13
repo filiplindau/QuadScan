@@ -163,13 +163,12 @@ class QTangoStripTool(QtWidgets.QWidget):
         self.setLayout(QtWidgets.QHBoxLayout())
         self.inner_layout = QtWidgets.QVBoxLayout()
 
-        self.plot_widget = QTangoStripToolPlotWidget(name, sizes, colors, chronological)
-        self.plot_widget.get_curve(0).sigClicked.connect(self.set_curve_focus)
-        logger.debug("Plot widget created")
         self.legend_widget = QTangoStripToolLegendWidget(legend_pos, sizes, colors)
-        legend_item = QTangoStripToolLegendItem(name, unit="m", sizes=self.sizes, colors=self.colors)
-        legend_item.clicked.connect(self.set_curve_focus)
-        self.legend_widget.addItem(legend_item)
+        self.plot_widget = QTangoStripToolPlotWidget(None, sizes, colors, chronological)
+        if name is not None:
+            self.add_curve(name)
+            self.legend_widget.items.get(name).clicked.emit()
+        logger.debug("Plot widget created")
         logger.debug("Legend widget created")
 
         self.set_legend_position(legend_pos)
@@ -188,7 +187,6 @@ class QTangoStripTool(QtWidgets.QWidget):
                       background-color: #555500;
                       }}""".format(color, bkg_color)
         self.setStyleSheet(st)
-        legend_item.clicked.emit()
 
     def add_curve(self, name, curve=None):
         curve_new = self.plot_widget.addCurve(name, curve)
@@ -207,7 +205,6 @@ class QTangoStripTool(QtWidgets.QWidget):
             legend_item.set_range(axis_range[1])
         # logger.info("Striptool add point: {0:.1f} ms, autorange: {1:.1f} ms".format((t1-t0)*1e3, (t2-t1)*1e3))
 
-    # def set_data(self, x_data, y_data, curve_index=0, auto_range=True, symbol=None, brush=None, size=None, pen=None):
     def set_data(self, x_data, y_data, curve_index=0, **kargs):
 
         logger.debug("{0}: curve_index {1}".format(self.__class__, curve_index))
@@ -235,11 +232,12 @@ class QTangoStripTool(QtWidgets.QWidget):
             self.legend_widget.set_focus_item(ind)
 
     def set_legend_position(self, position):
-        # try:
-        #     for w in range(2):
-        #         self.inner_widget.layout().takeAt(0)
-        # except AttributeError:
-        #     pass
+        try:
+            for w in range(2):
+                self.inner_widget.layout().takeAt(0)
+        except AttributeError:
+            pass
+        self.legend_widget.set_position(position)
         if position == "top":
             lay = QtWidgets.QVBoxLayout()
             lay.addWidget(self.legend_widget)
@@ -400,36 +398,16 @@ class QTangoStripToolLegendWidget(QtWidgets.QWidget):
         self.setLayout(QtWidgets.QVBoxLayout())
         self.layout().addLayout(self.inner_layout)
         self.max_col = None
-        # self.set_position(position)
+        self.position = position
+        self.set_position(position)
         self.current_focus_item = None
 
-        self.position = position
-        if position in ["bottom", "top"]:
-            self.max_col = 4
-            lay = QtWidgets.QHBoxLayout()
-            spacer = QtWidgets.QSpacerItem(0, 0, QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)
-            lay.addLayout(self.legend_gridlayout)
-            # lay.addSpacerItem(spacer)
-        else:
-            self.max_col = 1
-            lay = QtWidgets.QVBoxLayout()
-            spacer = QtWidgets.QSpacerItem(0, 0, QtWidgets.QSizePolicy.Minimum, QtWidgets.QSizePolicy.Expanding)
-            lay.addLayout(self.legend_gridlayout)
-            lay.addSpacerItem(spacer)
-        # lay.addLayout(self.legend_gridlayout)
-        # lay.addSpacerItem(spacer)
-        self.setLayout(lay)
         self.setContentsMargins(0, 0, 0, 0)
 
     def addItem(self, legend_item):
         self.items[legend_item.name] = legend_item
         self.item_name_list.append(legend_item.name)
-        n = len(self.items) - 1
-        c = n % self.max_col
-        r = n // self.max_col
-        # self.layout().addWidget(legend_item, r, c)
-        self.legend_gridlayout.addWidget(legend_item, r, c)
-        # self.set_position("right")
+        self.set_position(self.position)
 
     def removeItem(self, item):
         logger.debug("Removing item {0}".format(item))
@@ -468,14 +446,11 @@ class QTangoStripToolLegendWidget(QtWidgets.QWidget):
     def del_lay(self):
         for i in range(len(self.items)):
             self.legend_gridlayout.takeAt(0)
-        old_lay = self.layout()
-        old_lay.removeItem(self.legend_gridlayout)
-        self.legend_gridlayout.setParent(None)
-        if old_lay is not None:
-            old_lay.deleteLater()
+        self.inner_layout.takeAt(0)
+        self.layout().takeAt(0)
 
     def set_position(self, position):
-        # self.del_lay()
+        self.del_lay()
         self.position = position
 
         if position in ["bottom", "top"]:
@@ -489,26 +464,22 @@ class QTangoStripToolLegendWidget(QtWidgets.QWidget):
             spacer = QtWidgets.QSpacerItem(0, 0, QtWidgets.QSizePolicy.Minimum, QtWidgets.QSizePolicy.Expanding)
             lay.addSpacerItem(spacer)
         n = len(self.items) - 1
-        cm = np.maximum(n % self.max_col, 1)
+        cm = n % self.max_col + 1
         rm = np.maximum(n // self.max_col, 1)
-        # grid_lay = QtWidgets.QGridLayout()
-        grid_lay = self.legend_gridlayout
+        grid_lay = QtWidgets.QGridLayout()
         c = 0
         r = 0
 
         for item in self.items.values():
-            logger.debug("Adding legend item at {0}, {1}".format(r, c))
+            logger.debug("Position {4}, Adding legend item at {0}, {1}, rm {2}, cm {3}, max_col {5}".format(r, c, rm, cm, position, self.max_col))
             grid_lay.addWidget(item, r, c)
             c += 1
-            if c % cm == 1:
+            if c % cm == 0:
                 c = 0
                 r += 1
         lay.addLayout(grid_lay)
-        # self.legend_gridlayout = grid_lay
-        # old_lay = self.layout()
-        # if old_lay is not None:
-        #     old_lay.deleteLater()
-        self.setLayout(lay)
+        self.inner_layout = lay
+        self.layout().addLayout(lay)
 
 
 class QTangoStripToolPlotWidget(pg.PlotWidget):
@@ -548,8 +519,9 @@ class QTangoStripToolPlotWidget(pg.PlotWidget):
 
         self.setupLayout(name)
         self.setupTrendMenu()
-        self.addCurve(name)
-        self.setCurveFocus(0)
+        if name is not None:
+            self.addCurve(name)
+            self.setCurveFocus(0)
         # self.setupData()
 
     def setupLayout(self, name=None):
@@ -1070,6 +1042,7 @@ if __name__ == "__main__":
             strip_tool.add_curve("Curve {0}".format(c + 1))
             strip_tool.set_data(x_data, y_data, c + 1)
             # strip_tool.curve_vb_list[c].setRange(yRange=[c-1, c+1])
+        # strip_tool.set_legend_position("bottom")
 
     elif test == "trend":
         test_stream = TestStream()
