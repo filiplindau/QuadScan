@@ -21,7 +21,7 @@ import threading
 import time
 from QuadScanTasks import *
 from QuadScanDataStructs import *
-from QuadScanMultiTasks import TangoMultiQuadScanTask
+from QuadScanMultiTasks import TangoMultiQuadScanTask, LoadMultiQuadScanDirTask
 from striptool import QTangoStripTool
 
 import logging
@@ -293,11 +293,14 @@ class QuadScanGui(QtWidgets.QWidget):
         self.ui.fit_widget.getPlotItem().showGrid(alpha=0.3)
 
         # self.charge_plot = self.ui.charge_widget.plot()
-        self.charge_plot = MyScatterPlotItem()
+        # self.charge_plot = MyScatterPlotItem()
         # self.ui.charge_widget.getPlotItem().addItem(self.charge_plot)
-        self.ui.charge_widget.add_curve("eps", self.charge_plot)
-        self.ui.charge_widget.set_legend_position("right")
-        self.charge_plot.setPen((180, 250, 180))
+        # self.ui.charge_widget.add_curve("charge")
+        # self.ui.charge_widget.add_curve("eps", self.charge_plot)
+        # self.ui.charge_widget.set_legend_position("right")
+        # self.charge_plot.setPen(None)
+        # self.charge_plot.setBrush((100, 180, 50))
+        # self.charge_plot.setSymbol("t1")
         # self.ui.charge_widget.setLabel("bottom", "K", " 1/m²")
         # self.ui.charge_widget.setLabel("left", "charge", "a.u.")
         # self.ui.charge_widget.getPlotItem().showGrid(alpha=0.3)
@@ -428,8 +431,8 @@ class QuadScanGui(QtWidgets.QWidget):
         self.ui.p_enable_all_button.clicked.connect(self.enable_all_points)
         self.sigma_x_plot.sigClicked.connect(self.points_clicked)
         self.sigma_x_plot.sigRightClicked.connect(self.points_clicked)
-        self.charge_plot.sigClicked.connect(self.points_clicked)
-        self.charge_plot.sigRightClicked.connect(self.points_clicked)
+        # self.charge_plot.sigClicked.connect(self.points_clicked)
+        # self.charge_plot.sigRightClicked.connect(self.points_clicked)
         self.ui.fit_algo_combobox.currentIndexChanged.connect(self.set_algo)
         self.ui.load_disk_button.clicked.connect(self.load_data_disk)
         self.ui.load_scan_button.clicked.connect(self.load_data_scan)
@@ -595,12 +598,19 @@ class QuadScanGui(QtWidgets.QWidget):
 
         self.load_init_flag = True
 
-        # LoadQuadScanTask takes care of the actual loading of the files in the specified directory:
-        t1 = LoadQuadScanDirTask(str(load_dir), process_now=True,
-                                 threshold=self.ui.p_threshold_spinbox.value(),
-                                 kernel_size=self.ui.p_median_kernel_spinbox.value(),
-                                 process_exec_type="thread",
-                                 name="load_task", callback_list=[self.update_load_data])
+        if os.path.isfile(os.path.join(load_dir, "daq_info.txt")) is True:
+            # LoadQuadScanTask takes care of the actual loading of the files in the specified directory:
+            t1 = LoadQuadScanDirTask(str(load_dir), process_now=True,
+                                     threshold=self.ui.p_threshold_spinbox.value(),
+                                     kernel_size=self.ui.p_median_kernel_spinbox.value(),
+                                     process_exec_type="thread",
+                                     name="load_task", callback_list=[self.update_load_data])
+        else:
+            t1 = LoadMultiQuadScanDirTask(str(load_dir), process_now=True,
+                                          threshold=self.ui.p_threshold_spinbox.value(),
+                                          kernel_size=self.ui.p_median_kernel_spinbox.value(),
+                                          process_exec_type="thread",
+                                          name="load_multi_task", callback_list=[self.update_load_data])
         t1.start()
         source_name = QtCore.QDir.fromNativeSeparators(load_dir).split("/")[-1]
         self.ui.data_source_label.setText(source_name)
@@ -1429,9 +1439,13 @@ class QuadScanGui(QtWidgets.QWidget):
         self.sigma_x_plot.setData(x=a, y=b, symbol="t", brush=pq.mkBrush(150, 170, 250, 220), size=10, pen=None)
         self.fit_x_plot.setData(x=ae, y=be, pen=pq.mkPen(180, 170, 50, width=2.0))
         root.info("eps {0}".format(mq.eps_n_list))
-        self.ui.charge_widget.set_data(x_data=np.arange(len(mq.eps_n_list)), y_data=mq.eps_n_list, curve_index=1)
-        # self.eps_curve.setData(x=np.arange(len(mq.eps_n_list)), y=mq.eps_n_list, symbol="s",
-        #                        brush=pq.mkBrush(150, 210, 50, 220), size=10, pen=None)
+        xd = np.arange(len(mq.eps_n_list))
+        self.ui.charge_widget.set_data(x_data=xd, y_data=mq.eps_n_list, curve_index="eps_x")
+        self.ui.charge_widget.set_data(x_data=xd, y_data=mq.charge_list, curve_index="charge")
+        self.ui.charge_widget.set_data(x_data=xd, y_data=mq.beta_list, curve_index="beta_x")
+        self.ui.charge_widget.set_data(x_data=xd, y_data=mq.alpha_list, curve_index="alpha_x")
+        self.ui.charge_widget.set_data(x_data=xd, y_data=mq.x_list, curve_index="sigma_x")
+        self.ui.charge_widget.set_data(x_data=xd, y_data=mq.y_list, curve_index="sigma_y")
 
     def set_algo(self):
         root.info("Setting fit algo")
@@ -1548,28 +1562,52 @@ class QuadScanGui(QtWidgets.QWidget):
         roi_center = [roi_pos[0] + roi_size[0] / 2.0, roi_pos[1] + roi_size[1] / 2.0]
         roi_dim = [roi_size[0], roi_size[1]]
 
-        # pi_main = self.ui.charge_widget.getPlotItem()
-        # if self.eps_curve is not None:
-        #     self.eps_vb.removeItem(self.eps_curve)
-        #     pi_main.removeItem(self.eps_vb)
-        # vb = pq.ViewBox()
-        # vb.setZValue(-100)
-        # ax = pq.AxisItem("right")
-        # ax.linkToView(vb)
-        # ax1 = pq.AxisItem("bottom")
-        # ax1.linkToView(vb)
-        # pi_main.scene().addItem(vb)
-        # vb.setXLink(pi_main)
-        #
-        self.eps_curve = pq.PlotCurveItem(name="eps", antialias=True)
-        # self.eps_curve.setPen(150, 220, 70, width=2.0)
-        # self.eps_curve.setClickable(True)
-        # self.eps_curve.setZValue(-100)
-        # vb.addItem(self.eps_curve)
-        # self.eps_vb = vb
-        root.info("\n\nCharge widget: {0}\n Legend widget: {1}"
-                  "\n Legend layout: {2}\n".format(self.ui.charge_widget, self.ui.charge_widget.legend_widget, self.ui.charge_widget.legend_widget.legend_gridlayout))
-        self.ui.charge_widget.add_curve("eps", self.eps_curve)
+
+        old_names = self.ui.charge_widget.plot_widget.curve_name_list
+        for c in old_names:
+            self.ui.charge_widget.remove_curve(c)
+
+        charge_plot = MyScatterPlotItem()
+        charge_plot.setPen((180, 120, 70), width=0)
+        charge_plot.setBrush((180, 120, 70))
+        charge_plot.setSymbol("o")
+        self.ui.charge_widget.add_curve("charge", charge_plot)
+
+        eps_plot = MyScatterPlotItem()
+        eps_plot.setPen(pq.mkColor(100, 180, 50), width=0)
+        eps_plot.setBrush((100, 180, 50))
+        eps_plot.setSymbol("t1")
+        self.ui.charge_widget.add_curve("eps_x", eps_plot)
+
+        plot = MyScatterPlotItem()
+        color = pq.mkColor(30, 100, 200)
+        plot.setPen(color, width=0)
+        plot.setBrush(color)
+        plot.setSymbol("t2")
+        self.ui.charge_widget.add_curve("beta_x", plot, visible=False)
+
+        plot = MyScatterPlotItem()
+        color = pq.mkColor(30, 170, 120)
+        plot.setPen(color, width=0)
+        plot.setBrush(color)
+        plot.setSymbol("t3")
+        self.ui.charge_widget.add_curve("alpha_x", plot, visible=False)
+
+        plot = MyScatterPlotItem()
+        color = pq.mkColor(130, 70, 150)
+        plot.setPen(color, width=0)
+        plot.setBrush(color)
+        plot.setSymbol("s")
+        self.ui.charge_widget.add_curve("sigma_x", plot, visible=False)
+
+        plot = MyScatterPlotItem()
+        color = pq.mkColor(150, 30, 130)
+        plot.setPen(color, width=0)
+        plot.setBrush(color)
+        plot.setSymbol("h")
+        self.ui.charge_widget.add_curve("sigma_y", plot, visible=False)
+
+        self.ui.charge_widget.set_legend_position("right")
 
         scan_param = ScanParamMulti(self.current_section, sigma_x, sigma_y,
                                     charge_ratio=self.ui.p_keep_charge_ratio_spinbox.value(),

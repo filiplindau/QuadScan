@@ -28,7 +28,7 @@ import json
 
 from tasks.GenericTasks import *
 from QuadScanDataStructs import *
-from QuadScanTasks import TangoReadAttributeTask, TangoMonitorAttributeTask, TangoWriteAttributeTask
+from QuadScanTasks import TangoReadAttributeTask, TangoMonitorAttributeTask, TangoWriteAttributeTask, LoadQuadImageTask
 from multiquad_lu import MultiQuadLookup
 
 
@@ -448,3 +448,140 @@ class TangoMultiQuadScanTask(Task):
 
         for step in range(self.n_steps):
             self.do_step(save)
+
+
+class LoadMultiQuadScanDirTask(Task):
+    def __init__(self, quadscandir, process_now=True, threshold=None, kernel_size=3, process_exec_type="thread",
+                 name=None, timeout=None, trigger_dict=dict(), callback_list=list()):
+        Task.__init__(self, name, timeout=timeout, trigger_dict=trigger_dict, callback_list=callback_list)
+        self.logger.setLevel(logging.INFO)
+
+        self.pathname = quadscandir
+        self.process_now = process_now
+        self.threshold = threshold
+        self.kernel_size = kernel_size
+        self.processed_image_list = list()
+        self.acc_params = None
+        self.task_seq = None
+        self.update_image_flag = False          # Set this if read images should be sent to callbacks
+
+    def action(self):
+        load_dir = self.pathname
+        self.logger.debug("{1}: Loading from {0}".format(load_dir, self))
+        try:
+            os.listdir(load_dir)
+        except OSError as e:
+            e = "List dir failed: {0}".format(e)
+            self.result = e
+            self.logger.error(e)
+            self.cancel()
+            return
+
+        # See if there is a file called daq_info.txt
+        filename = "daq_info_multi.txt"
+        if os.path.isfile(os.path.join(load_dir, filename)) is False:
+            e = "daq_info_multi.txt not found in {0}".format(load_dir)
+            self.result = e
+            self.logger.error(e)
+            self.cancel()
+            return
+
+        logger.info("{0}: Loading Jason format data".format(self))
+        data_dict = dict()
+        quad_list = list()
+        with open(os.path.join(load_dir, filename), "r") as daq_file:
+            while True:
+                line = daq_file.readline()
+                if line == "" or line[0:5] == "*****":
+                    break
+                try:
+                    key, value = line.split(":")
+                    data_dict[key.strip()] = value.strip()
+                except ValueError:
+                    pass
+        px = data_dict["pixel_dim"].split(" ")
+
+        data_dict["pixel_size"] = [np.double(px[0]), np.double(px[1])]
+        rc = data_dict["roi_center"].split(" ")
+        data_dict["roi_center"] = [np.double(rc[1]), np.double(rc[0])]
+        rd = data_dict["roi_dim"].split(" ")
+        data_dict["roi_dim"] = [np.double(rd[1]), np.double(rd[0])]
+        try:
+            data_dict["bpp"] = np.int(data_dict["bpp"])
+        except KeyError:
+            data_dict["bpp"] = 16
+            self.logger.debug("{1} Loaded data_dict: \n{0}".format(pprint.pformat(data_dict), self))
+
+        self.acc_params = AcceleratorParameters(electron_energy=float(data_dict["beam_energy"]),
+                                                quad_length=float(data_dict["quad_0_length"]),
+                                                quad_screen_dist=float(data_dict["screen_pos"]) -
+                                                                 float(data_dict["quad_0_pos"]),
+                                                k_max=float(data_dict["k_max"]),
+                                                k_min=float(data_dict["k_min"]),
+                                                num_k=int(data_dict["num_k_values"]),
+                                                num_images=int(data_dict["num_shots"]),
+                                                cal=data_dict["pixel_size"],
+                                                quad_name=data_dict["quad"],
+                                                screen_name=data_dict["screen"],
+                                                roi_center=data_dict["roi_center"],
+                                                roi_dim=data_dict["roi_dim"])
+
+        n_images = self.acc_params.num_k * self.acc_params.num_images
+
+        file_list = os.listdir(load_dir)
+        image_file_list = list()
+        load_task_list = list()         # List of tasks, each loading an image. Loading should be done in sequence
+                                        # as this in not sped up by paralellization
+        for file_name in file_list:
+            if file_name.endswith(".png"):
+                image_file_list.append(file_name)
+                # t = LoadQuadImageTask(file_name, load_dir, name=file_name,
+                #                       callback_list=[self.image_processor.process_image])
+                t = LoadQuadImageTask(file_name, load_dir, name=file_name,
+                                      callback_list=[self.processed_image_done])
+                t.logger.setLevel(logging.WARNING)
+                load_task_list.append(t)
+
+        self.logger.debug("{1} Found {0} images in directory".format(len(image_file_list), self))
+        with self.lock:
+            self.update_image_flag = True
+        self.task_seq = SequenceTask(load_task_list, name="load_seq")
+        self.task_seq.start()
+        # Wait for image sequence to be done reading:
+        image_list = self.task_seq.get_result(wait=True)
+        if self.task_seq.is_cancelled():
+            self.logger.error("Load image error: {0}".format(image_list))
+
+        with self.lock:
+            self.update_image_flag = False
+
+        self.result = QuadScanData(self.acc_params, image_list, self.processed_image_list)
+
+    def processed_image_done(self, load_quadimage_task):
+        with self.lock:
+            go = self.update_image_flag
+
+            if go:
+                quad_image = load_quadimage_task.get_result(wait=False)    # type: QuadImage
+
+                pic_roi = np.zeros((int(self.acc_params.roi_dim[0]), int(self.acc_params.roi_dim[1])), dtype=np.float32)
+                line_x = pic_roi.sum(0)
+                line_y = pic_roi.sum(1)
+                proc_image = ProcessedImage(k_ind=quad_image.k_ind, k_value=quad_image.k_value, image_ind=quad_image.image_ind,
+                                            pic_roi=pic_roi, line_x=line_x, line_y=line_y, x_cent=pic_roi.shape[0]/2,
+                                            y_cent=pic_roi.shape[1]/2, sigma_x=0.0, sigma_y=0.0,
+                                            q=0, threshold=self.threshold, enabled=True)
+                self.processed_image_list.append(proc_image)
+
+                if isinstance(quad_image, Exception):
+                    self.logger.error("{0}: Found error in processed image: {1}".format(self, quad_image))
+                    return
+
+                self.result = quad_image
+                for callback in self.callback_list:
+                    callback(self)
+
+    def cancel(self):
+        if self.task_seq is not None:
+            self.task_seq.cancel()
+        Task.cancel(self)
