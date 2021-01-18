@@ -142,6 +142,26 @@ AcceleratorParameters stores accelerator parameters used during a scan for fitti
 """
 
 
+AcceleratorParametersMulti = namedtuple("AcceleratorParametersMulti", "electron_energy quad_list k_max k_min "
+                                                                      "num_k num_images cal screen_name screen_pos "
+                                                                      "roi_center roi_dim")
+"""
+AcceleratorParameters stores accelerator parameters used during a scan for fitting purposes. 
+
+:param electron_energy: Electron energy in MeV.
+:param quad_list: List of SectionQuads used in the scan  
+:param k_max: Max k value
+:param k_min: Min k value
+:param num_k: Number of k values recorded
+:param num_images: Number of images recorded for each k value
+:param cal: Pixel calibration, m/pixel
+:param screen_name: Tango name of screen
+:param screen_pos: Tango name of screen
+:param roi_center: x and y coord of ROI center, pixels
+:param roi_dim: x and y size of ROI, pixels 
+"""
+
+
 SectionDevices = namedtuple("SectionDevices", "sect_quad_dict sect_screen_dict")
 """
 SectionDevices stores the quads and screens in each of the measurement sections in dictionaries. 

@@ -21,7 +21,7 @@ import threading
 import time
 from QuadScanTasks import *
 from QuadScanDataStructs import *
-from QuadScanMultiTasks import TangoMultiQuadScanTask, LoadMultiQuadScanDirTask
+from QuadScanMultiTasks import TangoMultiQuadScanTask, LoadMultiQuadScanDirTask, FitQuadDataTaskMulti
 from striptool import QTangoStripTool
 
 import logging
@@ -754,13 +754,40 @@ class QuadScanGui(QtWidgets.QWidget):
                         self.start_processing()
                         # self.update_fit_signal.emit()
                         # self.start_fit()
+                elif isinstance(task, LoadMultiQuadScanDirTask):
+                    result = task.get_result(wait=False)   # type: QuadScanData
+                    if task.is_cancelled():
+                        time_str = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(time.time()))
+                        msg = "Load dir error: {0}".format(result)
+                        self.ui.status_textedit.append("\n---------------------------\n"
+                                                       "{0}:\n"
+                                                       "{1}\n".format(time_str, msg))
+
+                        root.error(msg)
+                    else:
+                        self.quad_scan_data_analysis = result
+                        root.info("Acc parameters: {0}".format(result.acc_params))
+                        self.ui.p_image_index_slider.setMaximum(len(self.quad_scan_data_analysis.images) - 1)
+                        self.ui.p_image_index_slider.setValue(0)
+                        self.ui.p_image_index_slider.update()
+                        root.debug("Proc images len: {0}".format(len(result.proc_images)))
+                        root.debug("Images len: {0}".format(len(result.images)))
+                        self.user_enable_list = [True for x in range(len(result.proc_images))]
+                        self.update_analysis_parameters()
+                        self.update_image_selection()
+                        self.start_processing()
 
     def update_analysis_parameters(self):
         root.info("Acc params {0}".format(self.quad_scan_data_analysis.acc_params))
         acc_params = self.quad_scan_data_analysis.acc_params  # type: AcceleratorParameters
+        if isinstance(acc_params, AcceleratorParametersMulti):
+            root.info("++++++++++++++MULTI+++++++++++++++++")
         self.ui.p_electron_energy_label.setText("{0:.2f} MeV".format(acc_params.electron_energy))
-        self.ui.p_quad_length_label.setText("{0:.2f} m".format(acc_params.quad_length))
-        self.ui.p_quad_screen_dist_label.setText("{0:.2f} m".format(acc_params.quad_screen_dist))
+        try:
+            self.ui.p_quad_length_label.setText("{0:.2f} m".format(acc_params.quad_length))
+            self.ui.p_quad_screen_dist_label.setText("{0:.2f} m".format(acc_params.quad_screen_dist))
+        except AttributeError:
+            pass
 
         self.ui.p_roi_cent_x_spinbox.setValue(acc_params.roi_center[1])
         self.ui.p_roi_cent_y_spinbox.setValue(acc_params.roi_center[0])
@@ -1254,7 +1281,11 @@ class QuadScanGui(QtWidgets.QWidget):
                 except TypeError as e:
                     root.error("Error setting image: {0}".format(e))
 
-            self.ui.p_k_value_label.setText(u"k = {0:.3f} 1/m\u00B2".format(image_struct.k_value))
+            if isinstance(image_struct.k_value, list):
+                s = ", ".join(["k{0}={1:.2f}".format(ind, kv) for ind, kv in enumerate(image_struct.k_value)])
+                self.ui.p_k_value_label.setText(u"{0} 1/m\u00B2".format(s))
+            else:
+                self.ui.p_k_value_label.setText(u"k = {0:.3f} 1/m\u00B2".format(image_struct.k_value))
             self.ui.p_k_ind_label.setText("k index {0}/{1}".format(image_struct.k_ind,
                                                                    self.quad_scan_data_analysis.acc_params.num_k - 1))
             self.ui.p_image_label.setText("image {0}/{1}".format(image_struct.image_ind,
@@ -1561,7 +1592,6 @@ class QuadScanGui(QtWidgets.QWidget):
         # roi_dim = [roi_size[1], roi_size[0]]
         roi_center = [roi_pos[0] + roi_size[0] / 2.0, roi_pos[1] + roi_size[1] / 2.0]
         roi_dim = [roi_size[0], roi_size[1]]
-
 
         old_names = self.ui.charge_widget.plot_widget.curve_name_list
         for c in old_names:
@@ -1997,9 +2027,14 @@ class QuadScanGui(QtWidgets.QWidget):
             axis = "x"
         else:
             axis = "y"
-        task = FitQuadDataTask(self.quad_scan_data_analysis.proc_images,
-                               self.quad_scan_data_analysis.acc_params,
-                               algo=algo, axis=axis, name="fit")
+        if isinstance(self.quad_scan_data_analysis.acc_params, AcceleratorParameters):
+            task = FitQuadDataTask(self.quad_scan_data_analysis.proc_images,
+                                   self.quad_scan_data_analysis.acc_params,
+                                   algo=algo, axis=axis, name="fit")
+        else:
+            task = FitQuadDataTaskMulti(self.quad_scan_data_analysis.proc_images,
+                                   self.quad_scan_data_analysis.acc_params,
+                                   algo=algo, axis=axis, name="fit")
         task.add_callback(self.update_fit_result)
         task.start()
 

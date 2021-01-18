@@ -28,7 +28,7 @@ import json
 
 from tasks.GenericTasks import *
 from QuadScanDataStructs import *
-from QuadScanTasks import TangoReadAttributeTask, TangoMonitorAttributeTask, TangoWriteAttributeTask, LoadQuadImageTask
+from QuadScanTasks import TangoReadAttributeTask, TangoMonitorAttributeTask, TangoWriteAttributeTask, LoadQuadImageTask, ProcessAllImagesTask2
 from multiquad_lu import MultiQuadLookup
 
 
@@ -192,6 +192,8 @@ class TangoMultiQuadScanTask(Task):
         self.magnet_names = [sect_quad.name for sect_quad in sect_quad_list]
         self.crq_devices = [self.device_handler.get_device(sect_quad.crq) for sect_quad in sect_quad_list]
         self.beamenergy = self.crq_devices[0].energy
+        self.logger.info("\n\n++++++++++++++++++++++++++++++++++\n"
+                         "Found beam energy {0}\n\n".format(self.beamenergy))
 
         sect_screen_list = self.section_devices.sect_screen_dict[self.scan_param.section]
         camera_name = None
@@ -224,7 +226,7 @@ class TangoMultiQuadScanTask(Task):
         self.logger.info("Section {0}: \n"
                          "Electron energy = {1:.3f} MeV\n"
                          "Pixel resolution = {2:.3f} um\n"
-                         "ROI = {3} (l, t, w, h)".format(section, self.beamenergy * 1e-6, self.px_cal * 1e6, self.roi))
+                         "ROI = {3} (l, t, w, h)".format(section, self.beamenergy, self.px_cal * 1e6, self.roi))
 
     def set_quad_magnets(self, k_list):
 
@@ -293,7 +295,7 @@ class TangoMultiQuadScanTask(Task):
             save_dict["roi_center"] = "{0} {1}".format(val[0], val[1])
             val = roi_dim
             save_dict["roi_dim"] = "{0} {1}".format(val[0], val[1])
-            save_dict["beam_energy"] = "{0:.3f}".format(self.beamenergy * 1e-6)
+            save_dict["beam_energy"] = "{0:.3f}".format(self.beamenergy)
             save_dict["camera_bpp"] = 16
         except KeyError as e:
             msg = "Could not generate daq_info: {0}".format(e)
@@ -450,6 +452,38 @@ class TangoMultiQuadScanTask(Task):
             self.do_step(save)
 
 
+class LoadQuadImageMultiTask(Task):
+    def __init__(self, image_name, path=".", name=None, timeout=None, trigger_dict=dict(), callback_list=list()):
+        Task.__init__(self, name, timeout=timeout, trigger_dict=trigger_dict, callback_list=callback_list)
+        self.image_name = image_name
+        self.path = path
+        self.logger.setLevel(logging.WARNING)
+
+    def action(self):
+        self.logger.info("{0} entering action. Loading file {1}".format(self, self.image_name))
+        name = self.image_name.rsplit(".", 1)[0].split("_")
+        try:
+            section = name[0]
+            image_ind = np.maximum(0, int(name[1]) - 1).astype(np.int)
+            k_list = list()
+            for k in name[2:]:
+                k_list.append(float(k))
+            k_values = k_list
+        except ValueError as e:
+            self.logger.error("Image filename wrong format: {0}".format(name))
+            self.result = e
+            self.cancel()
+            return False
+        except IndexError as e:
+            self.logger.error("Image filename wrong format: {0}".format(name))
+            self.result = e
+            self.cancel()
+            return False
+        filename = os.path.join(self.path, self.image_name)
+        image = np.array(Image.open(filename))
+        self.result = QuadImage(section, k_values, image_ind, image)
+
+
 class LoadMultiQuadScanDirTask(Task):
     def __init__(self, quadscandir, process_now=True, threshold=None, kernel_size=3, process_exec_type="thread",
                  name=None, timeout=None, trigger_dict=dict(), callback_list=list()):
@@ -488,15 +522,29 @@ class LoadMultiQuadScanDirTask(Task):
 
         logger.info("{0}: Loading Jason format data".format(self))
         data_dict = dict()
-        quad_list = list()
+        quad_name = dict()
+        quad_pos = dict()
+        quad_length = dict()
         with open(os.path.join(load_dir, filename), "r") as daq_file:
             while True:
                 line = daq_file.readline()
                 if line == "" or line[0:5] == "*****":
                     break
                 try:
-                    key, value = line.split(":")
-                    data_dict[key.strip()] = value.strip()
+                    k, value = line.split(":")
+                    key = k.strip()
+                    data_dict[key] = value.strip()
+                    logger.debug("Found line {0}: {1}".format(key, value))
+                    if "quad" in key:
+                        if "pos" in key:
+                            n = key.split("_")[1]
+                            quad_pos[n] = float(value)
+                        elif "length" in key:
+                            n = key.split("_")[1]
+                            quad_length[n] = float(value)
+                        else:
+                            n = key.split("_")[1]
+                            quad_name[n] = value.strip()
                 except ValueError:
                     pass
         px = data_dict["pixel_dim"].split(" ")
@@ -512,19 +560,27 @@ class LoadMultiQuadScanDirTask(Task):
             data_dict["bpp"] = 16
             self.logger.debug("{1} Loaded data_dict: \n{0}".format(pprint.pformat(data_dict), self))
 
-        self.acc_params = AcceleratorParameters(electron_energy=float(data_dict["beam_energy"]),
-                                                quad_length=float(data_dict["quad_0_length"]),
-                                                quad_screen_dist=float(data_dict["screen_pos"]) -
-                                                                 float(data_dict["quad_0_pos"]),
-                                                k_max=float(data_dict["k_max"]),
-                                                k_min=float(data_dict["k_min"]),
-                                                num_k=int(data_dict["num_k_values"]),
-                                                num_images=int(data_dict["num_shots"]),
-                                                cal=data_dict["pixel_size"],
-                                                quad_name=data_dict["quad"],
-                                                screen_name=data_dict["screen"],
-                                                roi_center=data_dict["roi_center"],
-                                                roi_dim=data_dict["roi_dim"])
+        quad_list = list()
+        for qk in quad_name:
+            try:
+                name = quad_name[qk]
+                q = SectionQuad(name=name, position=quad_pos[qk], length=quad_length[qk], mag=name, crq=name, polarity=True)
+                quad_list.append(q)
+                logger.debug("Found quad:\n{0}".format(q))
+            except KeyError:
+                logger.error("Quad {0} not fully specified.".format(name))
+
+        self.acc_params = AcceleratorParametersMulti(electron_energy=float(data_dict["beam_energy"]),
+                                                     quad_list=quad_list,
+                                                     k_max=float(data_dict["k_max"]),
+                                                     k_min=float(data_dict["k_min"]),
+                                                     num_k=int(data_dict["num_k_values"]),
+                                                     num_images=int(data_dict["num_shots"]),
+                                                     cal=data_dict["pixel_size"],
+                                                     screen_name=data_dict["screen"],
+                                                     screen_pos=float(data_dict["screen_pos"]),
+                                                     roi_center=data_dict["roi_center"],
+                                                     roi_dim=data_dict["roi_dim"])
 
         n_images = self.acc_params.num_k * self.acc_params.num_images
 
@@ -537,8 +593,8 @@ class LoadMultiQuadScanDirTask(Task):
                 image_file_list.append(file_name)
                 # t = LoadQuadImageTask(file_name, load_dir, name=file_name,
                 #                       callback_list=[self.image_processor.process_image])
-                t = LoadQuadImageTask(file_name, load_dir, name=file_name,
-                                      callback_list=[self.processed_image_done])
+                t = LoadQuadImageMultiTask(file_name, load_dir, name=file_name,
+                                           callback_list=[self.processed_image_done])
                 t.logger.setLevel(logging.WARNING)
                 load_task_list.append(t)
 
@@ -585,3 +641,136 @@ class LoadMultiQuadScanDirTask(Task):
         if self.task_seq is not None:
             self.task_seq.cancel()
         Task.cancel(self)
+
+
+class FitQuadDataTaskMulti(Task):
+    """
+    Fit supplied quad data and calculate beam twiss parameters
+    """
+
+    def __init__(self, processed_image_list, accelerator_params, algo="full", axis="x",
+                 name=None, timeout=None, trigger_dict=dict(), callback_list=list()):
+        Task.__init__(self, name, timeout=timeout, trigger_dict=trigger_dict, callback_list=callback_list)
+        self.processed_image_list = processed_image_list    # type: list of ProcessedImage
+        # K value for each image is stored in the image list
+        self.accelerator_params = accelerator_params        # type: AcceleratorParameters
+        self.algo = algo
+        self.axis = axis
+        self.logger.setLevel(logging.WARNING)
+
+    def action(self):
+        self.logger.info("{0} entering action.".format(self))
+        t0 = time.time()
+        if self.algo == "full":
+            fitresult = self.fit_full_transfer_matrix()
+        else:
+            self.logger.warning("Only full matrix available")
+            fitresult = self.fit_full_transfer_matrix()
+        self.result = fitresult
+        self.logger.debug("{0}: Fit time {1:.2f} s".format(self, time.time()-t0))
+
+    def fit_full_transfer_matrix(self):
+        self.logger.info("Fitting using full transfer matrix")
+        k_data = np.array([pi.k_value for pi in self.processed_image_list])
+        if self.axis == "x":
+            sigma_data = np.array([pi.sigma_x for pi in self.processed_image_list]).flatten()
+        else:
+            sigma_data = np.array([pi.sigma_y for pi in self.processed_image_list]).flatten()
+        en_data = np.array([pi.enabled for pi in self.processed_image_list]).flatten()
+        a_list = list()
+        b_list = list()
+        for ind in range(k_data.shape[0]):
+            M = self.calc_response_matrix(k_data[ind, :], self.accelerator_params.quad_list,
+                                          self.accelerator_params.screen_pos, self.axis)
+            a_list.append(M[0, 0])
+            b_list.append(M[0, 1])
+        gamma_energy = self.accelerator_params.electron_energy / 0.511
+        alpha, beta, eps, residual = self.calc_twiss(np.array(a_list), np.array(b_list), sigma_data)
+        self.logger.debug("sigma_data: {0}".format(sigma_data))
+        self.logger.debug("en_data: {0}".format(en_data))
+        self.logger.debug("k_data: {0}".format(k_data))
+
+        eps_n = eps * gamma_energy
+
+        self.logger.info("-------------------------------")
+        self.logger.info("eps_n  = {0:.3f} mm x mrad".format(eps_n * 1e6))
+        self.logger.info("beta   = {0:.4g} m".format(beta))
+        self.logger.info("alpha  = {0:.4g} rad".format(alpha))
+        self.logger.info("-------------------------------")
+
+        fitresult = FitResult(poly=None, alpha=alpha, beta=beta, eps_n=eps_n, eps=eps, gamma_e=gamma_energy,
+                              fit_data=M, residual=residual)
+        return fitresult
+
+    def calc_response_matrix(self, quad_strengths, quad_list, screen_position, axis="x"):
+        # self.logger.debug("{0}: Calculating new response matrix".format(self))
+        s = quad_list[0].position
+        M = np.identity(2)
+        if axis != "x":
+            quad_strengths = -np.array(quad_strengths)
+        for ind, quad in enumerate(quad_list):
+            # self.logger.debug("Position s: {0} m".format(s))
+            drift = quad.position - s
+            M_d = np.array([[1.0, drift], [0.0, 1.0]])
+            M = np.dot(M_d, M)
+            L = quad.length
+            k = quad_strengths[ind]
+            if k != 0:
+                k_sqrt = np.sqrt(k * (1 + 0j))
+
+                M_q = np.real(np.array([[np.cos(k_sqrt * L), np.sin(k_sqrt * L) / k_sqrt],
+                                        [-k_sqrt * np.sin(k_sqrt * L), np.cos(k_sqrt * L)]]))
+            else:
+                M_q = np.array([[1, L], [0, 1]])
+            M = np.dot(M_q, M)
+            s = quad.position + L
+        drift = screen_position - s
+        M_d = np.array([[1.0, drift], [0.0, 1.0]])
+        M = np.dot(M_d, M)
+        return M
+
+    def calc_twiss(self, a, b, sigma, charge=None):
+        M = np.vstack((a*a, -2*a*b, b*b)).transpose()
+        if charge is None:
+            weights = np.ones_like(sigma)
+        else:
+            s_q = np.sqrt(0.004 / np.log(2))
+            weights = np.exp(-(charge / charge[0] - 1)**2 / s_q**2)
+        Mw = M * np.sqrt(weights[:, np.newaxis])
+        sw = sigma**2 * np.sqrt(weights)
+        ldata = np.linalg.lstsq(Mw, sw, -1)
+
+        residual = ldata[1]
+
+        x = ldata[0]
+        eps2 = x[2] * x[0] - x[1] ** 2
+        eps = np.sqrt(eps2)
+        alpha = x[1] / eps
+        beta = x[0] / eps
+
+        self.logger.debug("Found twiss parameters:"
+                          "\n alpha = {0:.3f}\n beta  = {1:.3f}\n eps = {2:.3f}e-06".format(alpha, beta,
+                                                                                   eps * 1e6))
+
+        return alpha, beta, eps, residual
+
+
+def callback(task):
+    logger.info("Task {0} callback result".format(task.get_name()))
+
+
+if __name__ == "__main__":
+    t = LoadMultiQuadScanDirTask("..\\data\\Multiquad_2021-01-18_18-01-55_MS1", process_now=True, threshold=0.01,
+                                 name="test_load")
+    t.start()
+    quad_scan_data_analysis = t.get_result(True)
+    acc_p = quad_scan_data_analysis.acc_params
+    image_processor = ProcessAllImagesTask2(image_size=[2000, 2000], name="gui_image_proc",
+                                            callback_list=[callback])
+    image_processor.start()
+    image_processor.process_images(quad_scan_data_analysis,
+                                   threshold=0.02, kernel=3, keep_charge_ratio=0.95)
+    image_processor.result_done_event.wait()
+    ims = image_processor.get_result(False)
+    fit_task = FitQuadDataTaskMulti(ims, acc_p)
+
