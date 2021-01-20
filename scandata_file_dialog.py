@@ -7,6 +7,7 @@ except ModuleNotFoundError:
 import numpy as np
 import sys
 import os
+import re
 import pprint
 from tasks.GenericTasks import Task
 import threading
@@ -48,7 +49,7 @@ class ScanDataFileSystemModel(QtWidgets.QFileSystemModel):
                 fileinfo = self.fileInfo(index)
                 # logger.info("Fileinfo {0}".format(fileinfo.canonicalFilePath()))
                 d = QtCore.QDir(fileinfo.canonicalFilePath())
-                d.setNameFilters(["*daq_info.txt"])
+                d.setNameFilters(["*daq_info*.txt"])
                 ld = [str(x) for x in d.entryList()]
                 # logger.debug("Found daqinfo: {0}".format(ld))
                 if d.count() > 0:
@@ -178,7 +179,12 @@ class OpenScanFileDialog(QtWidgets.QDialog):
             image_count = None
         # logger.info("Data: {0}, {1}, {2}".format(str(sel_string), row, sel_images))
         self.ui.dir_lineedit.setText(sel_string)
-        self.load_daqinfo(sel_string, image_count)
+        filename = "daq_info.txt"
+        load_dir_str = str(sel_string)
+        if os.path.isfile(os.path.join(load_dir_str, filename)):
+            self.load_daqinfo(sel_string, image_count)
+        else:
+            self.load_daqinfo_multi(sel_string, image_count)
 
     def update_selection_from_lineedit(self):
         pathname = self.ui.dir_lineedit.text()
@@ -249,6 +255,82 @@ class OpenScanFileDialog(QtWidgets.QDialog):
                "\n" \
                "Date         {9}\n" \
                "Time         {10}".format(data_dict["quad"],
+                                          num_k,
+                                          data_dict["screen"],
+                                          num_im,
+                                          total_im,
+                                          image_count,
+                                          data_dict["beam_energy"],
+                                          float(data_dict["k_min"]),
+                                          float(data_dict["k_max"]),
+                                          s_list[0],
+                                          s_list[1].replace("-", ":"))
+        self.ui.daqinfo_label.setText(text)
+
+    def load_daqinfo_multi(self, load_dir, image_count=None):
+        # See if there is a file called daq_info.txt
+        filename = "daq_info_multi.txt"
+        load_dir_str = str(load_dir)
+        if os.path.isfile(os.path.join(load_dir_str, filename)) is False:
+            e = "daq_info_multi.txt not found in {0}".format(load_dir)
+            self.logger.error(e)
+            self.ui.daqinfo_label.setText("-- No data --")
+            return
+
+        self.logger.info("Loading Jason format data")
+        data_dict = dict()
+        n_quads = 0
+        with open(os.path.join(load_dir_str, filename), "r") as daq_file:
+            while True:
+                line = daq_file.readline()
+                if line == "" or line[0:5] == "*****":
+                    break
+                try:
+                    key, value = line.split(":")
+                    # self.logger.info("Found key: {0}, match {1}".format(key, m))
+                    k = key.strip()
+                    data_dict[k] = value.strip()
+                    m = re.match("quad_[0-9]*$", k)
+                    if m:
+                        n_quads += 1
+                except ValueError:
+                    pass
+
+        try:
+            num_k = int(data_dict["num_k_values"])
+            num_im = int(data_dict["num_shots"])
+            total_im = num_k * num_im
+        except (ValueError, NameError):
+            num_k = "--"
+            num_im = "--"
+            total_im = "--"
+
+        try:
+            s_list = load_dir_str.split("/")[-1].split("_")
+        except IndexError:
+            s_list[0] = "--"
+            s_list[1] = "--"
+
+        # logger.debug("Loaded data_dict: \n{0}".format(pprint.pformat(data_dict)))
+
+        text = "Scan data from daq_info_multi.txt:\n" \
+               "===================================\n\n" \
+               "\n" \
+               "Quads        {0}\n" \
+               "Num k pos    {1}\n" \
+               "\n" \
+               "Screen       {2}\n" \
+               "Images/pos   {3}\n" \
+               "\n" \
+               "Total images {4}\n" \
+               "Images found {5}\n" \
+               "\n" \
+               "Energy       {6} MeV\n" \
+               "k_min        {7:.2f} \n" \
+               "k_max        {8:.2f} \n" \
+               "\n" \
+               "Date         {9}\n" \
+               "Time         {10}".format(n_quads,
                                           num_k,
                                           data_dict["screen"],
                                           num_im,

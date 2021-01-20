@@ -23,6 +23,7 @@ from QuadScanTasks import *
 from QuadScanDataStructs import *
 from QuadScanMultiTasks import TangoMultiQuadScanTask, LoadMultiQuadScanDirTask, FitQuadDataTaskMulti
 from striptool import QTangoStripTool
+from multiquad_lu import MultiQuadLookup
 
 import logging
 
@@ -109,6 +110,22 @@ class MyScatterPlotItem(pq.ScatterPlotItem):
                 ev.ignore()
         else:
             ev.ignore()
+
+
+class TaskCallbackSignal(QtCore.QObject):
+    signal = QtCore.Signal(object)
+
+    def __init__(self):
+        pass
+
+    def __call__(self, task):
+        self.signal.emit(task)
+
+    def callback(self, task):
+        self.signal.emit(task)
+
+    def connect(self, method):
+        self.signal.connect(method)
 
 
 class MyHistogramItem(pq.HistogramLUTItem):
@@ -441,7 +458,8 @@ class QuadScanGui(QtWidgets.QWidget):
         self.ui.p_roi_size_w_spinbox.editingFinished.connect(self.set_roi)
         self.ui.p_roi_size_h_spinbox.editingFinished.connect(self.set_roi)
 
-        self.update_fit_signal.connect(self.plot_sigma_data)
+        # self.update_fit_signal.connect(self.plot_sigma_data)
+        self.update_fit_signal.connect(self.start_fit)
         self.update_camera_signal.connect(self.update_camera_image)
         self.update_proc_image_signal.connect(self.update_image_selection)
 
@@ -719,7 +737,8 @@ class QuadScanGui(QtWidgets.QWidget):
 
                     hw = self.ui.process_image_widget.getHistogramWidget()  # type: pq.HistogramLUTWidget
                     hw.item.blockSignals(True)
-                    self.update_image_selection(image.image, auto_levels=True, auto_range=False)
+                    self.update_proc_image_signal.emit(None)
+                    # self.update_image_selection(image.image, auto_levels=True, auto_range=False)
             else:
                 root.debug("Load data complete. Storing quad scan data.")
                 hw = self.ui.process_image_widget.getHistogramWidget()      # type: pq.HistogramLUTWidget
@@ -750,8 +769,9 @@ class QuadScanGui(QtWidgets.QWidget):
                         root.debug("Images len: {0}".format(len(result.images)))
                         self.user_enable_list = [True for x in range(len(result.proc_images))]
                         self.update_analysis_parameters()
-                        self.update_image_selection()
-                        self.start_processing()
+                        self.update_proc_image_signal.emit(None)
+                        # self.update_image_selection()
+                        # self.start_processing()
                         # self.update_fit_signal.emit()
                         # self.start_fit()
                 elif isinstance(task, LoadMultiQuadScanDirTask):
@@ -774,8 +794,9 @@ class QuadScanGui(QtWidgets.QWidget):
                         root.debug("Images len: {0}".format(len(result.images)))
                         self.user_enable_list = [True for x in range(len(result.proc_images))]
                         self.update_analysis_parameters()
-                        self.update_image_selection()
-                        self.start_processing()
+                        self.update_proc_image_signal.emit(None)
+                        # self.update_image_selection()
+                        # self.start_processing()
 
     def update_analysis_parameters(self):
         root.info("Acc params {0}".format(self.quad_scan_data_analysis.acc_params))
@@ -1233,7 +1254,8 @@ class QuadScanGui(QtWidgets.QWidget):
                     self.quad_scan_data_analysis = self.quad_scan_data_analysis._replace(proc_images=proc_image_list)
                     self.update_proc_image_signal.emit(None)
                     # self.update_image_selection(None)
-                self.start_fit()
+                if task.result_done_event.is_set():
+                    self.update_fit_signal.emit()
 
     def update_image_selection(self, image=None, auto_levels=False, auto_range=False):
         if image is None or isinstance(image, int):
@@ -1297,6 +1319,11 @@ class QuadScanGui(QtWidgets.QWidget):
                 self.ui.process_image_widget.setImage(np.transpose(image), autoRange=auto_range, autoLevels=auto_levels)
             except TypeError as e:
                 root.error("Error setting image: {0}".format(e))
+
+    def update_fit_callback(self, task=None):
+        if task is not None:
+            self.fit_result = task.get_result(wait=False)
+            self.update_fit_signal.emit()
 
     def update_fit_result(self, task=None):
         root.info("{0}: Updating fit result.".format(self))
@@ -1413,6 +1440,9 @@ class QuadScanGui(QtWidgets.QWidget):
 
     def plot_sigma_data(self):
         root.info("Plotting sigma data")
+        if isinstance(self.quad_scan_data_analysis.acc_params, AcceleratorParametersMulti):
+            self.plot_sigma_data_multi()
+            return
         use_x_axis = self.ui.p_x_radio.isChecked()
         if use_x_axis is True:
             sigma = np.array([proc_im.sigma_x for proc_im in self.quad_scan_data_analysis.proc_images])
@@ -1460,6 +1490,43 @@ class QuadScanGui(QtWidgets.QWidget):
             self.ui.fit_widget.update()
             self.ui.charge_widget.update()
 
+    def plot_sigma_data_multi(self):
+        use_x_axis = self.ui.p_x_radio.isChecked()
+        mq = MultiQuadLookup()
+        sigma_x = np.array([proc_im.sigma_x for proc_im in self.quad_scan_data_analysis.proc_images])
+        sigma_y = np.array([proc_im.sigma_y for proc_im in self.quad_scan_data_analysis.proc_images])
+        if use_x_axis is True:
+            sigma = sigma_x
+            axis = "x"
+        else:
+            sigma = sigma_y
+            axis = "y"
+
+        root.info("Alpha: {0}, beta: {1}, eps: {2}, sigma: {3}".format(self.fit_result.alpha, self.fit_result.beta, self.fit_result.eps, np.median(sigma)))
+        k_data = np.array([proc_im.k_value for proc_im in self.quad_scan_data_analysis.proc_images])
+        ap = self.quad_scan_data_analysis.acc_params
+        a_list = list()
+        b_list = list()
+        for ind in range(k_data.shape[0]):
+            M = mq.calc_response_matrix(k_data[ind, :], ap.quad_list, ap.screen_pos, axis)
+            a_list.append(M[0, 0])
+            b_list.append(M[0, 1])
+        q = np.array([proc_im.q for proc_im in self.quad_scan_data_analysis.proc_images])
+        en_data = np.array([proc_im.enabled for proc_im in self.quad_scan_data_analysis.proc_images])
+        self.sigma_x_plot.setData(x=a_list, y=b_list, symbol="t", brush=pq.mkBrush(150, 170, 250, 220), size=10, pen=None)
+        if self.fit_result.alpha is not None:
+            th, r_maj, r_min = mq.calc_ellipse(self.fit_result.alpha, self.fit_result.beta, self.fit_result.eps, np.median(sigma))
+            psi = np.linspace(0, 2 * np.pi, 500)
+            ae, be = mq.get_ab(psi, th, r_maj, r_min)
+            self.fit_x_plot.setData(x=ae, y=be, pen=pq.mkPen(180, 170, 50, width=2.0))
+        xd = np.arange(len(mq.eps_n_list))
+        # self.ui.charge_widget.set_data(x_data=xd, y_data=mq.eps_n_list, curve_index="eps_x")
+        self.ui.charge_widget.set_data(x_data=xd, y_data=q, curve_index="charge")
+        # self.ui.charge_widget.set_data(x_data=xd, y_data=mq.beta_list, curve_index="beta_x")
+        # self.ui.charge_widget.set_data(x_data=xd, y_data=mq.alpha_list, curve_index="alpha_x")
+        self.ui.charge_widget.set_data(x_data=xd, y_data=sigma_x, curve_index="sigma_x")
+        self.ui.charge_widget.set_data(x_data=xd, y_data=sigma_y, curve_index="sigma_y")
+
     def plot_ab_data(self):
         root.info("Plotting ab data")
         mq: MultiQuadLookup = self.quad_scan_step_result["multiquad"]
@@ -1480,7 +1547,7 @@ class QuadScanGui(QtWidgets.QWidget):
 
     def set_algo(self):
         root.info("Setting fit algo")
-        self.start_fit()
+        self.update_fit_signal.emit()
 
     def set_start_k(self):
         root.info("Setting start k value to {0}".format(self.ui.k_current_spinbox.value()))
@@ -1924,7 +1991,7 @@ class QuadScanGui(QtWidgets.QWidget):
             self.update_image_selection(auto_levels=True)
 
         # self.ui.process_image_widget.setImage(proc_image.pic_roi)
-        self.start_fit()
+        self.update_fit_signal.emit()
 
     def save_image_callback(self, task):
         result = task.get_result(wait=False)
@@ -2035,6 +2102,32 @@ class QuadScanGui(QtWidgets.QWidget):
             task = FitQuadDataTaskMulti(self.quad_scan_data_analysis.proc_images,
                                    self.quad_scan_data_analysis.acc_params,
                                    algo=algo, axis=axis, name="fit")
+
+            with self.gui_lock:
+                old_names = self.ui.charge_widget.plot_widget.curve_name_list
+                for c in old_names:
+                    self.ui.charge_widget.remove_curve(c)
+                charge_plot = MyScatterPlotItem()
+                charge_plot.setPen((180, 120, 70), width=0)
+                charge_plot.setBrush((180, 120, 70))
+                charge_plot.setSymbol("o")
+                self.ui.charge_widget.add_curve("charge", charge_plot)
+
+                plot = MyScatterPlotItem()
+                color = pq.mkColor(130, 70, 150)
+                plot.setPen(color, width=0)
+                plot.setBrush(color)
+                plot.setSymbol("s")
+                self.ui.charge_widget.add_curve("sigma_x", plot, visible=False)
+
+                plot = MyScatterPlotItem()
+                color = pq.mkColor(150, 30, 130)
+                plot.setPen(color, width=0)
+                plot.setBrush(color)
+                plot.setSymbol("h")
+                self.ui.charge_widget.add_curve("sigma_y", plot, visible=False)
+
+                self.ui.charge_widget.set_legend_position("right")
         task.add_callback(self.update_fit_result)
         task.start()
 
