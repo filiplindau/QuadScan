@@ -115,8 +115,10 @@ class MyScatterPlotItem(pq.ScatterPlotItem):
 class TaskCallbackSignal(QtCore.QObject):
     signal = QtCore.Signal(object)
 
-    def __init__(self):
-        pass
+    def __init__(self, method=None):
+        super(TaskCallbackSignal, self).__init__()
+        if method is not None:
+            self.connect(method)
 
     def __call__(self, task):
         self.signal.emit(task)
@@ -236,7 +238,7 @@ class QuadScanGui(QtWidgets.QWidget):
         #                                            kernel=self.ui.p_median_kernel_spinbox.value(),
         #                                            name="gui_image_proc")
         self.image_processor = ProcessAllImagesTask2(image_size=[2000, 2000], name="gui_image_proc",
-                                                     callback_list=[self.update_image_processing])
+                                                     callback_list=[TaskCallbackSignal(self.update_image_processing)])
         self.image_processor.start()
 
         if no_database:
@@ -459,7 +461,7 @@ class QuadScanGui(QtWidgets.QWidget):
         self.ui.p_roi_size_h_spinbox.editingFinished.connect(self.set_roi)
 
         # self.update_fit_signal.connect(self.plot_sigma_data)
-        self.update_fit_signal.connect(self.start_fit)
+        # self.update_fit_signal.connect(self.start_fit)
         self.update_camera_signal.connect(self.update_camera_image)
         self.update_proc_image_signal.connect(self.update_image_selection)
 
@@ -616,19 +618,24 @@ class QuadScanGui(QtWidgets.QWidget):
 
         self.load_init_flag = True
 
+        cc = TaskCallbackSignal()
+        cc.connect(self.update_load_data)
+
         if os.path.isfile(os.path.join(load_dir, "daq_info.txt")) is True:
             # LoadQuadScanTask takes care of the actual loading of the files in the specified directory:
             t1 = LoadQuadScanDirTask(str(load_dir), process_now=True,
                                      threshold=self.ui.p_threshold_spinbox.value(),
                                      kernel_size=self.ui.p_median_kernel_spinbox.value(),
                                      process_exec_type="thread",
-                                     name="load_task", callback_list=[self.update_load_data])
+                                     name="load_task", callback_list=[cc])
+            self.prepare_plots("single")
         else:
             t1 = LoadMultiQuadScanDirTask(str(load_dir), process_now=True,
                                           threshold=self.ui.p_threshold_spinbox.value(),
                                           kernel_size=self.ui.p_median_kernel_spinbox.value(),
                                           process_exec_type="thread",
-                                          name="load_multi_task", callback_list=[self.update_load_data])
+                                          name="load_multi_task", callback_list=[cc])
+            self.prepare_plots("multi_disk")
         t1.start()
         source_name = QtCore.QDir.fromNativeSeparators(load_dir).split("/")[-1]
         self.ui.data_source_label.setText(source_name)
@@ -711,9 +718,7 @@ class QuadScanGui(QtWidgets.QWidget):
         if task is not None:
             result = task.get_result(wait=False)
             if isinstance(result, QuadImage):
-            # if task.is_done() is False:
-                # Task is not done so this is an image update
-                image = task.get_result(wait=False)   # type: QuadImage
+                image = result   # type: QuadImage
                 acc_params = task.acc_params
                 if task.is_cancelled():
                     root.error("Error when loading image: {0}".format(image))
@@ -721,7 +726,6 @@ class QuadScanGui(QtWidgets.QWidget):
                     m = image.image.max()
                     if m > self.load_image_max:
                         self.load_image_max = m
-                    # root.debug("image {0}".format(image.pic_roi))
 
                     if self.load_init_flag:
                         pos = [acc_params.roi_center[1] - acc_params.roi_dim[1] / 2.0,
@@ -737,8 +741,7 @@ class QuadScanGui(QtWidgets.QWidget):
 
                     hw = self.ui.process_image_widget.getHistogramWidget()  # type: pq.HistogramLUTWidget
                     hw.item.blockSignals(True)
-                    self.update_proc_image_signal.emit(None)
-                    # self.update_image_selection(image.image, auto_levels=True, auto_range=False)
+                    self.update_image_selection(image.image, auto_levels=True, auto_range=False)
             else:
                 root.debug("Load data complete. Storing quad scan data.")
                 hw = self.ui.process_image_widget.getHistogramWidget()      # type: pq.HistogramLUTWidget
@@ -769,8 +772,8 @@ class QuadScanGui(QtWidgets.QWidget):
                         root.debug("Images len: {0}".format(len(result.images)))
                         self.user_enable_list = [True for x in range(len(result.proc_images))]
                         self.update_analysis_parameters()
-                        self.update_proc_image_signal.emit(None)
-                        # self.update_image_selection()
+                        # self.update_proc_image_signal.emit(None)
+                        self.update_image_selection()
                         # self.start_processing()
                         # self.update_fit_signal.emit()
                         # self.start_fit()
@@ -794,9 +797,9 @@ class QuadScanGui(QtWidgets.QWidget):
                         root.debug("Images len: {0}".format(len(result.images)))
                         self.user_enable_list = [True for x in range(len(result.proc_images))]
                         self.update_analysis_parameters()
-                        self.update_proc_image_signal.emit(None)
-                        # self.update_image_selection()
-                        # self.start_processing()
+                        # self.update_proc_image_signal.emit(None)
+                        self.update_image_selection()
+                        self.start_processing()
 
     def update_analysis_parameters(self):
         root.info("Acc params {0}".format(self.quad_scan_data_analysis.acc_params))
@@ -850,6 +853,43 @@ class QuadScanGui(QtWidgets.QWidget):
         except ZeroDivisionError:
             threshold = 0.0
         root.debug("Setting threshold to {0}".format(threshold))
+
+    def prepare_plots(self, scan_type="single"):
+        root.info("Preparing plots for {0}".format(scan_type))
+        with self.gui_lock:
+            old_names = self.ui.charge_widget.plot_widget.curve_name_list
+            for c in old_names:
+                self.ui.charge_widget.remove_curve(c)
+            if scan_type == "single":
+                col = (180, 120, 70)
+                charge_plot = MyScatterPlotItem(pen=pq.mkPen(col, width=0), brush=pq.mkBrush(col), symbol="o")
+                self.ui.charge_widget.add_curve("charge", charge_plot)
+
+                col = pq.mkColor(130, 70, 150)
+                plot = MyScatterPlotItem(pen=pq.mkPen(col, width=0), brush=pq.mkBrush(col), symbol="s")
+                self.ui.charge_widget.add_curve("sigma_x", plot, visible=False)
+
+                col = pq.mkColor(150, 30, 130)
+                plot = MyScatterPlotItem(pen=pq.mkPen(col, width=0), brush=pq.mkBrush(col), symbol="h")
+                self.ui.charge_widget.add_curve("sigma_y", plot, visible=False)
+
+                self.ui.charge_widget.set_legend_position("right")
+            elif scan_type == "multi_disk":
+                col = (180, 120, 70)
+                charge_plot = MyScatterPlotItem(pen=pq.mkPen(col, width=0), brush=pq.mkBrush(col), symbol="o")
+                self.ui.charge_widget.add_curve("charge", charge_plot)
+
+                col = pq.mkColor(130, 70, 150)
+                plot = MyScatterPlotItem(pen=pq.mkPen(col, width=0), brush=pq.mkBrush(col), symbol="s")
+                self.ui.charge_widget.add_curve("sigma_x", plot, visible=False)
+
+                col = pq.mkColor(150, 30, 130)
+                plot = MyScatterPlotItem(pen=pq.mkPen(col, width=0), brush=pq.mkBrush(col), symbol="h")
+                self.ui.charge_widget.add_curve("sigma_y", plot, visible=False)
+
+                self.ui.charge_widget.set_legend_position("right")
+            elif scan_type == "multi_scan":
+                pass
 
     def update_section(self):
         """
@@ -1103,7 +1143,7 @@ class QuadScanGui(QtWidgets.QWidget):
                 t.cancel()
             self.screen_tasks = list()
             image_task = TangoReadAttributeTask("image", new_screen.liveviewer, self.device_handler,
-                                                name="cam_image_read", callback_list=[self.read_image])
+                                                name="cam_image_read", callback_list=[TaskCallbackSignal(self.read_image)])
             try:
                 framerate = float(self.ui.reprate_label.text().split()[0])
             except ValueError:
@@ -1112,20 +1152,22 @@ class QuadScanGui(QtWidgets.QWidget):
             rep_task.start()
             self.screen_tasks.append(rep_task)
             cam_state_task = TangoReadAttributeTask("state", new_screen.liveviewer, self.device_handler,
-                                                    name="cam_state_read", callback_list=[self.read_image])
+                                                    name="cam_state_read", callback_list=[TaskCallbackSignal(self.read_image)])
             rep_task = RepeatTask(cam_state_task, -1, 0.5, name="cam_state_repeat")
             rep_task.start()
             self.screen_tasks.append(rep_task)
             cam_state_task = TangoReadAttributeTask("framerate", new_screen.liveviewer, self.device_handler,
-                                                    name="cam_reprate_read", callback_list=[self.read_image])
+                                                    name="cam_reprate_read", callback_list=[TaskCallbackSignal(self.read_image)])
             rep_task = RepeatTask(cam_state_task, -1, 0.5, name="cam_reprate_repeat")
             rep_task.start()
             self.screen_tasks.append(rep_task)
             screen_in_task = TangoReadAttributeTask("statusin", new_screen.screen, self.device_handler,
-                                                    name="screen_in_read", callback_list=[self.read_image])
+                                                    name="screen_in_read", callback_list=[TaskCallbackSignal(self.read_image)])
             rep_task = RepeatTask(screen_in_task, -1, 0.5, name="screen_in_repeat")
             rep_task.start()
             self.screen_tasks.append(rep_task)
+            cc = TaskCallbackSignal()
+            cc.connect(self.read_image)
             cam_cal_task = BagOfTasksTask([TangoReadAttributeTask("measurementruler", new_screen.beamviewer,
                                                                   self.device_handler, name="cam_cal_ruler"),
                                            TangoReadAttributeTask("measurementrulerwidth", new_screen.beamviewer,
@@ -1133,7 +1175,7 @@ class QuadScanGui(QtWidgets.QWidget):
                                            TangoReadAttributeTask("roi", new_screen.beamviewer,
                                                                   self.device_handler, name="cam_cal_roi")
                                            ],
-                                          name="cam_cal_read", callback_list=[self.read_image])
+                                          name="cam_cal_read", callback_list=[cc])
             cam_cal_task.start()
             self.current_screen = new_screen
 
@@ -1255,7 +1297,8 @@ class QuadScanGui(QtWidgets.QWidget):
                     self.update_proc_image_signal.emit(None)
                     # self.update_image_selection(None)
                 if task.result_done_event.is_set():
-                    self.update_fit_signal.emit()
+                    self.start_fit()
+                    # self.update_fit_signal.emit()
 
     def update_image_selection(self, image=None, auto_levels=False, auto_range=False):
         if image is None or isinstance(image, int):
@@ -1347,7 +1390,7 @@ class QuadScanGui(QtWidgets.QWidget):
                 self.ui.beta_label.setText("-- m")
                 self.ui.alpha_label.setText("--")
                 self.fit_result = fitresult
-                self.update_fit_signal.emit()
+                # self.update_fit_signal.emit()
 
             else:
                 if fitresult is not None:
@@ -1362,7 +1405,8 @@ class QuadScanGui(QtWidgets.QWidget):
                     self.ui.beta_label.setText("{0:.2f} m".format(fitresult.beta))
                     self.ui.alpha_label.setText("{0:.2f}".format(fitresult.alpha))
                     self.fit_result = fitresult
-                    self.update_fit_signal.emit()
+                    self.plot_sigma_data()
+                    # self.update_fit_signal.emit()
                 else:
                     root.error("Fit result NONE")
 
@@ -1519,7 +1563,7 @@ class QuadScanGui(QtWidgets.QWidget):
             psi = np.linspace(0, 2 * np.pi, 500)
             ae, be = mq.get_ab(psi, th, r_maj, r_min)
             self.fit_x_plot.setData(x=ae, y=be, pen=pq.mkPen(180, 170, 50, width=2.0))
-        xd = np.arange(len(mq.eps_n_list))
+        xd = np.arange(len(q))
         # self.ui.charge_widget.set_data(x_data=xd, y_data=mq.eps_n_list, curve_index="eps_x")
         self.ui.charge_widget.set_data(x_data=xd, y_data=q, curve_index="charge")
         # self.ui.charge_widget.set_data(x_data=xd, y_data=mq.beta_list, curve_index="beta_x")
@@ -1632,9 +1676,14 @@ class QuadScanGui(QtWidgets.QWidget):
                                    measure_interval=1.0 / self.ui.reprate_spinbox.value())
             # callback_list=[self.scan_callback] is called for each completed step.
             # read_callback=self.scan_image_callback is called for every measurement (image taken)
+            cc1 = TaskCallbackSignal()
+            cc1.connect(self.scan_callback)
+            cc2 = TaskCallbackSignal()
+            cc2.connect(self.scan_image_callback)
+
             self.scan_task = TangoScanTask(scan_param=scan_param, device_handler=self.device_handler, name="scan",
-                                           timeout=5.0, callback_list=[self.scan_callback],
-                                           read_callback=self.scan_image_callback)
+                                           timeout=5.0, callback_list=[cc1],
+                                           read_callback=self.cc2)
             self.scan_task.start()
             if self.ui.update_analysis_radiobutton.isChecked():
                 source_name = "Scan data {0}-{1}".format(self.current_quad.mag, self.current_screen.screen)
@@ -1716,10 +1765,12 @@ class QuadScanGui(QtWidgets.QWidget):
                                     measure_number=self.ui.num_images_spinbox.value(),
                                     measure_interval=1.0 / self.ui.reprate_spinbox.value(),
                                     base_path=self.ui.save_path_linedit.text(), save=True)
+        cc1 = TaskCallbackSignal()
+        cc1.connect(self.multiquad_scan_callback)
+        cc2 = TaskCallbackSignal()
+        cc2.connect(self.multiquad_scan_image_callback)
         self.scan_task = TangoMultiQuadScanTask(scan_param, self.device_handler, self.section_devices, name="MultiQuadScan",
-                                                callback_list=[self.multiquad_scan_callback],
-                                                read_callback=self.multiquad_scan_image_callback,
-                                                timeout=5.0)
+                                                callback_list=[cc1], read_callback=cc2, timeout=5.0)
         self.update_ab_signal.connect(self.plot_ab_data)
         self.scan_task.start()
 
@@ -1921,9 +1972,11 @@ class QuadScanGui(QtWidgets.QWidget):
             root.info("QuadScanData k values: {0}".format(k_list))
             # Appending image to images list in "immutable" named tuple....... :)
             self.quad_scan_data_scan.images.append(quadimage)
+            cc = TaskCallbackSignal()
+            cc.connect(self.save_image_callback)
             task = SaveQuadImageTask(quadimage, save_path=str(self.scan_save_path),
                                      name="scan_save_{0}".format(str(self.ui.save_name_lineedit.text())),
-                                     callback_list=[self.save_image_callback])
+                                     callback_list=[CC])
             task.start()
 
             s = "RUNNING: k {0}/{1} image {2}/{3}".format(k_ind+1, float(num_k), im_ind+1, float(num_images))
@@ -2078,7 +2131,9 @@ class QuadScanGui(QtWidgets.QWidget):
         #                             name="process_images",
         #                             callback_list=[self.update_image_processing])
         self.image_processor.clear_callback_list()
-        self.image_processor.add_callback(self.update_image_processing)
+        cc = TaskCallbackSignal()
+        cc.connect(self.update_image_processing)
+        self.image_processor.add_callback(cc)
         self.image_processor.process_images(self.quad_scan_data_analysis,
                                             threshold=th, kernel=kern, enabled_list=self.user_enable_list,
                                             keep_charge_ratio=keep_charge_ratio)
@@ -2103,32 +2158,9 @@ class QuadScanGui(QtWidgets.QWidget):
                                    self.quad_scan_data_analysis.acc_params,
                                    algo=algo, axis=axis, name="fit")
 
-            with self.gui_lock:
-                old_names = self.ui.charge_widget.plot_widget.curve_name_list
-                for c in old_names:
-                    self.ui.charge_widget.remove_curve(c)
-                charge_plot = MyScatterPlotItem()
-                charge_plot.setPen((180, 120, 70), width=0)
-                charge_plot.setBrush((180, 120, 70))
-                charge_plot.setSymbol("o")
-                self.ui.charge_widget.add_curve("charge", charge_plot)
-
-                plot = MyScatterPlotItem()
-                color = pq.mkColor(130, 70, 150)
-                plot.setPen(color, width=0)
-                plot.setBrush(color)
-                plot.setSymbol("s")
-                self.ui.charge_widget.add_curve("sigma_x", plot, visible=False)
-
-                plot = MyScatterPlotItem()
-                color = pq.mkColor(150, 30, 130)
-                plot.setPen(color, width=0)
-                plot.setBrush(color)
-                plot.setSymbol("h")
-                self.ui.charge_widget.add_curve("sigma_y", plot, visible=False)
-
-                self.ui.charge_widget.set_legend_position("right")
-        task.add_callback(self.update_fit_result)
+        cc = TaskCallbackSignal()
+        cc.connect(self.update_fit_result)
+        task.add_callback(cc)
         task.start()
 
     def points_clicked(self, scatterplotitem, point_list, right=False):
