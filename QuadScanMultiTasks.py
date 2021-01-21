@@ -141,6 +141,7 @@ class TangoMultiQuadScanTask(Task):
 
         # Loop through the scan
         while self.get_done_event().is_set() is False:
+            self.logger.info("Step {0} of {1}".format(current_step, n_steps))
 
             k_current, image, image_p, timestamp, k_next = self.do_step(k_next)
 
@@ -169,7 +170,7 @@ class TangoMultiQuadScanTask(Task):
                 for callback in self.callback_list:
                     callback(self)
 
-            if current_step > self.scan_param.n_steps:
+            if current_step > n_steps:
                 self.logger.info("Scan completed.")
                 self.event_done.set()
 
@@ -382,6 +383,7 @@ class TangoMultiQuadScanTask(Task):
 
         timestamp = res[2][0].time
 
+        # We only use 4 quads for searching for the target a-b. Discard additional quads if available.
         k_next = self.mq_lookup.scan_step(sigma_x, sigma_y, charge, k_current[0:4])
         if k_next is not None:
             if len(k_current) > 4:

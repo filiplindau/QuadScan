@@ -19,6 +19,7 @@ import re
 import pickle
 from scipy.signal import medfilt2d
 from scipy.optimize import minimize, leastsq # Bounds, least_squares, BFGS, NonlinearConstraint
+from scipy.sparse import csr_matrix
 #from scipy.optimize import lsq_linear
 # from QuadScanTasks import TangoReadAttributeTask, TangoMonitorAttributeTask, TangoWriteAttributeTask, work_func_local2
 from operator import attrgetter
@@ -470,10 +471,137 @@ class MultiQuadLookup(object):
         self.A_lu = A
         self.k_lu = k
 
+    def generate_sparse_ab_set(self, A_lu=None, k_lu=None, data_filename="MS1_big.npz"):
+        t0 = time.time()
+        if A_lu is None:
+            logger.info("Loading data...")
+            npzfile = np.load(data_filename)
+            A_lu = npzfile["A_lu"]
+            k_lu = npzfile["k_lu"]
+            logger.info("Loading complete.)")
+        logger.info("Starting binning")
+        A_list = list()
+        sign_m = np.array(np.meshgrid([0, 1], [0, 1], [0, 1], [0, 1])).reshape(4, -1).transpose()
+
+        da = 0.2
+        a_v = np.arange(-15, 15, da)
+        db = 0.2
+        b_v = np.arange(-5, 25, db)
+        A_dict = dict()
+        d_a = np.digitize(A_lu[:, 0], a_v[:-1])
+        d_b = np.digitize(A_lu[:, 1], b_v[:-1])
+        logger.info("Data digitized")
+
+        nbins_a = a_v.shape[0]
+        N_a = A_lu.shape[0]
+        S_a = csr_matrix((A_lu[:, 0], [d_a, np.arange(N_a)]), shape=(nbins_a, N_a))
+        ind_a = [group for group in np.split(S_a.indices, S_a.indptr[1:-1])]
+        logger.info("CSR a_x matrix constructed")
+        S_ay = csr_matrix((A_lu[:, 2], [d_a, np.arange(N_a)]), shape=(nbins_a, N_a))
+        ind_ay = [group for group in np.split(S_ay.indices, S_ay.indptr[1:-1])]
+        logger.info("CSR a_y matrix constructed")
+
+        nbins_b = b_v.shape[0]
+        N_b = A_lu.shape[0]
+        S_b = csr_matrix((A_lu[:, 1], [d_b, np.arange(N_b)]), shape=(nbins_b, N_b))
+        ind_b = [group for group in np.split(S_b.indices, S_b.indptr[1:-1])]
+        logger.info("CSR b_x matrix constructed")
+        S_by = csr_matrix((A_lu[:, 3], [d_b, np.arange(N_b)]), shape=(nbins_b, N_b))
+        ind_by = [group for group in np.split(S_by.indices, S_by.indptr[1:-1])]
+        logger.info("CSR b_y matrix constructed")
+
+        # ind_m = np.full((nbins_a, nbins_b, nbins_a, nbins_b), np.nan)
+        ind_m = dict()
+        k_m = dict()
+        ka_m = dict()
+        ka_m_list = list()
+        a_ab_y_list = list()
+        # for ia in np.arange(74, 75):
+        for ia in range(len(a_v)):
+            logger.info("ia {0}/{1}".format(ia, len(a_v)))
+            kb_m_list = list()
+            b_ab_y_list = list()
+            for ib in range(len(b_v)):
+                ka_y_tmp = list()
+                ab_y_tmp = list()
+                # logger.info("ia {0}/{1}       ib {2}/{3}".format(ia, len(a_v), ib, len(b_v)))
+                ind_ab = np.intersect1d(ind_a[ia], ind_b[ib], assume_unique=True)
+                if ind_ab.shape[0] > 0:
+                    # logger.info("{0} values".format(ind_ab.shape[0]))
+                    a_y_tmp = A_lu[ind_ab, 2]
+                    b_y_tmp = A_lu[ind_ab, 3]
+                    # a_v_y = np.linspace(a_y_tmp.min(), a_y_tmp.max(), 10)
+                    # a_v_y = np.arange(a_y_tmp.min(), a_y_tmp.max(), da)
+                    try:
+                        ia_min = np.atleast_1d(a_v > a_y_tmp.min()).nonzero()[0][0]
+                        ia_max = np.atleast_1d(a_v <= min(a_v[-1], a_y_tmp.max())).nonzero()[0][-1]
+                        a_v_y = a_v[ia_min:ia_max]
+                        # b_v_y = np.linspace(b_y_tmp.min(), b_y_tmp.max(), 10)
+                        # b_v_y = np.arange(b_y_tmp.min(), b_y_tmp.max(), db)
+                        ib_min = np.atleast_1d(b_v > b_y_tmp.min()).nonzero()[0][0]
+                        ib_max = np.atleast_1d(b_v <= min(b_v[-1], b_y_tmp.max())).nonzero()[0][-1]
+                    except IndexError:
+                        kb_m_list.append(np.array(ka_y_tmp))
+                        b_ab_y_list.append(np.array(ab_y_tmp))
+
+                        continue
+                    b_v_y = b_v[ib_min:ib_max]
+                    d_a_y = np.digitize(a_y_tmp, a_v_y[:-1])
+                    d_b_y = np.digitize(b_y_tmp, b_v_y[:-1])
+                    N_a_y = a_y_tmp.shape[0]
+                    nbins_a_y = a_v_y.shape[0]
+                    N_b_y = b_y_tmp.shape[0]
+                    nbins_b_y = b_v_y.shape[0]
+                    ind_y_tmp = dict()
+                    k_y_tmp = dict()
+
+                    try:
+                        S_ay = csr_matrix((a_y_tmp, [d_a_y, np.arange(N_a_y)]), shape=(nbins_a_y, N_a_y))
+                        S_by = csr_matrix((b_y_tmp, [d_b_y, np.arange(N_b_y)]), shape=(nbins_b_y, N_b_y))
+                        ind_ay = [group for group in np.split(S_ay.indices, S_ay.indptr[1:-1])]
+                        ind_by = [group for group in np.split(S_by.indices, S_by.indptr[1:-1])]
+                    except ValueError as e:
+                        # logger.info("ia {0}     ib {1}\n{2}".format(ia, ib, e))
+                        kb_m_list.append(np.array(ka_y_tmp))
+                        b_ab_y_list.append(np.array(ab_y_tmp))
+
+                        continue
+
+                    for iay in range(len(a_v_y)):
+                        for iby in range(len(b_v_y)):
+                            # ind_abay = np.intersect1d(ind_ab, ind_ay[iay], assume_unique=True)
+                            ind_aby = np.intersect1d(ind_ay[iay], ind_by[iby], assume_unique=True)
+                            # logger.info("ab {0}, ay {1}, by {2}, abay {3}, aby {4}".format(ind_ab.shape[0],
+                            #                                                                ind_ay[iay].shape[0],
+                            #                                                                ind_by[iby].shape[0],
+                            #                                                                ind_aby.shape[0]))
+                            if ind_aby.shape[0] > 0:
+                                # logger.info("Found {0}".format(ind_aby.shape[0]))
+                                ind_y_tmp[iay + ia_min, iby + ib_min] = ind_aby[0]
+                                k_y_tmp[iay + ia_min, iby + ib_min] = k_lu[ind_ab, :][ind_aby, :]
+                                ka_y_tmp.append(k_lu[ind_ab, :][ind_aby[0], :])
+                                ab_y_tmp.append(A_lu[ind_ab, 2:][ind_aby[0], :])
+                    ind_m[ia, ib] = ind_y_tmp
+                    k_m[ia, ib] = k_y_tmp
+                    ka_m[ia, ib] = np.array(ka_y_tmp)
+                kb_m_list.append(np.array(ka_y_tmp))
+                b_ab_y_list.append(np.array(ab_y_tmp))
+            ka_m_list.append(kb_m_list)
+            a_ab_y_list.append(b_ab_y_list)
+
+        self.k_m_lu = ka_m_list
+        self.ab_lu = a_ab_y_list
+        self.a_v_lu = a_v
+        self.b_v_lu = b_v
+
+        return ind_m, k_m, ka_m, ka_m_list, a_ab_y_list, a_v, b_v
+
     def save_lookup(self, section, A_lu, k_lu):
         filename = "{0}_lookup.npz".format(section)
         self.logger.info("Lookup saved to file {0}".format(filename))
         np.savez(filename, A_lu=A_lu, k_lu=k_lu)
+        with open("{0}_k.pkl".format(section), "wb") as f:
+            pickle.dump((self.k_m_lu, self.ab_lu, self.a_v_lu, self.b_v_lu), f)
 
     def load_lookup(self, section):
         filename = "{0}_lookup.npz".format(section)
@@ -496,6 +624,7 @@ class MultiQuadLookup(object):
                 self.b_v_lu = data[3]
         except FileNotFoundError:
             self.logger.error("Lookup file {0} does not exist".format(filename))
+            self.set_section(section, load_file=False)
 
     def start_scan(self, current_sigma_x, current_sigma_y, current_charge=None, section="MS1", n_steps=16,
                    guess_alpha=0.0, guess_beta=40.0, guess_eps_n=2e-6):
@@ -556,6 +685,9 @@ class MultiQuadLookup(object):
         self.k_list.append(current_k_list)
         self.charge_list.append(current_charge)
 
+        #
+        # x
+        #
         # Calculate response matrix for current quad settings and store the a-b values
         M = self.calc_response_matrix(current_k_list, self.quad_list, self.screen.position, axis="x")
         self.a_list.append(M[0, 0])
@@ -583,6 +715,9 @@ class MultiQuadLookup(object):
         if np.isnan(r_min):
             r_min = self.r_min_list[-1]
 
+        #
+        # y
+        #
         M_y = self.calc_response_matrix(current_k_list, self.quad_list, self.screen.position, axis="y")
         self.a_y_list.append(M_y[0, 0])
         self.b_y_list.append(M_y[0, 1])
@@ -862,26 +997,40 @@ class MultiQuadLookup(object):
                 target_a = a_list[-1] + d_ab * da
                 target_b = b_list[-1] + d_ab * db
             else:
-                a_min, a_max, b_min, b_max = self.get_ab_range(self.max_k)
-                psi_v = np.linspace(0, 2 * np.pi, 5000)
-                a, b = self.get_ab(psi_v, theta, r_maj, r_min)
-                ind = np.all([a < a_max, a > a_min, b < b_max, b > b_min], axis=0)
-                a_g = a[ind]
-                b_g = b[ind]
-                st = int(a_g.shape[0] / self.n_steps + 0.5)
-                self.logger.debug("Found {0} values in range. Using every {1} value.".format(a_g.shape[0], st))
-                if st > 0:
-                    self.logger.debug("Step {0} indexing a_g[::st] of length {1}.".format(step, a_g[::st].shape[0]))
-                else:
-                    self.logger.debug("Step {0} indexing a_g[::st] no values.".format(step))
-                try:
-                    target_a = a_g[::st][step]
-                    target_b = b_g[::st][step]
-                except (ValueError, IndexError) as e:
-                    self.logger.warning(e)
-                    target_a = a_g[-1]
-                    target_b = b_g[-1]
-                psi = self.get_psi(target_a, target_b, theta, r_maj, r_min)
+                method = "length"
+                if method == "psi":
+                    a_min, a_max, b_min, b_max = self.get_ab_range(self.max_k)
+                    psi_v = np.linspace(0, 2 * np.pi, 5000)
+                    a, b = self.get_ab(psi_v, theta, r_maj, r_min)
+                    ind = np.all([a < a_max, a > a_min, b < b_max, b > b_min], axis=0)
+                    a_g = a[ind]
+                    b_g = b[ind]
+                    st = int(a_g.shape[0] / self.n_steps + 0.5)
+                    self.logger.info("Found {0} values in range. Using every {1} value.".format(a_g.shape[0], st))
+                    if st > 0:
+                        self.logger.debug("Step {0} indexing a_g[::st] of length {1}.".format(step, a_g[::st].shape[0]))
+                    else:
+                        self.logger.debug("Step {0} indexing a_g[::st] no values.".format(step))
+                    try:
+                        target_a = a_g[::st][step]
+                        target_b = b_g[::st][step]
+                    except (ValueError, IndexError) as e:
+                        self.logger.warning(e)
+                        target_a = a_g[-1]
+                        target_b = b_g[-1]
+                    psi = self.get_psi(target_a, target_b, theta, r_maj, r_min)
+                elif method == "length":
+                    self.logger.debug("Stepping with constant distance in a-b space")
+                    # Ellipse circumference:
+                    p = np.pi * (3 * (r_min + r_maj) - np.sqrt((3 * r_min + r_maj)*(r_min + 3 * r_maj)))
+                    dp = p / np.maximum(1, self.n_steps - 3)
+                    a0 = a_list[-1]
+                    b0 = b_list[-1]
+                    psi0 = self.get_psi(a0, b0, theta, r_maj, r_min)
+                    psi_v = np.linspace(psi0, 2 * np.pi, 5000)
+                    a, b = self.get_ab(psi_v, theta, r_maj, r_min)
+                    l = (a-a0)**2 + (b-b0)**2
+                    ind_p = np.argmin(l - dp**2)
 
             self.psi_target.append(psi)
         else:
@@ -1318,6 +1467,7 @@ class MultiQuadLookup(object):
             self.load_lookup(section)
         else:
             self.generate_lookup()
+            self.generate_sparse_ab_set(self.A_lu, k_lu)
         self.section = section
 
     def set_k_values(self, k_list):
