@@ -18,6 +18,7 @@ import traceback
 import re
 import pickle
 from scipy.signal import medfilt2d
+from scipy.ndimage import median_filter
 from scipy.optimize import minimize, leastsq # Bounds, least_squares, BFGS, NonlinearConstraint
 from scipy.sparse import csr_matrix
 #from scipy.optimize import lsq_linear
@@ -603,6 +604,12 @@ class MultiQuadLookup(object):
         with open("{0}_k.pkl".format(section), "wb") as f:
             pickle.dump((self.k_m_lu, self.ab_lu, self.a_v_lu, self.b_v_lu), f)
 
+    def save_inv_lookup(self, section, k_m_lu, ab_lu, a_v_lu, b_v_lu):
+        filename = "{0}_k.pkl".format(section)
+        with open(filename, "wb") as f:
+            pickle.dump((k_m_lu, ab_lu, a_v_lu, b_v_lu), f)
+        self.logger.info("Inverse Lookup saved to file {0}".format(filename))
+
     def load_lookup(self, section):
         filename = "{0}_lookup.npz".format(section)
         try:
@@ -625,6 +632,7 @@ class MultiQuadLookup(object):
         except FileNotFoundError:
             self.logger.error("Lookup file {0} does not exist".format(filename))
             self.set_section(section, load_file=False)
+            self.save_inv_lookup(section, self.k_m_lu, self.ab_lu, self.a_v_lu, self.b_v_lu)
 
     def start_scan(self, current_sigma_x, current_sigma_y, current_charge=None, section="MS1", n_steps=16,
                    guess_alpha=0.0, guess_beta=40.0, guess_eps_n=2e-6):
@@ -999,7 +1007,7 @@ class MultiQuadLookup(object):
             else:
                 method = "length"
                 if method == "psi":
-                    a_min, a_max, b_min, b_max = self.get_ab_range(self.max_k)
+                    a_min, a_max, b_min, b_max = self.get_ab_range(self.max_k, axis)
                     psi_v = np.linspace(0, 2 * np.pi, 5000)
                     a, b = self.get_ab(psi_v, theta, r_maj, r_min)
                     ind = np.all([a < a_max, a > a_min, b < b_max, b > b_min], axis=0)
@@ -1018,7 +1026,7 @@ class MultiQuadLookup(object):
                         self.logger.warning(e)
                         target_a = a_g[-1]
                         target_b = b_g[-1]
-                    psi = self.get_psi(target_a, target_b, theta, r_maj, r_min)
+
                 elif method == "length":
                     self.logger.debug("Stepping with constant distance in a-b space")
                     # Ellipse circumference:
@@ -1027,11 +1035,29 @@ class MultiQuadLookup(object):
                     a0 = a_list[-1]
                     b0 = b_list[-1]
                     psi0 = self.get_psi(a0, b0, theta, r_maj, r_min)
-                    psi_v = np.linspace(psi0, 2 * np.pi, 5000)
+                    psi_v = np.linspace(psi0, psi0 + 2 * np.pi, 1000)
                     a, b = self.get_ab(psi_v, theta, r_maj, r_min)
-                    l = (a-a0)**2 + (b-b0)**2
-                    ind_p = np.argmin(l - dp**2)
-
+                    a_min, a_max, b_min, b_max = self.get_ab_range(self.max_k, axis)
+                    ind = np.all([a < a_max, a > a_min, b < b_max, b > b_min], axis=0)
+                    # Points along the ellipse that is achievable with the range of k values available
+                    a_g = a[ind]
+                    b_g = b[ind]
+                    a_g = a
+                    b_g = b
+                    l = (a_g-a0)**2 + (b_g-b0)**2
+                    try:
+                        ind_p = np.argmax(l > dp**2)
+                        target_a = a_g[ind_p]
+                        target_b = b_g[ind_p]
+                    except ValueError:
+                        self.logger.info("Argmax on empty: dp {0}, a0 {1}, b0 {2}\n"
+                                         "psi0 {3}, a_min {4}, a_max {5}, \n"
+                                         "b_min {6}, b_max {7}".format(dp, a0, b0, psi0, min(a), max(a), min(b), max(b)))
+                        l = (a - a0) ** 2 + (b - b0) ** 2
+                        ind_p = np.argmax(l > dp ** 2)
+                        target_a = a[ind_p]
+                        target_b = b[ind_p]
+                psi = self.get_psi(target_a, target_b, theta, r_maj, r_min)
             self.psi_target.append(psi)
         else:
             target_a = 1
@@ -1467,7 +1493,11 @@ class MultiQuadLookup(object):
             self.load_lookup(section)
         else:
             self.generate_lookup()
-            self.generate_sparse_ab_set(self.A_lu, k_lu)
+            ind_m, k_m, ka_m, ka_m_list, a_ab_y_list, a_v, b_v = self.generate_sparse_ab_set(self.A_lu, self.k_lu)
+            self.k_m_lu = ka_m_list
+            self.ab_lu = a_ab_y_list
+            self.a_v_lu = a_v
+            self.b_v_lu = b_v
         self.section = section
 
     def set_k_values(self, k_list):
@@ -1648,26 +1678,35 @@ class MultiQuadTango(object):
         t0 = time.time()
         image_roi = np.double(image[self.roi[1]:self.roi[1]+self.roi[3], self.roi[0]:self.roi[0]+self.roi[2]])
 
+        self.logger.debug("roi")
         # Median filter and background subtraction:
-        image_p = medfilt2d(image_roi, 5)
+        image_p = median_filter(image_roi, 5)
+        self.logger.debug("medfilt")
+
         bkg = image_p[0:50, 0:50].max() * 2
         image_p[image_p < bkg] = 0
+        self.logger.debug("bkg")
 
         # Find charge to keep:
         n_bins = np.unique(image_p.flatten()).shape[0]
         if n_bins < 1:
             n_bins = 1
         h = np.histogram(image_p, n_bins)
+        self.logger.debug("histogram")
+
         # Cumlative charge as function of pixel value:
         hq = (h[0]*h[1][:-1]).cumsum()
         # Normalize:
         hq = hq / np.float(hq.max())
         # Find index above which the desired charge ratio is:
         th_ind = np.searchsorted(hq, 1-keep_charge_ratio)
+        self.logger.debug("index")
+
         # Background level:
         d = (h[1][1] - h[1][0])/2.0
         th_q = h[1][th_ind] - d
         image_p[image_p < th_q] = 0.0
+        self.logger.debug("bkg")
 
         x_v = np.arange(image_p.shape[1])
         y_v = np.arange(image_p.shape[0])
@@ -1923,11 +1962,15 @@ if __name__ == "__main__":
         mt.alpha_y = -3.0
         mt.beta_y = 14.0
         mt.eps_n_y = 0.6e-6
-        mt.set_section("MS1", sim=True)
+        mt.set_section("MS2", sim=True)
         # mt.set_quad_magnets([-0.960, -0.320, 0.800, -0.960])
+        logger.info("Set section done")
         mt.set_quad_magnets([3.520, -1.920, -2.720, 1.440])
+        logger.info("Set magnets done")
         mt.set_quad_magnets([0, 0, 0, 0])
+
         sx, sy, pic_r = mt.process_image(mt.camera_device.image)
+        logger.info("Process image done")
         theta, r_maj, r_min = mt.mq.calc_ellipse(mt.alpha, mt.beta, mt.eps_n / (mt.beamenergy / 0.511e6), sx)
         theta_y, r_maj_y, r_min_y = mt.mq.calc_ellipse(mt.alpha_y, mt.beta_y, mt.eps_n_y / (mt.beamenergy / 0.511e6), sy)
         psi_v = np.linspace(0, 2 * np.pi, 1000)

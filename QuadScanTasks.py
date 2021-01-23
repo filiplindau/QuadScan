@@ -2230,7 +2230,7 @@ class FitQuadDataTask(Task):
         self.accelerator_params = accelerator_params        # type: AcceleratorParameters
         self.algo = algo
         self.axis = axis
-        self.logger.setLevel(logging.WARNING)
+        self.logger.setLevel(logging.INFO)
 
     def action(self):
         self.logger.info("{0} entering action.".format(self))

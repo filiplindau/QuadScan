@@ -926,6 +926,8 @@ class QTangoStripToolPlotWidget(pg.PlotWidget):
         logger.debug("Setting data for curve {0}".format(curve_index))
         self.setupData(curve_index)
         n = x_data.shape[0]
+        if n == 0:
+            return
         self.x_values[curve_index][-n:] = x_data
         self.y_values[curve_index][-n:] = y_data
         vb = self.curve_vb_list[curve_index]
@@ -986,6 +988,39 @@ class QTangoStripToolPlotWidget(pg.PlotWidget):
             if ind == self.curve_focus:
                 pi.vb.setRange(yRange=vr[1], padding=0.1)
         pi.vb.setRange(xRange=[x_min, x_max], padding=0.05)
+
+    def set_y_link(self, curve_1, curve_2, enable=True):
+        """
+        Link y-axis of two curves.
+
+        :param curve_1: id of first curve, int or name
+        :param curve_2: id of second curve, int or name
+        :param enable: set or clear link
+        :return:
+        """
+        if isinstance(curve_1, int):
+            name = self.curve_name_list[curve_1]
+            curve_index_1 = curve_1
+        elif isinstance(curve_1, str):
+            name = curve_1
+            curve_index_1 = self.curve_name_list.index(name)
+        if isinstance(curve_2, int):
+            name = self.curve_name_list[curve_2]
+            curve_index_2 = curve_2
+        elif isinstance(curve_2, str):
+            name = curve_2
+            curve_index_2 = self.curve_name_list.index(name)
+        if enable:
+            self.curve_vb_list[curve_index_1].linkView(pg.ViewBox.YAxis, self.curve_vb_list[curve_index_2])
+        else:
+            self.curve_vb_list[curve_index_1].linkView(pg.ViewBox.YAxis, None)
+
+    def stack_vertically(self):
+        """
+        Stack curves vertically to separate them
+        :return:
+        """
+        pass
 
 
 class TestStream(QtWidgets.QWidget):
