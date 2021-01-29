@@ -61,6 +61,7 @@ class TangoMultiQuadScanTask(Task):
 
         self.logger.setLevel(logging.INFO)
         self.scan_param = scan_param
+        self.acc_params = None
         self.device_handler = device_handler            # Device management
         self.section_devices = section_devices          # Dict cointaining structure for each section.
                                                         # The structure has lists of magnet and screen devices.
@@ -137,15 +138,17 @@ class TangoMultiQuadScanTask(Task):
                                   n_steps, guess_alpha, guess_beta, guess_eps_n)
 
         k_next = self.get_quad_magnets()
-        current_step = 0
+        self.current_step = 0
+        k_initial = k_next
 
         # Loop through the scan
         while self.get_done_event().is_set() is False:
-            self.logger.info("Step {0} of {1}".format(current_step, n_steps))
+            self.logger.info("Step {0} of {1}".format(self.current_step, n_steps))
 
             k_current, image, image_p, timestamp, k_next = self.do_step(k_next)
 
-            self.image_list.append(image)
+            quadimage = QuadImage(self.current_step, k_current, 0, image)
+            self.image_list.append(quadimage)
             self.image_p_list.append(image_p)
             a_list = self.mq_lookup.a_list
             b_list = self.mq_lookup.b_list
@@ -153,16 +156,16 @@ class TangoMultiQuadScanTask(Task):
             eps_list = self.mq_lookup.eps_n_list
             # self.last_step_result = ScanMultiStepResult(k_current, image, image_p, timestamp,
             #                                             a_list, b_list, beta_list, eps_list)
-            self.last_step_result = {"k_list": self.mq_lookup.k_list, "image": image, "image_p": image_p,
+            self.last_step_result = {"k_list": self.mq_lookup.k_list, "image": quadimage, "image_p": image_p,
                                      "timestamps": timestamp_list, "multiquad": self.mq_lookup}
             self.result = self.last_step_result
 
-            if self.scan_param.save:
-                self.save_image(image, self.current_step, k_current)
+            # if self.scan_param.save:
+            #     self.save_image(image, self.current_step, k_current)
 
             k_list.append(k_current)
             timestamp_list.append(timestamp)
-            current_step += 1
+            self.current_step += 1
 
             # Step done, notify callbacks:
             if self.is_done() is False:
@@ -170,12 +173,20 @@ class TangoMultiQuadScanTask(Task):
                 for callback in self.callback_list:
                     callback(self)
 
-            if current_step > n_steps:
-                self.logger.info("Scan completed.")
+            if self.current_step > n_steps:
+                self.logger.info("Scan completed. Returning quads to initial values.")
+                for write_ind, write_dev in enumerate(self.crq_devices):
+                    write_pos_task = TangoWriteAttributeTask("mainfieldcomponent",
+                                                             write_dev,
+                                                             self.device_handler,
+                                                             k_initial[write_ind],
+                                                             name="write_initial_{0}".format(write_ind),
+                                                             timeout=self.timeout)
+                    write_pos_task.start()
                 self.event_done.set()
 
-        self.scan_result = {"k_list": self.mq_lookup.k_list, "images": self.image_list,
-                            "timestamps": timestamp_list, "multiquad": self.mq_lookup}
+        self.scan_result = {"k_list": self.mq_lookup.k_list, "images": self.image_list, "images_p": self.image_p_list,
+                            "timestamps": timestamp_list, "multiquad": self.mq_lookup, "acc_params": self.acc_params}
         self.result = self.scan_result
 
     def get_last_step_result(self):
@@ -212,6 +223,7 @@ class TangoMultiQuadScanTask(Task):
 
         self.camera_device = self.device_handler.get_device(sect_screen.liveviewer)
         beam_device = self.device_handler.get_device(sect_screen.beamviewer)
+        pos = beam_device.position
         self.logger.info("Screen ROI: {0}".format(beam_device.roi))
         self.logger.info("Param ROI center: {0}, ROI dim: {1}".format(self.scan_param.roi_center, self.scan_param.roi_dim))
         roi = beam_device.roi
@@ -228,6 +240,17 @@ class TangoMultiQuadScanTask(Task):
                          "Electron energy = {1:.3f} MeV\n"
                          "Pixel resolution = {2:.3f} um\n"
                          "ROI = {3} (l, t, w, h)".format(section, self.beamenergy, self.px_cal * 1e6, self.roi))
+        self.acc_params = AcceleratorParametersMulti(electron_energy=self.beamenergy,
+                                                     quad_list=sect_quad_list,
+                                                     k_max=self.mq_lookup.max_k,
+                                                     k_min=-self.mq_lookup.max_k,
+                                                     num_k=self.scan_param.n_steps,
+                                                     num_images=1,
+                                                     cal=[self.px_cal, self.px_cal],
+                                                     screen_name=camera_name,
+                                                     screen_pos=pos,
+                                                     roi_center=rc,
+                                                     roi_dim=rd)
 
     def set_quad_magnets(self, k_list):
 
@@ -373,8 +396,14 @@ class TangoMultiQuadScanTask(Task):
         image = res[2][0].value
 
         sigma_x, sigma_y, image_p = self.process_image(image, self.scan_param.charge_ratio)
-        self.image_list.append(image)
-        self.image_p_list.append(image_p)
+        line_x = image_p.sum(0)
+        line_y = image_p.sum(1)
+        proc_image = ProcessedImage(k_ind=self.current_step, k_value=k_current, image_ind=0,
+                                    pic_roi=image_p, line_x=line_x, line_y=line_y, x_cent=image_p.shape[0] / 2,
+                                    y_cent=image_p.shape[1] / 2, sigma_x=0.0, sigma_y=0.0,
+                                    q=0, threshold=0, enabled=True)
+        # self.image_list.append(image)
+        # self.image_p_list.append(proc_image)
         charge = image_p.sum()
         self.logger.info("Step {0}: sigma_x={1:.3f} mm, sigma_y={2:.3f} mm".format(self.current_step,
                                                                                    sigma_x*1e3, sigma_y*1e3))
@@ -393,14 +422,14 @@ class TangoMultiQuadScanTask(Task):
                 k_set = k_next
         # time.sleep(self.shot_delay)
         self.last_shot_time = time.time()
-        self.current_step += 1
         self.logger.debug("Step time: {0:.3f} s".format(time.time() - t0))
-        return k_current, image, image_p, timestamp, k_set
+        return k_current, image, proc_image, timestamp, k_set
 
     def process_image(self, image, keep_charge_ratio=0.95):
         t0 = time.time()
         self.logger.info("Process image roi: {0}\n image size: {1}x{2}".format(self.roi, image.shape[0], image.shape[1]))
-        image_roi = np.double(image[self.roi[1]:self.roi[1]+self.roi[3], self.roi[0]:self.roi[0]+self.roi[2]])
+        # image_roi = np.double(image[self.roi[1]:self.roi[1]+self.roi[3], self.roi[0]:self.roi[0]+self.roi[2]])
+        image_roi = image[self.roi[1]:self.roi[1] + self.roi[3], self.roi[0]:self.roi[0] + self.roi[2]]
 
         # Median filter and background subtraction:
         # Improve background subtraction!
@@ -653,12 +682,12 @@ class FitQuadDataTaskMulti(Task):
     def __init__(self, processed_image_list, accelerator_params, algo="full", axis="x",
                  name=None, timeout=None, trigger_dict=dict(), callback_list=list()):
         Task.__init__(self, name, timeout=timeout, trigger_dict=trigger_dict, callback_list=callback_list)
-        self.processed_image_list = processed_image_list    # type: list of ProcessedImage
+        self.processed_image_list = processed_image_list
         # K value for each image is stored in the image list
         self.accelerator_params = accelerator_params        # type: AcceleratorParameters
         self.algo = algo
         self.axis = axis
-        self.logger.setLevel(logging.WARNING)
+        self.logger.setLevel(logging.DEBUG)
 
     def action(self):
         self.logger.info("{0} entering action.".format(self))
@@ -691,6 +720,10 @@ class FitQuadDataTaskMulti(Task):
         self.logger.debug("sigma_data: {0}".format(sigma_data))
         self.logger.debug("en_data: {0}".format(en_data))
         self.logger.debug("k_data: {0}".format(k_data))
+        self.logger.debug("a_list: {0}".format(a_list))
+        self.logger.debug("b_list: {0}".format(b_list))
+        self.logger.debug("quad pos: {0}".format([q.position for q in self.accelerator_params.quad_list]))
+        self.logger.debug("screen pos: {0}".format(self.accelerator_params.screen_pos))
 
         eps_n = eps * gamma_energy
 
@@ -735,11 +768,16 @@ class FitQuadDataTaskMulti(Task):
         M = np.vstack((a*a, -2*a*b, b*b)).transpose()
         if charge is None:
             weights = np.ones_like(sigma)
+            self.logger.info("sigma {0}, {1}".format(sigma, sigma.dtype))
         else:
             s_q = np.sqrt(0.004 / np.log(2))
             weights = np.exp(-(charge / charge[0] - 1)**2 / s_q**2)
+            self.logger.info("weights {0}, {1}".format(weights, weights.dtype))
+        self.logger.info("weights {0}".format(weights.dtype))
         Mw = M * np.sqrt(weights[:, np.newaxis])
         sw = sigma**2 * np.sqrt(weights)
+        self.logger.debug("Mw {0}".format(Mw))
+        self.logger.debug("sw {0}".format(sw))
         ldata = np.linalg.lstsq(Mw, sw, -1)
 
         residual = ldata[1]

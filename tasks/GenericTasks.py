@@ -478,7 +478,7 @@ class SequenceTask(Task):
     def __init__(self, task_list, name=None, timeout=None, trigger_dict=dict(), callback_list=list()):
         Task.__init__(self, name, timeout=timeout, trigger_dict=trigger_dict, callback_list=callback_list)
         self.task_list = task_list
-        self.logger.setLevel(logging.INFO)
+        self.logger.setLevel(logging.WARNING)
 
     def action(self):
         self.logger.info("{0} running task sequence of length {1}.".format(self, len(self.task_list)))

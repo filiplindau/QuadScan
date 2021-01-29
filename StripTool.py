@@ -45,6 +45,23 @@ class QTangoColors(object):
         self.tertiaryColor2 = '#cc6666'
         self.tertiaryColor3 = '#664466'
         self.tertiaryColor4 = '#9977aa'
+        # paletton.com:
+        self.green1 = "#bbdfab"
+        self.green2 = "#77c058"
+        self.green3 = "#4aa224"
+        self.green4 = "#2b8107"
+        self.red1 = "#f1b9c3"
+        self.red2 = "#d26075"
+        self.red3 = "#b12840"
+        self.red4 = "#8d081f"
+        self.blue1 = "#9199b6"
+        self.blue2 = "#4f6097"
+        self.blue3 = "#283c7f"
+        self.blue4 = "#112465"
+        self.yellow1 = "#ffedc3"
+        self.yellow2 = "#e0ba67"
+        self.yellow3 = "#bc8f2a"
+        self.yellow4 = "#966a08"
 
         self.faultColor = '#ff0000'
         self.alarmColor2 = '#ffffff'
@@ -63,7 +80,11 @@ class QTangoColors(object):
         self.invalidColor = self.unknownColor
         self.changingColor = self.secondaryColor1
 
-        self.legend_color_list = [self.secondaryColor0,
+        self.legend_color_list = [self.green3, self.blue3, self.red3, self.yellow3,
+                                  self.green2, self.blue2, self.red2, self.yellow2,
+                                  self.green1, self.blue1, self.red1, self.yellow1,
+                                  self.green4, self.blue4, self.red4, self.yellow4,
+                                  self.secondaryColor0,
                                   self.primaryColor2,
                                   self.tertiaryColor1,
                                   self.secondaryColor3,
@@ -71,7 +92,8 @@ class QTangoColors(object):
                                   self.tertiaryColor4,
                                   self.primaryColor5,
                                   self.secondaryColor4,
-                                  self.tertiaryColor3]
+                                  self.tertiaryColor3,
+                                  ]
 
 
 class QTangoSizes(object):
@@ -162,8 +184,8 @@ class QTangoStripTool(QtWidgets.QFrame):
         self.setLayout(QtWidgets.QHBoxLayout())
         self.inner_layout = QtWidgets.QVBoxLayout()
 
-        self.legend_widget = QTangoStripToolLegendWidget(legend_pos, sizes, colors)
-        self.plot_widget = QTangoStripToolPlotWidget(None, sizes, colors, chronological)
+        self.legend_widget = QTangoStripToolLegendWidget(legend_pos, sizes, colors, parent=self)
+        self.plot_widget = QTangoStripToolPlotWidget(None, sizes, colors, chronological, parent=self)
         self.name = None
         if isinstance(name, str):
             self.name = name
@@ -190,8 +212,8 @@ class QTangoStripTool(QtWidgets.QFrame):
         self.setStyleSheet(st)
         self.plot_widget.update_curve_range_signal.connect(self.set_range)
 
-    def add_curve(self, name, curve=None, unit=None, visible=True):
-        curve_new = self.plot_widget.addCurve(name, curve)
+    def add_curve(self, name, curve=None, unit=None, visible=True, **kwargs):
+        curve_new = self.plot_widget.addCurve(name, curve, **kwargs)
         curve_new.sigClicked.connect(self.set_curve_focus)
         plot_color = curve_new.opts["pen"].color().name()
         logger.debug("Adding curve {0} with color {1}".format(name, plot_color))
@@ -209,24 +231,24 @@ class QTangoStripTool(QtWidgets.QFrame):
     def set_curve_visible(self, name, visible):
         self.legend_widget.items[name].show_check.setChecked(visible)
 
-    def add_point(self, data, curve_index=0, auto_range=True):
-        self.plot_widget.addPoint(data, curve_index, auto_range)
+    def add_point(self, data, curve_name, auto_range=True):
+        self.plot_widget.addPoint(data, curve_name, auto_range)
         if auto_range:
-            legend_item = self.legend_widget.get_item(curve_index)
-            axis_range = self.plot_widget.get_curve_range(curve_index)
+            legend_item = self.legend_widget.get_item(curve_name)
+            axis_range = self.plot_widget.get_curve_range(curve_name)
             legend_item.set_range(axis_range[1])
         # logger.info("Striptool add point: {0:.1f} ms, autorange: {1:.1f} ms".format((t1-t0)*1e3, (t2-t1)*1e3))
 
-    def set_data(self, x_data, y_data, curve_index=0, **kargs):
+    def set_data(self, x_data, y_data, curve_name, **kargs):
 
-        self.plot_widget.setData(x_data, y_data, curve_index=curve_index, **kargs)
+        self.plot_widget.setData(x_data, y_data, curve_name=curve_name, **kargs)
         if "auto_range" in kargs:
             auto_range = kargs["auto_range"]
         else:
             auto_range = True
         if auto_range:
-            legend_item = self.legend_widget.get_item(curve_index)
-            axis_range = self.plot_widget.get_curve_range(curve_index)
+            legend_item = self.legend_widget.get_item(curve_name)
+            axis_range = self.plot_widget.get_curve_range(curve_name)
             legend_item.set_range(axis_range[1])
 
     def set_curve_focus(self):
@@ -235,10 +257,10 @@ class QTangoStripTool(QtWidgets.QFrame):
             logger.debug("{0}: Signal from {1}".format(self.__class__, s.name))
             ind = self.legend_widget.get_item_index(s)
             logger.debug("Legend item index {0}".format(ind))
-            self.plot_widget.setCurveFocus(ind)
-            self.legend_widget.set_focus_item(ind)
+            self.plot_widget.setCurveFocus(s.name)
+            self.legend_widget.set_focus_item(s.name)
         else:
-            ind = self.plot_widget.get_curve_focus_ind()
+            ind = self.plot_widget.get_curve_focus_name()
             self.plot_widget.get_curve_color(ind)
             self.legend_widget.set_focus_item(ind)
 
@@ -294,6 +316,9 @@ class QTangoStripTool(QtWidgets.QFrame):
 
     def set_y_link(self, curve_name_1, curve_name_2):
         self.plot_widget.set_y_link(curve_name_1, curve_name_2)
+
+    def set_curve_color(self, curve_name, color):
+        self.plot_widget.set_curve_color(curve_name, color)
 
     def paintEvent(self, a0):
         super(QTangoStripTool, self).paintEvent(a0)
@@ -440,6 +465,37 @@ class QTangoStripToolLegendItem(QtWidgets.QFrame):
             logger.debug("{0}: Emitting clicked signal".format(self.name))
             self.clicked.emit()
 
+    def contextMenuEvent(self, a0: QtGui.QContextMenuEvent) -> None:
+        context_menu = QtWidgets.QMenu(self)
+        link_y_menu = context_menu.addMenu("Link y axis with")
+        gr_list = self.parent().parent().plot_widget.curve_group_list
+        gr_act_dict = dict()
+        for gr in gr_list:
+            act = QtWidgets.QAction("{0}".format(gr))
+            link_y_menu.addAction(act)
+            gr_act_dict[act] = gr
+        link_y_menu.addSeparator()
+        unlink_act = link_y_menu.addAction("Unlink")
+        col_act = context_menu.addAction("Set color")
+        as_act = context_menu.addAction("Autoscale this curve")
+        as_act.setEnabled(False)
+
+        action = context_menu.exec_(self.mapToGlobal(a0.pos()))
+        if action == col_act:
+            # color: QtGui.QColor = QtWidgets.QColorDialog.getColor()
+            col_diag = QtWidgets.QColorDialog()
+            for ind, color in enumerate(self.attrColors.legend_color_list):
+                col_diag.setCustomColor(ind, QtGui.QColor(color))
+            result = col_diag.exec_()
+            logger.debug("Colorpick returned {0}".format(result))
+            color = col_diag.selectedColor()
+            self.update_stylesheet(color.name())
+            self.parent().parent().set_curve_color(self.name, color)
+        elif action in gr_act_dict:
+            self.parent().parent().plot_widget.set_y_link(self.name, gr_act_dict[action][0])
+        elif action == unlink_act:
+            self.parent().parent().plot_widget.set_y_link(self.name, self.name)
+
 
 class QTangoStripToolLegendWidget(QtWidgets.QWidget):
     def __init__(self, position="bottom", sizes=None, colors=None, parent=None):
@@ -461,6 +517,7 @@ class QTangoStripToolLegendWidget(QtWidgets.QWidget):
         self.items[legend_item.name] = legend_item
         self.item_name_list.append(legend_item.name)
         self.set_position(self.position)
+        legend_item.setParent(self)
 
     def removeItem(self, item):
         logger.debug("Removing item {0}".format(item))
@@ -552,8 +609,11 @@ class QTangoStripToolPlotWidget(pg.PlotWidget):
     def __init__(self, name=None, sizes=None, colors=None, chronological=True, parent=None):
         pg.PlotWidget.__init__(self, useOpenGL=True)
 
+        self.name = name
+
         self.unselected_pen_width = 1.5
         self.selected_pen_width = 3.0
+        self.selected_pen_factor = 1.25
         self.unselected_pen_alpha = 0.5
         self.selected_pen_alpha = 0.8
 
@@ -562,19 +622,20 @@ class QTangoStripToolPlotWidget(pg.PlotWidget):
 
         self.values_size = 10000
         self.duration = 600.0
-        self.x_values = list()
-        self.y_values = list()
+        # self.x_values = list()
+        # self.y_values = list()
+        self.x_values_dict = dict()
+        self.y_values_dict = dict()
 
         self.legend = None
-        self.curve_focus = 0                    # Index of currently selected curve (showing the y-axis)
-        self.curve_name_list = list()           # List of names for curves
-        self.curve_vb_list = list()             # List of viewboxes for curves. These set view area.
-        self.curve_ax_list = list()             # List of axes for curves.
-        self.curve_list = list()                # List of the actual curve objects (plotcurveitems or scatterplotitems)
+        self.curve_focus = None                    # Index of currently selected curve (showing the y-axis)
         self.current_data_index = list()        # List of where the data is added for trend curves.
         self.next_curve_id_index = 0            # Next id when adding curve
-        self.curve_group_list = list()          # List of curve groups. Each entry is a list of curve indices that are in the group
-        self.curve_group_dict = dict()
+        self.curve_group_list = list()          # Dict of curve groups. Each entry is a list of curve indices that are in the group
+        self.curve_vb_dict = dict()             # Dict of viewboxes for curves. These set view area.
+        self.curve_ax_dict = dict()             # Dict of axes for curves.
+        self.curve_item_dict = dict()           # Dict of the actual curve objects (plotcurveitems or scatterplotitems)
+        self.current_data_index_dict = dict()
 
         self.trend_menu = None
 
@@ -616,25 +677,14 @@ class QTangoStripToolPlotWidget(pg.PlotWidget):
 
         # self.legend = self.getPlotItem().addLegend()
 
-    def setupData(self, curve=0):
+    def setupData(self, curve_name):
         """ Pre-allocate data arrays
         """
-        try:
-            # Curve already exists
-            self.x_values[curve] = -np.ones(self.values_size) * np.inf
-            self.y_values[curve] = np.zeros(self.values_size)
-            self.current_data_index[curve] = 0
-            logger.debug("Setting up data for curve {0}".format(curve))
-            self.curve_list[curve].setData(self.x_values[curve], self.y_values[curve], antialias=True)
-        except IndexError:
-            # Need to create new arrays
-            logger.debug("Adding new data arrays for curve {0}".format(curve))
-            self.x_values.append(-np.ones(self.values_size) * np.inf)
-            self.y_values.append(np.zeros(self.values_size))
-            self.current_data_index.append(0)
-            # if len(self.value_trend_curves) < curve + 1:
-            #     self.addCurve()
-            # self.valueTrendCurves[curve].setData(self.xValues[curve], self.yValues[curve], antialias = True)
+        self.x_values_dict[curve_name] = -np.ones(self.values_size) * np.inf
+        self.y_values_dict[curve_name] = np.zeros(self.values_size)
+        self.current_data_index_dict[curve_name] = 0
+        logger.debug("Setting up data for curve {0}".format(curve_name))
+        self.curve_item_dict[curve_name].setData(self.x_values_dict[curve_name], self.y_values_dict[curve_name], antialias=True)
 
     def setupTrendMenu(self):
         pi = self.getPlotItem()
@@ -697,7 +747,7 @@ class QTangoStripToolPlotWidget(pg.PlotWidget):
         self.duration = duration
         self.setXRange(-self.duration, 0)
 
-    def addCurve(self, name=None, curve=None):
+    def addCurve(self, name=None, curve=None, width=1, **kwargs):
         curve_index = self.next_curve_id_index
         self.next_curve_id_index += 1
         if name is None:
@@ -717,11 +767,16 @@ class QTangoStripToolPlotWidget(pg.PlotWidget):
         # vb.setYLink(pi_main)
 
         if curve is None:
-            curve_new = pg.PlotCurveItem(name=name, antialias=True)
-            curve_color = pg.mkColor(self.attrColors.legend_color_list[curve_index % len(self.attrColors.legend_color_list)])
-            curve_color.setAlphaF(self.unselected_pen_alpha)
-            curve_new.setPen(curve_color, width=self.unselected_pen_width)
-            curve_new.setClickable(True)
+            curve_new = pg.PlotDataItem(name=name, antialias=True, **kwargs)
+            if "pen" not in kwargs:
+                curve_color = pg.mkColor(self.attrColors.legend_color_list[curve_index % len(self.attrColors.legend_color_list)])
+                curve_color.setAlphaF(self.unselected_pen_alpha)
+                curve_new.setPen(curve_color, width=width)
+                curve_new.setSymbolBrush(curve_color)
+                curve_new.setSymbolPen(curve_color, width=0)
+            # curve_new.setClickable(True)
+            curve_new.curve.setClickable(True)
+            curve_new.sigPointsClicked.connect(self.points_clicked)
         else:
             curve_new = curve
             pen = curve.opts["pen"]
@@ -732,15 +787,19 @@ class QTangoStripToolPlotWidget(pg.PlotWidget):
 
         logger.debug("New curve color: {0}".format(curve_new.opts["pen"].color().name()))
 
-        self.curve_list.append(curve_new)
-        self.curve_vb_list.append(vb)
-        self.curve_ax_list.append(ax)
-        self.curve_name_list.append(name)
-        self.curve_group_list.append([curve_index])
-
+        # self.curve_list.append(curve_new)
+        # self.curve_vb_list.append(vb)
+        # self.curve_ax_list.append(ax)
+        # self.curve_name_list.append(name)
+        # self.curve_group_list.append([curve_index])
+        self.curve_item_dict[name] = curve_new
+        self.curve_vb_dict[name] = vb
+        self.curve_ax_dict[name] = ax
+        self.curve_group_list.append([name])
+        self.setupData(name)
         # self.legend.addItem(curve_new, name)
 
-        self.setupData(curve_index)
+        # self.setupData(curve_index)
 
         curve_new.sigClicked.connect(self.setCurveFocus)
         # self.setCurveFocus(name)
@@ -751,19 +810,22 @@ class QTangoStripToolPlotWidget(pg.PlotWidget):
 
     def removeCurve(self, name):
         logger.info("Removing curve {0}".format(name))
-        ind = self.curve_name_list.index(name)
-        vb = self.curve_vb_list.pop(ind)
-        ax = self.curve_ax_list.pop(ind)
-        curve = self.curve_list.pop(ind)
-        self.curve_name_list.pop(ind)
+        # ind = self.curve_name_list.index(name)
+        # vb = self.curve_vb_list.pop(ind)
+        # ax = self.curve_ax_list.pop(ind)
+        # curve = self.curve_list.pop(ind)
+        vb = self.curve_vb_dict.pop(name)
+        ax = self.curve_ax_dict.pop(name)
+        curve = self.curve_item_dict.pop(name)
+        # self.curve_name_list.pop(ind)
         self.getPlotItem().removeItem(vb)
         curve.deleteLater()
         ax.deleteLater()
         vb.deleteLater()
-        for gr_ind, group_ind_list in enumerate(self.curve_group_list):
-            if ind in group_ind_list:
-                group_ind_list.pop(group_ind_list.index(ind))
-                if len(group_ind_list) == 0:
+        for gr_ind, group_name_list in enumerate(self.curve_group_list):
+            if name in group_name_list:
+                group_name_list.remove(name)
+                if len(group_name_list) == 0:
                     self.curve_group_list.pop(gr_ind)
 
     def updateViews(self, data=None, data2=None):
@@ -778,122 +840,132 @@ class QTangoStripToolPlotWidget(pg.PlotWidget):
         #         name = self.curve_name_list[ind]
         #         vr = vb.viewRange()
         #         self.update_curve_range_signal.emit(name, vr[1][0], vr[1][1])
-        for group_ind_list in self.curve_group_list:
-            logger.info("Curve group: {0}".format(group_ind_list))
-            for ind in group_ind_list:
-                vb = self.curve_vb_list[ind]
+        for group_name_list in self.curve_group_list:
+            # logger.info("Curve group: {0}".format(group_name_list))
+            for name in group_name_list:
+                # vb = self.curve_vb_list[name]
+                vb = self.curve_vb_dict[name]
                 vb.setGeometry(pi.vb.sceneBoundingRect())
                 vb.linkedViewChanged(pi.vb, vb.XAxis)
-                if ind == self.curve_focus:
-                    for ind2 in group_ind_list:
-                        vb2 = self.curve_vb_list[ind2]
+                if name == self.curve_focus:
+                    for name2 in group_name_list:
+                        # vb2 = self.curve_vb_list[ind2]
+                        vb2 = self.curve_vb_dict[name2]
                         vb2.linkedViewChanged(pi.vb, vb2.YAxis)
-                        name = self.curve_name_list[ind2]
                         vr = vb2.viewRange()
-                        self.update_curve_range_signal.emit(name, vr[1][0], vr[1][1])
+                        self.update_curve_range_signal.emit(name2, vr[1][0], vr[1][1])
         # dt = time.time() - t0
         # logger.info("Updating view. {0:.1f} ms".format(dt * 1e3))
 
-    def setCurveFocus(self, curve_id):
-        curve_old = self.curve_list[self.curve_focus]
-        curve_old_color = curve_old.opts["pen"].color()
-        curve_old_color.setAlphaF(self.unselected_pen_alpha)
-        curve_old.setZValue(-100)
-        curve_old.setPen(curve_old_color, width=self.unselected_pen_width)
-        vb_old = self.curve_vb_list[self.curve_focus]
-        vb_old.setZValue(-100)
-        if isinstance(curve_id, int):
-            name = self.curve_name_list[curve_id]
-            self.curve_focus = curve_id
-        elif isinstance(curve_id, str):
-            name = curve_id
-            self.curve_focus = self.curve_name_list.index(name)
-        else:
-            self.curve_focus = self.curve_list.index(curve_id)
-            name = self.curve_name_list[self.curve_focus]
-        logger.debug("Curve {0} selected, index {1}".format(name, self.curve_focus))
+    def setCurveFocus(self, curve):
+        if isinstance(curve, pg.GraphicsItem):
+            curve = curve.name()
+        try:
+            curve_old = self.curve_item_dict[self.curve_focus]
+            curve_old_pen: QtGui.QPen = curve_old.opts["pen"]
+            curve_old_brush: QtGui.QBrush = curve_old.opts["symbolBrush"]
+            col = curve_old_pen.color()
+            col.setAlphaF(self.unselected_pen_alpha)
+            curve_old_pen.setColor(col)
+            w = curve_old_pen.widthF()
+            dw = w - w / self.selected_pen_factor
+            curve_old_pen.setWidth(w - dw)
+            curve_old.setZValue(-100)
+            curve_old.setPen(curve_old_pen)
+
+            col = curve_old_brush.color()
+            col.setAlphaF(self.unselected_pen_alpha)
+            curve_old_brush.setColor(col)
+            w = curve_old.opts["symbolSize"]
+            dw = w - w / self.selected_pen_factor
+            curve_old.setSymbolSize(w-dw)
+            curve_old.setSymbolBrush(curve_old_brush)
+
+            vb_old = self.curve_vb_dict[self.curve_focus]
+            vb_old.setZValue(-100)
+        except KeyError:
+            pass
+        self.curve_focus = curve
+        logger.debug("Curve {0} selected".format(self.curve_focus))
         pi = self.getPlotItem()
-        axis_viewrange = self.curve_vb_list[self.curve_focus].viewRange()
+        axis_viewrange = self.curve_vb_dict[self.curve_focus].viewRange()
         logger.debug("Setting view range {0}".format(axis_viewrange[1]))
         pi.vb.setRange(yRange=axis_viewrange[1], padding=0)
         pi_ax = pi.getAxis("right")
-        curve_selected = self.curve_list[self.curve_focus]
-        curve_color = curve_selected.opts["pen"].color()
-        curve_color.setAlphaF(self.selected_pen_alpha)
-        curve_selected.setPen(curve_color, width=self.selected_pen_width)
-        # curve_selected.setZValue(0.0)
-        # self.curve_vb_list[self.curve_focus].sigYRangeChanged.connect(self.updateViews)
-        # self.curve_vb_list[self.curve_focus].setZValue(0.0)
-        logger.debug("Axis color: {0}".format(curve_color.getRgb()))
-        pi_ax.setPen(curve_color)
+        curve_selected = self.curve_item_dict[self.curve_focus]
+        curve_pen: QtGui.QPen = curve_selected.opts["pen"]
+        curve_brush: QtGui.QBrush = curve_selected.opts["symbolBrush"]
+        col = curve_pen.color()
+        col.setAlphaF(self.selected_pen_alpha)
+        logger.info("Selected curve pen: {0}".format(curve_pen))
+        logger.info("Selected curve color: {0}".format(col))
+        curve_pen.setColor(col)
+        w = curve_pen.widthF()
+        dw = w * self.selected_pen_factor - w
+        curve_pen.setWidth(w + dw)
+        curve_selected.setPen(curve_pen)
+
+        col = curve_brush.color()
+        col.setAlphaF(self.selected_pen_alpha)
+        curve_brush.setColor(col)
+        w = curve_selected.opts["symbolSize"]
+        dw = w * self.selected_pen_factor - w
+        curve_selected.setSymbolSize(w + dw)
+        curve_selected.setSymbolBrush(curve_brush)
+
+        pi_ax.setPen(curve_pen.color())
         pi.showGrid(True, True, 0.4)
         self.updateViews()
 
-    def get_curve_range(self, curve):
-        if isinstance(curve, int):
-            name = self.curve_name_list[curve]
-            curve_index = curve
-        elif isinstance(curve, str):
-            name = curve
-            curve_index = self.curve_name_list.index(name)
-        else:
-            name = curve.opts.get('name', None)
-            curve_index = self.curve_name_list.index(name)
-        axis_viewrange = self.curve_vb_list[curve_index].viewRange()
+    def get_curve_range(self, curve_name):
+        axis_viewrange = self.curve_vb_dict[curve_name].viewRange()
         return axis_viewrange
 
-    def get_curve_color(self, curve_id) -> QtGui.QColor:
-        if isinstance(curve_id, int):
-            name = self.curve_name_list[curve_id]
-            curve_index = curve_id
-        elif isinstance(curve_id, str):
-            name = curve_id
-            curve_index = self.curve_name_list.index(name)
-        else:
-            name = curve_id.opts.get('name', None)
-            curve_index = self.curve_name_list.index(name)
-        curve_color = self.curve_list[curve_index].opts["pen"].color()
+    def set_curve_color(self, curve_name, color):
+        logger.debug("Set curve {0} color to {1}".format(curve_name, color))
+        ci: pg.PlotCurveItem = self.curve_item_dict[curve_name]
+        pen = ci.opts.get("pen")
+        pen.setColor(color)
+        ci.setPen(pen)
+
+    def get_curve_color(self, curve_name) -> QtGui.QColor:
+        logger.debug("Name: {0}".format(curve_name))
+        logger.debug("Opts: {0}".format(self.curve_item_dict[curve_name].opts))
+        curve_color = self.curve_item_dict[curve_name].opts["pen"].color()
         logger.debug("Curve color: {0}".format(curve_color))
         return curve_color
 
-    def get_curve_focus_ind(self):
+    def get_curve_focus_name(self):
         return self.curve_focus
 
-    def get_curve(self, curve_id):
-        if isinstance(curve_id, int):
-            name = self.curve_name_list[curve_id]
-            curve_index = curve_id
-        elif isinstance(curve_id, str):
-            name = curve_id
-            curve_index = self.curve_name_list.index(name)
-        else:
-            name = curve_id.opts.get('name', None)
-            curve_index = self.curve_name_list.index(name)
-        curve = self.curve_list[curve_index]
+    def get_curve(self, curve_name):
+        curve = self.curve_item_dict[curve_name]
         return curve
 
     def showLegend(self, show_legend=True):
         if show_legend is True:
             if self.legend is None:
                 self.legend = self.addLegend(offset=(5, 5))
-                for it in self.curve_list:
+                for it in self.curve_item_dict.values():
                     self.legend.addItem(it, it.opts.get('name', None))
         else:
             if self.legend is not None:
                 self.legend.scene().removeItem(self.legend)
                 self.legend = None
 
-    def setCurveName(self, curve, name):
-        self.curve_list[curve].opts['name'] = name
+    def setCurveName(self, old_name, new_name):
+        curve = self.curve_item_dict.pop(old_name)
+        curve.opts["name"] = new_name
+        self.curve_item_dict[new_name] = curve
 
     def set_curve_visible(self, name, visible):
-        ind = self.curve_name_list.index(name)
         if visible:
-            self.curve_list[ind].show()
+            self.curve_item_dict[name].show()
         else:
-            self.curve_list[ind].hide()
+            self.curve_item_dict[name].hide()
+        self.updateViews()
 
-    def addPoint(self, data, curve_index=0, auto_range=True):
+    def addPoint(self, data, curve_name, auto_range=True):
         t0 = time.time()
         if type(data) == pt.DeviceAttribute:
             x_new = data.time.totime()
@@ -904,97 +976,99 @@ class QTangoStripToolPlotWidget(pg.PlotWidget):
         # Check x_new against last x to see if it is increasing.
         # Sometimes there is a bug with wrong time values that are very much lower
         # than the old value (probably 0)
-        current_data_index = self.current_data_index[curve_index]
+        current_data_index = self.current_data_index_dict[curve_name]
         if current_data_index == 0:
             x_old = 0.0
         else:
-            x_old = self.x_values[curve_index][current_data_index]
+            x_old = self.x_values_dict[curve_name][current_data_index]
         if (self.chronological is False) or (x_new > x_old):
             # Rescaling if the number of samples is too high
             if current_data_index + 1 >= self.values_size:
                 current_data_index = int(self.values_size * 0.75)
-                self.x_values[curve_index][0:current_data_index] = self.x_values[curve_index][self.values_size -
-                                                                                              current_data_index:
-                                                                                              self.values_size]
-                self.y_values[curve_index][0:current_data_index] = self.y_values[curve_index][self.values_size -
-                                                                                              current_data_index:
-                                                                                              self.values_size]
+                self.x_values_dict[curve_name][0:current_data_index] = self.x_values_dict[curve_name][self.values_size -
+                                                                                                      current_data_index:
+                                                                                                      self.values_size]
+                self.y_values_dict[curve_name][0:current_data_index] = self.y_values_dict[curve_name][self.values_size -
+                                                                                                      current_data_index:
+                                                                                                      self.values_size]
             elif current_data_index == 0:
-                self.x_values[curve_index][0] = x_new
-                self.y_values[curve_index][0] = y_new
+                self.x_values_dict[curve_name][0] = x_new
+                self.y_values_dict[curve_name][0] = y_new
             current_data_index += 1
-            self.x_values[curve_index][current_data_index] = x_new
-            start_index = np.argmax((self.x_values[curve_index] - x_new) > -self.duration)
-            self.y_values[curve_index][self.current_data_index[curve_index]] = y_new
-            self.curve_list[curve_index].setData(self.x_values[curve_index][start_index:current_data_index] - x_new,
-                                                         self.y_values[curve_index][start_index:current_data_index],
-                                                 antialias=False)
+            self.x_values_dict[curve_name][current_data_index] = x_new
+            start_index = np.argmax((self.x_values_dict[curve_name] - x_new) > -self.duration)
+            self.y_values_dict[curve_name][self.current_data_index_dict[curve_name]] = y_new
+            self.curve_item_dict[curve_name].setData(self.x_values_dict[curve_name][start_index:current_data_index] - x_new,
+                                                     self.y_values_dict[curve_name][start_index:current_data_index],
+                                                     antialias=False)
             if auto_range:
-                vb = self.curve_vb_list[curve_index]
+                vb = self.curve_vb_dict[curve_name]
                 vb.enableAutoRange("y")
                 vb.autoRange()
-                if self.curve_focus == curve_index:
+                if self.curve_focus == curve_name:
                     pi = self.getPlotItem()
-                    axis_viewrange = self.curve_vb_list[curve_index].viewRange()
+                    axis_viewrange = self.curve_vb_dict[curve_name].viewRange()
                     # logger.debug("Setting view range {0}".format(axis_viewrange))
                     pi.vb.setRange(yRange=axis_viewrange[1], padding=0)
                     pi.vb.setRange(xRange=axis_viewrange[0])
-            self.current_data_index[curve_index] = current_data_index
+            self.current_data_index_dict[curve_name] = current_data_index
             t1 = time.time()
             # self.update()
             t2 = time.time()
             # logger.info("Add point timing: setup {0:.1f} ms, update {1:.1f} ms".format((t1-t0)*1e3, (t2-t1)*1e3))
 
     # def setData(self, x_data, y_data, curve_index=0, auto_range=True):
-    def setData(self, x_data, y_data, curve_index=0, auto_range=True, **kargs):
-        if isinstance(curve_index, str):
-            curve_index = self.curve_name_list.index(curve_index)
-        logger.debug("Setting data for curve {0}".format(curve_index))
-        self.setupData(curve_index)
+    def setData(self, x_data, y_data, curve_name, auto_range=True, **kargs):
+        logger.debug("Setting data for curve {0}".format(curve_name))
+        self.setupData(curve_name)
         n = x_data.shape[0]
         if n == 0:
             return
-        self.x_values[curve_index][-n:] = x_data
-        self.y_values[curve_index][-n:] = y_data
-        vb = self.curve_vb_list[curve_index]
+        self.x_values_dict[curve_name][-n:] = x_data
+        self.y_values_dict[curve_name][-n:] = y_data
+        vb = self.curve_vb_dict[curve_name]
         # vb.enableAutoRange("y")
         if auto_range:
             vb.enableAutoRange(pg.ViewBox.XYAxes, True)
         else:
             vb.enableAutoRange(pg.ViewBox.XYAxes, False)
-        self.curve_list[curve_index].setData(x_data, y_data, **kargs)
+        self.curve_item_dict[curve_name].setData(x_data, y_data, **kargs)
         if "auto_range" in kargs:
             auto_range = kargs["auto_range"]
         else:
             auto_range = False
         if auto_range:
             vb.autoRange()
-        if self.curve_focus == curve_index:
+        if self.curve_focus == curve_name:
             pi = self.getPlotItem()
-            axis_viewrange = self.curve_vb_list[curve_index].viewRange()
+            axis_viewrange = self.curve_vb_dict[curve_name].viewRange()
             logger.debug("Setting view range {0}".format(axis_viewrange))
             pi.vb.setRange(yRange=axis_viewrange[1], padding=0)
             pi.vb.setRange(xRange=axis_viewrange[0])
         self.updateViews()
 
-    def autoScale(self, curve_ind=None):
-        if curve_ind is not None:
-            vb = self.curve_vb_list[curve_ind]
-            child_range = vb.childrenBounds(frac=1.0)
-            vb.setRange("yRange", child_range[1])
+    def autoScale(self, curve_name=None):
+        if curve_name is not None:
+            for gr in self.curve_group_list:
+                if curve_name in gr:
+                    for cn in gr:
+                        vb = self.curve_vb_dict[cn]
+                        child_range = vb.childrenBounds(frac=[1.0, 1.0])
+                        vb.setRange(yRange=child_range[1])
+            self.updateViews()
         else:
-            for vb in self.curve_vb_list:
+            for vb in self.curve_vb_dict.values():
                 child_range = vb.childrenBounds(frac=[1.0, 1.0])
                 vb.setRange(yRange=child_range[1])
 
     def scaleAll(self, sc, center=None):
-        for ind, vb in enumerate(self.curve_vb_list):
+        for name, vb in self.curve_vb_dict.items():
             if center is None:
                 vr = vb.targetRect()
                 center = vr.center().y()
             top = center + sc * (vr.top() - center)
             bottom = center + sc * (vr.bottom() - center)
-            logger.info("Curve {0}: vr {1}, center {2}, top {3}, bottom {4}".format(ind, vr, center, top, bottom))
+            logger.info("Curve {0}: vr {1}, center {2}, top {3}, bottom {4}".format(name, vr, center, top, bottom))
             self.setYRange(top, bottom, padding=0)
 
     def auto_range_all(self):
@@ -1002,50 +1076,63 @@ class QTangoStripToolPlotWidget(pg.PlotWidget):
         pi = self.getPlotItem()
         x_min = np.inf
         x_max = -np.inf
-        for ind, vb in enumerate(self.curve_vb_list):
+        for name, vb in self.curve_vb_dict.items():
             vb.autoRange(padding=0.05)
             vr = vb.viewRange()
             x_min = np.minimum(x_min, vr[0][0])
             x_max = np.maximum(x_max, vr[0][1])
-            name = self.curve_name_list[ind]
             self.update_curve_range_signal.emit(name, vr[1][0], vr[1][1])
             # vb.setGeometry(pi.vb.sceneBoundingRect())
             # vb.linkedViewChanged(pi.vb, vb.XAxis)
-            if ind == self.curve_focus:
+            if name == self.curve_focus:
                 pi.vb.setRange(yRange=vr[1], padding=0.1)
         pi.vb.setRange(xRange=[x_min, x_max], padding=0.05)
+
+    def auto_range_group(self, curve_group):
+        y_range = [np.inf, -np.inf]
+        for cn in curve_group:
+            vb = self.curve_vb_dict[cn]
+            child_range = vb.childrenBounds(frac=[1.0, 1.0])
+            try:
+                y_range[0] = np.minimum(child_range[1][0], y_range[0])
+                y_range[1] = np.maximum(child_range[1][1], y_range[1])
+            except TypeError:
+                pass
+
+        if y_range[0] == np.inf:
+            y_range[0] = 0
+        if y_range[1] == -np.inf:
+            y_range[1] = 1
+        for cn in curve_group:
+            vb = self.curve_vb_dict[cn]
+            vb.setRange(yRange=y_range)
+            self.update_curve_range_signal.emit(cn, y_range[0], y_range[1])
 
     def set_y_link(self, curve_1, curve_2):
         """
         Link y-axis of two curves.
 
-        :param curve_1: id of first curve, int or name
-        :param curve_2: id of second curve, int or name
+        :param curve_1: name of first curve
+        :param curve_2: name of second curve
         :param enable: set or clear link
         :return:
         """
-        if isinstance(curve_1, int):
-            name = self.curve_name_list[curve_1]
-            curve_index_1 = curve_1
-        elif isinstance(curve_1, str):
-            name = curve_1
-            curve_index_1 = self.curve_name_list.index(name)
-        if isinstance(curve_2, int):
-            name = self.curve_name_list[curve_2]
-            curve_index_2 = curve_2
-        elif isinstance(curve_2, str):
-            name = curve_2
-            curve_index_2 = self.curve_name_list.index(name)
         logger.debug("Curve group list: {0}".format(self.curve_group_list))
         # self.curve_group_dict.pop(name)
         for gr_ind, gr_list in enumerate(self.curve_group_list):
-            if curve_index_1 in gr_list:
-                gr_list.pop(curve_index_1)
+            if curve_1 in gr_list:
+                gr_list.remove(curve_1)
                 if len(gr_list) == 0:
                     self.curve_group_list.pop(gr_ind)
+        found = False
         for gr_list in self.curve_group_list:
-            if curve_index_2 in gr_list:
-                gr_list.append(curve_index_1)
+            if curve_2 in gr_list:
+                gr_list.append(curve_1)
+                found = True
+                break
+        if not found:
+            self.curve_group_list.append([curve_1])
+        self.auto_range_group(gr_list)
         # if enable:
         #     self.curve_vb_list[curve_index_1].linkView(pg.ViewBox.YAxis, self.curve_vb_list[curve_index_2])
         # else:
@@ -1057,6 +1144,9 @@ class QTangoStripToolPlotWidget(pg.PlotWidget):
         :return:
         """
         pass
+
+    def points_clicked(self, curve, points):
+        logger.info("Points on {0}: {1}, {2}".format(curve.name(), [p.index() for p in points], [p.pos() for p in points]))
 
 
 class TestStream(QtWidgets.QWidget):
@@ -1216,16 +1306,18 @@ if __name__ == "__main__":
         for c in range(3):
             x_data = np.linspace(-600, 0, 1000)
             y_data = np.sin(2*np.pi*x_data/240.0 * (c + 1)) + 10 * c
-            strip_tool.add_curve("Curve {0}".format(c + 1))
-            strip_tool.set_data(x_data, y_data, c)
+            name = "Curve {0}".format(c + 1)
+            strip_tool.add_curve(name, symbol="t", width=0)
+            strip_tool.set_data(x_data, y_data, name)
             # strip_tool.curve_vb_list[c].setRange(yRange=[c-1, c+1])
         # strip_tool.set_legend_position("bottom")
-        strip_tool.plot_widget.set_y_link(0, 1)
+        strip_tool.plot_widget.set_y_link("Curve 1", "Curve 2")
         for c in range(5):
             x_data = np.linspace(-10, 10, 1000)
             y_data = x_data**(c % 3) + np.random.random(x_data.shape)
-            strip_tool2.add_curve("Curve {0}".format(c + 1))
-            strip_tool2.set_data(x_data, y_data, c)
+            name = "Curve {0}".format(c + 1)
+            strip_tool2.add_curve(name)
+            strip_tool2.set_data(x_data, y_data, name)
         strip_tool2.remove_curve("Curve 2")
         strip_tool2.plot_widget.set_y_link("Curve 3", "Curve 1")
 

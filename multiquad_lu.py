@@ -1240,13 +1240,26 @@ class MultiQuadLookup(object):
             return sigma
 
         # 1) Find values close to target a, b
-        try:
-            ind_a = np.abs(self.a_v_lu - target_a).argmin()
-            ind_b = np.abs(self.b_v_lu - target_b).argmin()
+        da = np.abs(self.a_v_lu - target_a)
+        db = np.abs(self.b_v_lu - target_b)
+        dam, dbm = np.meshgrid(da, db)
+        dsm = dam**2 + dbm**2
+        s_ind = np.unravel_index(np.argsort(dsm, axis=None), dsm.shape)
+        ind_a_s = s_ind[1]
+        ind_b_s = s_ind[0]
+        for ind, ind_a in enumerate(ind_a_s):
+            ind_b = ind_b_s[ind]
             ab_val_y = self.ab_lu[ind_a][ind_b]
-        except TypeError:
-            self.logger.warning("No values found for targets")
-            return None
+            if ab_val_y.shape[0] > 0:
+                break
+            self.logger.info("No y a-b found, retrying {0}".format(ind))
+        # ind_a = np.abs(self.a_v_lu - target_a).argmin()
+        # ind_b = np.abs(self.b_v_lu - target_b).argmin()
+        # try:
+        #     ab_val_y = self.ab_lu[ind_a][ind_b]
+        # except TypeError:
+        #     self.logger.warning("No values found for targets")
+        #     return None
 
         # 2) Find values close to target beam size
         sigma_x = calc_sigma(self.alpha_list[-1], self.beta_list[-1], self.eps_list[-1],

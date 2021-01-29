@@ -1457,8 +1457,8 @@ def work_func_shared_cv2_mask(mem_ind, im_ind, im_size, threshold, roi_cent, roi
         d = (h[1][1] - h[1][0])/2.0
         th_q = h[1][th_ind] - d
         pic_proc3[pic_proc3 < th_q] = 0.0
-        # logger.debug("Pic_roi max: {0}, threshold index: {1}, threshold: {2}, ch ratio: {3}\n"
-        #              "hq: {4}".format(n_bins, th_ind, th_q, keep_charge_ratio, hq[0:20]))
+        logger.info("Pic_roi max: {0}, threshold index: {1}, threshold: {2}, ch ratio: {3}\n"
+                     "hq: {4}".format(n_bins, th_ind, th_q, keep_charge_ratio, hq[0:20]))
 
         # Centroid and sigma calculations:
         line_x = pic_proc3.sum(0)
@@ -1472,8 +1472,13 @@ def work_func_shared_cv2_mask(mem_ind, im_ind, im_size, threshold, roi_cent, roi
         else:
             enabled = True
         try:
-            x_v = cal[0] * np.arange(line_x.shape[0])
-            y_v = cal[1] * np.arange(line_y.shape[0])
+            logger.info("cal {0}".format(cal))
+            try:
+                x_v = cal[0] * np.arange(line_x.shape[0])
+                y_v = cal[1] * np.arange(line_y.shape[0])
+            except TypeError:
+                x_v = cal * np.arange(line_x.shape[0])
+                y_v = cal * np.arange(line_y.shape[0])
             x_cent = np.sum(x_v * line_x) / l_x_n
             sigma_x = np.sqrt(np.sum((x_v - x_cent) ** 2 * line_x) / l_x_n)
             y_cent = np.sum(y_v * line_y) / l_y_n
@@ -1782,7 +1787,10 @@ class ProcessAllImagesTask2(Task):
 
             # copy image data to shared memory:
             im_size = quad_image.image.shape
-            np.copyto(self.sh_np_array[ind, 0:im_size[0], 0:im_size[1]], quad_image.image)
+            if quad_image.image.dtype != np.int:
+                np.copyto(self.sh_np_array[ind, 0:im_size[0], 0:im_size[1]], np.int32(quad_image.image))
+            else:
+                np.copyto(self.sh_np_array[ind, 0:im_size[0], 0:im_size[1]], quad_image.image)
             kwargs = {"mem_ind": ind, "im_ind": im_ind, "im_size": im_size, "threshold": self.threshold,
                       "roi_cent": roi_c, "roi_dim": roi_d, "cal": acc_params.cal, "kernel": self.kernel,
                       "bpp": self.bpp, "normalize": self.normalize, "keep_charge_ratio": self.keep_charge_ratio}
@@ -2138,18 +2146,20 @@ class PopulateDummyDeviceList(Task):
     Populate matching section data by assuming dummy devices with no database.
 
     This does not establish a connection with the device servers. That is done by
-    the device handler.
+    the device handler. The data must be retrieved through device attributes since properties
+    don't work without a database.
 
     Data retrieved:
     Quads... name, length, position, polarity
     Screens... name, position
     """
 
-    def __init__(self, sections, dummy_name_dict, name=None, action_exec_type="thread",
+    def __init__(self, sections, dummy_name_dict, device_handler, name=None, action_exec_type="thread",
                  timeout=None, trigger_dict=dict(), callback_list=list()):
         Task.__init__(self, name, action_exec_type="thread", timeout=timeout, trigger_dict=trigger_dict, callback_list=callback_list)
         self.sections = sections
         self.dummy_name_dict = dummy_name_dict
+        self.device_handler = device_handler
 
     def action(self):
         self.logger.info("{0} Populating matching sections by assuming dummy devices.".format(self))
@@ -2168,10 +2178,10 @@ class PopulateDummyDeviceList(Task):
                 quad = dict()
                 try:
                     # Extract data for each found quad:
-
+                    quad_dev = self.device_handler.get_device(mag_name)
                     name = mag_name.split("/")[-1].lower()
-                    position = 5.0
-                    length = 0.2
+                    position = quad_dev.position
+                    length = quad_dev.ql
                     polarity = 1.0
                     #crq = self.dummy_name_dict["crq"]
                     crq = mag_name

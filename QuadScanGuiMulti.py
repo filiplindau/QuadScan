@@ -243,7 +243,7 @@ class QuadScanGui(QtWidgets.QWidget):
 
         if no_database:
             t1 = PopulateDummyDeviceList(sections=self.section_list, dummy_name_dict=dummy_name_dict,
-                                         name="pop_sections")
+                                         device_handler=self.device_handler, name="pop_sections")
         else:
             t1 = PopulateDeviceListTask(sections=self.section_list, name="pop_sections")
         t1.start()
@@ -857,7 +857,8 @@ class QuadScanGui(QtWidgets.QWidget):
     def prepare_plots(self, scan_type="single"):
         root.info("Preparing plots for {0}".format(scan_type))
         with self.gui_lock:
-            old_names = self.ui.charge_widget.plot_widget.curve_name_list
+            old_names = list(self.ui.charge_widget.plot_widget.curve_item_dict.keys())
+            root.info("Old names: {0}".format(old_names))
             for c in old_names:
                 self.ui.charge_widget.remove_curve(c)
             if scan_type == "single":
@@ -872,25 +873,30 @@ class QuadScanGui(QtWidgets.QWidget):
 
                 col = pq.mkColor(130, 70, 150)
                 plot = MyScatterPlotItem(pen=pq.mkPen(col, width=0), brush=pq.mkBrush(col), symbol="s")
-                self.ui.charge_widget.add_curve("sigma_x", plot, visible=False)
+                self.ui.charge_widget.add_curve("sigma_x", plot, visible=True)
+                self.ui.charge_widget.set_y_link("sigma_x", "fit")
 
                 col = pq.mkColor(150, 30, 130)
                 plot = MyScatterPlotItem(pen=pq.mkPen(col, width=0), brush=pq.mkBrush(col), symbol="h")
                 self.ui.charge_widget.add_curve("sigma_y", plot, visible=False)
+                self.ui.charge_widget.set_y_link("sigma_y", "sigma_x")
 
                 self.ui.charge_widget.set_legend_position("right")
             elif scan_type == "multi_disk":
                 col = (180, 120, 70)
                 charge_plot = MyScatterPlotItem(pen=pq.mkPen(col, width=0), brush=pq.mkBrush(col), symbol="o")
-                self.ui.charge_widget.add_curve("charge", charge_plot)
+                # self.ui.charge_widget.add_curve("charge", charge_plot)
+                self.ui.charge_widget.add_curve("charge", symbol="o", symbolBrush=pq.mkBrush(col),
+                                                symbolPen=pq.mkPen(col, width=0), pen=pq.mkPen(col, width=0))
 
                 col = pq.mkColor(130, 70, 150)
                 plot = MyScatterPlotItem(pen=pq.mkPen(col, width=0), brush=pq.mkBrush(col), symbol="s")
-                self.ui.charge_widget.add_curve("sigma_x", plot, visible=False)
+                self.ui.charge_widget.add_curve("sigma_x", plot, visible=True)
 
                 col = pq.mkColor(150, 30, 130)
                 plot = MyScatterPlotItem(pen=pq.mkPen(col, width=0), brush=pq.mkBrush(col), symbol="h")
                 self.ui.charge_widget.add_curve("sigma_y", plot, visible=False)
+                self.ui.charge_widget.set_y_link("sigma_y", "sigma_x")
 
                 self.ui.charge_widget.set_legend_position("right")
             elif scan_type == "multi_scan":
@@ -912,11 +918,12 @@ class QuadScanGui(QtWidgets.QWidget):
 
                 color = pq.mkColor(130, 70, 150)
                 plot = MyScatterPlotItem(pen=pq.mkPen(color, width=0), brush=pq.mkBrush(color), symbol="s")
-                self.ui.charge_widget.add_curve("sigma_x", plot, visible=False)
+                self.ui.charge_widget.add_curve("sigma_x", plot, visible=True)
 
                 color = pq.mkColor(150, 30, 130)
                 plot = MyScatterPlotItem(pen=pq.mkPen(color, width=0), brush=pq.mkBrush(color), symbol="h")
-                self.ui.charge_widget.add_curve("sigma_y", plot, visible=False)
+                self.ui.charge_widget.add_curve("sigma_y", plot, visible=True)
+                self.ui.charge_widget.set_y_link("sigma_y", "sigma_x")
 
                 self.ui.charge_widget.set_legend_position("right")
 
@@ -1548,9 +1555,9 @@ class QuadScanGui(QtWidgets.QWidget):
 
         # self.sigma_x_plot.setData(x=k, y=sigma, symbol=sigma_symbol_list, brush=sigma_brush_list, size=10, pen=None)
         # self.charge_plot.setData(x=k, y=q, symbol=q_symbol_list, brush=q_brush_list, size=10, pen=None)
-        self.ui.charge_widget.set_data(x_data=k, y_data=sigma_x, curve_index="sigma_x")
-        self.ui.charge_widget.set_data(x_data=k, y_data=sigma_y, curve_index="sigma_y")
-        self.ui.charge_widget.set_data(x_data=k, y_data=q, curve_index="charge")
+        self.ui.charge_widget.set_data(x_data=k, y_data=sigma_x, curve_name="sigma_x")
+        self.ui.charge_widget.set_data(x_data=k, y_data=sigma_y, curve_name="sigma_y")
+        self.ui.charge_widget.set_data(x_data=k, y_data=q, curve_name="charge")
         # self.charge_plot.setData(x=k, y=q, symbol=q_symbol_list, symbolBrush=q_brush_list,
         #                          symbolPen=None, pen=None)
         # y_range = [0, q.max()]
@@ -1563,7 +1570,7 @@ class QuadScanGui(QtWidgets.QWidget):
                 # self.fit_x_plot.setData(x=fit_data[0], y=fit_data[1])
                 # self.ui.fit_widget.update()
                 # self.ui.charge_widget.update()
-                self.ui.charge_widget.set_data(x_data=fit_data[0], y_data=fit_data[1], curve_index="fit")
+                self.ui.charge_widget.set_data(x_data=fit_data[0], y_data=fit_data[1], curve_name="fit")
         else:
             self.fit_x_plot.setData(x=[], y=[])
             self.ui.fit_widget.update()
@@ -1599,12 +1606,12 @@ class QuadScanGui(QtWidgets.QWidget):
             ae, be = mq.get_ab(psi, th, r_maj, r_min)
             self.fit_x_plot.setData(x=ae, y=be, pen=pq.mkPen(180, 170, 50, width=2.0))
         xd = np.arange(len(q))
-        # self.ui.charge_widget.set_data(x_data=xd, y_data=mq.eps_n_list, curve_index="eps_x")
-        self.ui.charge_widget.set_data(x_data=xd, y_data=q, curve_index="charge")
-        # self.ui.charge_widget.set_data(x_data=xd, y_data=mq.beta_list, curve_index="beta_x")
-        # self.ui.charge_widget.set_data(x_data=xd, y_data=mq.alpha_list, curve_index="alpha_x")
-        self.ui.charge_widget.set_data(x_data=xd, y_data=sigma_x, curve_index="sigma_x")
-        self.ui.charge_widget.set_data(x_data=xd, y_data=sigma_y, curve_index="sigma_y")
+        # self.ui.charge_widget.set_data(x_data=xd, y_data=mq.eps_n_list, curve_name="eps_x")
+        self.ui.charge_widget.set_data(x_data=xd, y_data=q, curve_name="charge")
+        # self.ui.charge_widget.set_data(x_data=xd, y_data=mq.beta_list, curve_name="beta_x")
+        # self.ui.charge_widget.set_data(x_data=xd, y_data=mq.alpha_list, curve_name="alpha_x")
+        self.ui.charge_widget.set_data(x_data=xd, y_data=sigma_x, curve_name="sigma_x")
+        self.ui.charge_widget.set_data(x_data=xd, y_data=sigma_y, curve_name="sigma_y")
 
     def plot_ab_data(self):
         root.info("Plotting ab data")
@@ -1617,12 +1624,12 @@ class QuadScanGui(QtWidgets.QWidget):
         self.fit_x_plot.setData(x=ae, y=be, pen=pq.mkPen(180, 170, 50, width=2.0))
         root.info("eps {0}".format(mq.eps_n_list))
         xd = np.arange(len(mq.eps_n_list))
-        self.ui.charge_widget.set_data(x_data=xd, y_data=mq.eps_n_list, curve_index="eps_x")
-        self.ui.charge_widget.set_data(x_data=xd, y_data=mq.charge_list, curve_index="charge")
-        self.ui.charge_widget.set_data(x_data=xd, y_data=mq.beta_list, curve_index="beta_x")
-        self.ui.charge_widget.set_data(x_data=xd, y_data=mq.alpha_list, curve_index="alpha_x")
-        self.ui.charge_widget.set_data(x_data=xd, y_data=mq.x_list, curve_index="sigma_x")
-        self.ui.charge_widget.set_data(x_data=xd, y_data=mq.y_list, curve_index="sigma_y")
+        self.ui.charge_widget.set_data(x_data=xd, y_data=mq.eps_n_list, curve_name="eps_x")
+        self.ui.charge_widget.set_data(x_data=xd, y_data=mq.charge_list, curve_name="charge")
+        self.ui.charge_widget.set_data(x_data=xd, y_data=mq.beta_list, curve_name="beta_x")
+        self.ui.charge_widget.set_data(x_data=xd, y_data=mq.alpha_list, curve_name="alpha_x")
+        self.ui.charge_widget.set_data(x_data=xd, y_data=mq.x_list, curve_name="sigma_x")
+        self.ui.charge_widget.set_data(x_data=xd, y_data=mq.y_list, curve_name="sigma_y")
 
     def set_algo(self):
         root.info("Setting fit algo")
@@ -1740,41 +1747,9 @@ class QuadScanGui(QtWidgets.QWidget):
         charge = None
         roi_size = self.ui.camera_widget.roi.size()
         roi_pos = self.ui.camera_widget.roi.pos()
-        # roi_center = [roi_pos[1] + roi_size[1] / 2.0, roi_pos[0] + roi_size[0] / 2.0]
-        # roi_dim = [roi_size[1], roi_size[0]]
         roi_center = [roi_pos[0] + roi_size[0] / 2.0, roi_pos[1] + roi_size[1] / 2.0]
         roi_dim = [roi_size[0], roi_size[1]]
         self.prepare_plots("multi_scan")
-
-        # old_names = self.ui.charge_widget.plot_widget.curve_name_list
-        # for c in old_names:
-        #     self.ui.charge_widget.remove_curve(c)
-        #
-        # color = pq.mkColor(180, 120, 70)
-        # plot = MyScatterPlotItem(pen=pq.mkPen(color, width=0), brush=pq.mkBrush(color), symbol="o")
-        # self.ui.charge_widget.add_curve("charge", plot)
-        #
-        # color = pq.mkColor(100, 180, 50)
-        # plot = MyScatterPlotItem(pen=pq.mkPen(color, width=0), brush=pq.mkBrush(color), symbol="t1")
-        # self.ui.charge_widget.add_curve("eps_x", plot)
-        #
-        # color = pq.mkColor(30, 100, 200)
-        # plot = MyScatterPlotItem(pen=pq.mkPen(color, width=0), brush=pq.mkBrush(color), symbol="t2")
-        # self.ui.charge_widget.add_curve("beta_x", plot, visible=False)
-        #
-        # color = pq.mkColor(30, 170, 120)
-        # plot = MyScatterPlotItem(pen=pq.mkPen(color, width=0), brush=pq.mkBrush(color), symbol="t3")
-        # self.ui.charge_widget.add_curve("alpha_x", plot, visible=False)
-        #
-        # color = pq.mkColor(130, 70, 150)
-        # plot = MyScatterPlotItem(pen=pq.mkPen(color, width=0), brush=pq.mkBrush(color), symbol="s")
-        # self.ui.charge_widget.add_curve("sigma_x", plot, visible=False)
-        #
-        # color = pq.mkColor(150, 30, 130)
-        # plot = MyScatterPlotItem(pen=pq.mkPen(color, width=0), brush=pq.mkBrush(color), symbol="h")
-        # self.ui.charge_widget.add_curve("sigma_y", plot, visible=False)
-        #
-        # self.ui.charge_widget.set_legend_position("right")
 
         scan_param = ScanParamMulti(self.current_section, sigma_x, sigma_y,
                                     charge_ratio=self.ui.p_keep_charge_ratio_spinbox.value(),
@@ -2111,7 +2086,8 @@ class QuadScanGui(QtWidgets.QWidget):
                 except TypeError as e:
                     root.exception("Scan callback result error: ")
                 self.quad_scan_step_result = step
-                self.update_proc_image_signal.emit(step["image_p"])
+                self.update_image_selection(step["image_p"].pic_roi, auto_levels=True, auto_range=True)
+                # self.update_proc_image_signal.emit(step["image_p"])
                 self.update_ab_signal.emit()
                 # measure_list = res[2]
                 # quad_image_list = [QuadImage(k_ind=0, k_value=pos, image_ind=ind, image=im)
@@ -2120,6 +2096,19 @@ class QuadScanGui(QtWidgets.QWidget):
                 # self.quad_scan_data_scan._replace(images=images)
         else:
             self.ui.scan_status_label.setText("DONE")
+            res = task.get_result(wait=False)
+            self.quad_scan_data_scan = QuadScanData(res["acc_params"], res["images"], res["images_p"])
+            self.quad_scan_data_analysis = self.quad_scan_data_scan
+            root.info("Acc parameters: {0}".format(self.quad_scan_data_scan.acc_params))
+            self.ui.p_image_index_slider.setMaximum(len(self.quad_scan_data_analysis.images) - 1)
+            self.ui.p_image_index_slider.setValue(0)
+            self.ui.p_image_index_slider.update()
+            root.debug("Proc images len: {0}".format(len(self.quad_scan_data_scan.proc_images)))
+            root.debug("Images len: {0}".format(len(self.quad_scan_data_scan.images)))
+            self.user_enable_list = [True for x in range(len(self.quad_scan_data_scan.proc_images))]
+            self.update_analysis_parameters()
+            # self.update_proc_image_signal.emit(None)
+            self.update_image_selection()
 
     def start_processing(self):
         # if len(self.processing_tasks) > 0:
@@ -2179,12 +2168,14 @@ class QuadScanGui(QtWidgets.QWidget):
         else:
             task = FitQuadDataTaskMulti(self.quad_scan_data_analysis.proc_images,
                                         self.quad_scan_data_analysis.acc_params,
-                                        algo=algo, axis=axis, name="fit_multi")
+                                        algo=algo, axis=axis, name="fit_multi",
+                                        callback_list=[TaskCallbackSignal(self.update_fit_result)])
 
         # cc = TaskCallbackSignal()
         # cc.connect(self.update_fit_result)
         # task.add_callback(cc)
         task.start()
+        root.info("Task {0} started".format(task.get_name()))
 
     def points_clicked(self, scatterplotitem, point_list, right=False):
         """
