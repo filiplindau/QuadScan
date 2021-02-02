@@ -2078,7 +2078,7 @@ QSplitter::handle:horizontal {
                         </property>
                         <layout class="QVBoxLayout" name="verticalLayout_11">
                          <item>
-                          <widget class="PlotWidget" name="fit_widget" native="true">
+                          <widget class="QTangoStripTool" name="fit_widget" native="true">
                            <property name="sizePolicy">
                             <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
                              <horstretch>0</horstretch>
@@ -2148,12 +2148,6 @@ QSplitter::handle:horizontal {
  </widget>
  <customwidgets>
   <customwidget>
-   <class>PlotWidget</class>
-   <extends>QWidget</extends>
-   <header>pyqtgraph.h</header>
-   <container>1</container>
-  </customwidget>
-  <customwidget>
    <class>ImageView</class>
    <extends>QWidget</extends>
    <header>pyqtgraph.h</header>
@@ -2213,7 +2207,7 @@ QSplitter::handle:horizontal {
  </resources>
  <connections/>
  <buttongroups>
-  <buttongroup name="buttonGroup"/>
   <buttongroup name="buttonGroup_2"/>
+  <buttongroup name="buttonGroup"/>
  </buttongroups>
 </ui>

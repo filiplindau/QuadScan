@@ -702,12 +702,13 @@ class FitQuadDataTaskMulti(Task):
 
     def fit_full_transfer_matrix(self):
         self.logger.info("Fitting using full transfer matrix")
-        k_data = np.array([pi.k_value for pi in self.processed_image_list])
         if self.axis == "x":
             sigma_data = np.array([pi.sigma_x for pi in self.processed_image_list]).flatten()
         else:
             sigma_data = np.array([pi.sigma_y for pi in self.processed_image_list]).flatten()
         en_data = np.array([pi.enabled for pi in self.processed_image_list]).flatten()
+        k_data = np.array([pi.k_value for pi in self.processed_image_list])[en_data]
+        sigma_data = sigma_data[en_data]
         a_list = list()
         b_list = list()
         for ind in range(k_data.shape[0]):

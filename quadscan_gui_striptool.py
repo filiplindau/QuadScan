@@ -934,7 +934,7 @@ class Ui_QuadScanDialog(object):
         self.verticalLayout_11 = QtWidgets.QVBoxLayout(self.charge_widget_2)
         self.verticalLayout_11.setContentsMargins(0, 0, 0, 0)
         self.verticalLayout_11.setObjectName("verticalLayout_11")
-        self.fit_widget = PlotWidget(self.charge_widget_2)
+        self.fit_widget = QTangoStripTool(self.charge_widget_2)
         sizePolicy = QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
         sizePolicy.setHorizontalStretch(0)
         sizePolicy.setVerticalStretch(0)
@@ -1112,6 +1112,6 @@ class Ui_QuadScanDialog(object):
         self.label_12.setText(_translate("QuadScanDialog", "Fit"))
         self.p_enable_all_button.setText(_translate("QuadScanDialog", "Enable All"))
 
-from pyqtgraph import ImageView, PlotWidget
+from pyqtgraph import ImageView
 from striptool import QTangoStripTool
 import quadscan_res_rc
