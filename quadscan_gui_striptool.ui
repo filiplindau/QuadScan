@@ -2035,10 +2035,46 @@ QSplitter::handle:horizontal {
                      </spacer>
                     </item>
                     <item>
+                     <widget class="QWidget" name="widget_2" native="true">
+                      <property name="minimumSize">
+                       <size>
+                        <width>20</width>
+                        <height>0</height>
+                       </size>
+                      </property>
+                      <layout class="QHBoxLayout" name="horizontalLayout_27">
+                       <item>
+                        <widget class="QRadioButton" name="enable_point_radioutton">
+                         <property name="text">
+                          <string>Enable</string>
+                         </property>
+                        </widget>
+                       </item>
+                       <item>
+                        <widget class="QRadioButton" name="toggle_point_radiobutton">
+                         <property name="text">
+                          <string>Toggle</string>
+                         </property>
+                         <property name="checked">
+                          <bool>true</bool>
+                         </property>
+                        </widget>
+                       </item>
+                       <item>
+                        <widget class="QRadioButton" name="disable_point_radiobutton">
+                         <property name="text">
+                          <string>Disable</string>
+                         </property>
+                        </widget>
+                       </item>
+                      </layout>
+                     </widget>
+                    </item>
+                    <item>
                      <widget class="QPushButton" name="p_enable_all_button">
                       <property name="maximumSize">
                        <size>
-                        <width>80</width>
+                        <width>60</width>
                         <height>16777215</height>
                        </size>
                       </property>
@@ -2048,7 +2084,7 @@ QSplitter::handle:horizontal {
                        </font>
                       </property>
                       <property name="text">
-                       <string>Enable All</string>
+                       <string>Do all</string>
                       </property>
                      </widget>
                     </item>

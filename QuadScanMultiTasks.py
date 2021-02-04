@@ -692,17 +692,24 @@ class FitQuadDataTaskMulti(Task):
     def action(self):
         self.logger.info("{0} entering action.".format(self))
         t0 = time.time()
-        if self.algo == "full":
-            fitresult = self.fit_full_transfer_matrix()
-        else:
+        if self.algo != "full":
             self.logger.warning("Only full matrix available")
-            fitresult = self.fit_full_transfer_matrix()
+        if self.axis == "x":
+            fitresult = self.fit_full_transfer_matrix("x")
+        elif self.axis == "y":
+            fitresult = self.fit_full_transfer_matrix("y")
+        elif self.axis == "both":
+            fitresult_x = self.fit_full_transfer_matrix("x")
+            fitresult_y = self.fit_full_transfer_matrix("y")
+            fitresult = [fitresult_x, fitresult_y]
+        else:
+            fitresult = self.fit_full_transfer_matrix("x")
         self.result = fitresult
         self.logger.debug("{0}: Fit time {1:.2f} s".format(self, time.time()-t0))
 
-    def fit_full_transfer_matrix(self):
+    def fit_full_transfer_matrix(self, axis="x"):
         self.logger.info("Fitting using full transfer matrix")
-        if self.axis == "x":
+        if axis == "x":
             sigma_data = np.array([pi.sigma_x for pi in self.processed_image_list]).flatten()
         else:
             sigma_data = np.array([pi.sigma_y for pi in self.processed_image_list]).flatten()
@@ -713,7 +720,7 @@ class FitQuadDataTaskMulti(Task):
         b_list = list()
         for ind in range(k_data.shape[0]):
             M = self.calc_response_matrix(k_data[ind, :], self.accelerator_params.quad_list,
-                                          self.accelerator_params.screen_pos, self.axis)
+                                          self.accelerator_params.screen_pos, axis)
             a_list.append(M[0, 0])
             b_list.append(M[0, 1])
         gamma_energy = self.accelerator_params.electron_energy / 0.511

@@ -863,49 +863,52 @@ class QuadScanGui(QtWidgets.QWidget):
             root.info("Old names: {0}".format(old_names))
             for c in old_names:
                 self.ui.charge_widget.remove_curve(c)
+            old_names = list(self.ui.fit_widget.plot_widget.curve_item_dict.keys())
+            root.info("Old names: {0}".format(old_names))
+            for c in old_names:
+                self.ui.fit_widget.remove_curve(c)
+            col_charge = (180, 120, 70)
+            col_sigma_x = (90, 180, 50)
+            col_sigma_y = (120, 30, 100)
+            col_fit_x = (28, 86, 4)
+            col_fit_y = (91, 22, 76)
             if scan_type == "single":
 
-                col = (180, 180, 250)
-                plot = pq.PlotCurveItem(pen=pq.mkPen(col, width=2), brush=pq.mkBrush(col))
-                self.ui.charge_widget.add_curve("fit", plot)
+                plot = pq.PlotCurveItem(pen=pq.mkPen(col_fit_x, width=2), brush=pq.mkBrush(col_fit_x))
+                self.ui.charge_widget.add_curve("fit_x", plot)
 
-                col = (180, 120, 70)
-                charge_plot = MyScatterPlotItem(pen=pq.mkPen(col, width=0), brush=pq.mkBrush(col), symbol="o")
+                charge_plot = MyScatterPlotItem(pen=pq.mkPen(col_charge, width=0), brush=pq.mkBrush(col_charge), symbol="o")
                 self.ui.charge_widget.add_curve("charge", charge_plot)
 
-                col = pq.mkColor(130, 70, 150)
-                plot = MyScatterPlotItem(pen=pq.mkPen(col, width=0), brush=pq.mkBrush(col), symbol="s")
+                plot = MyScatterPlotItem(pen=pq.mkPen(col_sigma_x, width=0), brush=pq.mkBrush(col_sigma_x), symbol="s")
                 self.ui.charge_widget.add_curve("sigma_x", plot, visible=True)
-                self.ui.charge_widget.set_y_link("sigma_x", "fit")
+                self.ui.charge_widget.set_y_link("sigma_x", "fit_x")
 
-                col = pq.mkColor(150, 30, 130)
-                plot = MyScatterPlotItem(pen=pq.mkPen(col, width=0), brush=pq.mkBrush(col), symbol="h")
+                plot = MyScatterPlotItem(pen=pq.mkPen(col_sigma_y, width=0), brush=pq.mkBrush(col_sigma_y), symbol="h")
                 self.ui.charge_widget.add_curve("sigma_y", plot, visible=False)
                 self.ui.charge_widget.set_y_link("sigma_y", "sigma_x")
 
                 self.ui.charge_widget.set_legend_position("right")
             elif scan_type == "multi_disk":
-                col = (180, 120, 70)
-                self.ui.charge_widget.add_curve("charge", symbol="o", symbolBrush=pq.mkBrush(col),
-                                                symbolPen=pq.mkPen(col, width=0), pen=pq.mkPen(col, width=0))
-
-                col = pq.mkColor(130, 70, 150)
-                self.ui.charge_widget.add_curve("sigma_x", symbol="s", symbolPen=pq.mkPen(col, width=0), symbolBrush=pq.mkBrush(col),
-                                                pen=pq.mkPen(col, width=0), width=1, visible=True)
-
-                col = pq.mkColor(150, 30, 130)
-                self.ui.charge_widget.add_curve("sigma_y", symbol="h", symbolPen=pq.mkPen(col, width=0), symbolBrush=pq.mkBrush(col),
-                                                pen=pq.mkPen(col, width=0), width=1, visible=True)
+                self.ui.charge_widget.add_curve("charge", symbol="o", symbolBrush=pq.mkBrush(col_charge),
+                                                symbolPen=pq.mkPen(col_charge, width=0), pen=pq.mkPen(col_charge, width=0))
+                self.ui.charge_widget.add_curve("sigma_x", symbol="s", symbolPen=pq.mkPen(col_sigma_x, width=0), symbolBrush=pq.mkBrush(col_sigma_x),
+                                                pen=pq.mkPen(col_sigma_x), width=None, visible=True)
+                self.ui.charge_widget.add_curve("sigma_y", symbol="h", symbolPen=pq.mkPen(col_sigma_y, width=0), symbolBrush=pq.mkBrush(col_sigma_y),
+                                                pen=pq.mkPen(col_sigma_y, width=0), width=1, visible=True)
                 self.ui.charge_widget.set_y_link("sigma_y", "sigma_x")
 
                 self.ui.charge_widget.set_legend_position("right")
 
-                col = pq.mkColor(80, 170, 50)
-                self.ui.fit_widget.add_curve("fit", pen=pq.mkPen(col, width=2), width=2, visible=True)
-                col = pq.mkColor(130, 70, 150)
-                self.ui.fit_widget.add_curve("ab", symbol="s", symbolPen=pq.mkPen(col, width=0), symbolBrush=pq.mkBrush(col),
-                                             pen=pq.mkPen(col, width=0), width=None, visible=True)
-                self.ui.fit_widget.set_y_link("ab", "fit")
+                self.ui.fit_widget.add_curve("fit_x", pen=pq.mkPen(col_fit_x, width=2), width=2, visible=True)
+                self.ui.fit_widget.add_curve("ab_x", symbol="t", symbolPen=pq.mkPen(col_sigma_x, width=0), symbolBrush=pq.mkBrush(col_sigma_x),
+                                             color=col_sigma_x, width=None, visible=True)
+                self.ui.fit_widget.set_y_link("ab_x", "fit_x")
+                self.ui.fit_widget.add_curve("fit_y", pen=pq.mkPen(col_fit_y, width=2), width=2, visible=True)
+                self.ui.fit_widget.add_curve("ab_y", symbol="s", symbolPen=pq.mkPen(col_sigma_y, width=0), symbolBrush=pq.mkBrush(col_sigma_y),
+                                             color=col_sigma_y, width=None, visible=True)
+                self.ui.fit_widget.set_y_link("ab_y", "fit_x")
+                self.ui.fit_widget.set_y_link("fit_y", "fit_x")
                 self.ui.fit_widget.set_legend_position("right")
 
             elif scan_type == "multi_scan":
@@ -1439,16 +1442,15 @@ class QuadScanGui(QtWidgets.QWidget):
 
             else:
                 if fitresult is not None:
+                    if isinstance(fitresult, list):
+                        fitres = fitresult[0]
+                    else:
+                        fitres = fitresult
                     self.append_status_message("Fit ok.\n"
-                                               "Residual: {0}".format(fitresult.residual))
-                    # time_str = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(time.time()))
-                    # self.ui.status_textedit.append("\n===================\n"
-                    #                                "{0}:\n"
-                    #                                "Fit ok. \n"
-                    #                                "Residual: {1}\n".format(time_str, fitresult.residual))
-                    self.ui.eps_label.setText("{0:.2f} mm x mmrad".format(1e6 * fitresult.eps_n))
-                    self.ui.beta_label.setText("{0:.2f} m".format(fitresult.beta))
-                    self.ui.alpha_label.setText("{0:.2f}".format(fitresult.alpha))
+                                               "Residual: {0}".format(fitres.residual))
+                    self.ui.eps_label.setText("{0:.2f} mm x mmrad".format(1e6 * fitres.eps_n))
+                    self.ui.beta_label.setText("{0:.2f} m".format(fitres.beta))
+                    self.ui.alpha_label.setText("{0:.2f}".format(fitres.alpha))
                     self.fit_result = fitresult
                     self.plot_sigma_data()
                     # self.update_fit_signal.emit()
@@ -1579,7 +1581,7 @@ class QuadScanGui(QtWidgets.QWidget):
                 # self.fit_x_plot.setData(x=fit_data[0], y=fit_data[1])
                 # self.ui.fit_widget.update()
                 # self.ui.charge_widget.update()
-                self.ui.charge_widget.set_data(x_data=fit_data[0], y_data=fit_data[1], curve_name="fit")
+                self.ui.charge_widget.set_data(x_data=fit_data[0], y_data=fit_data[1], curve_name="fit_x")
         else:
             self.fit_x_plot.setData(x=[], y=[])
             self.ui.fit_widget.update()
@@ -1597,30 +1599,34 @@ class QuadScanGui(QtWidgets.QWidget):
             sigma = sigma_y
             axis = "y"
 
-        root.info("Alpha: {0}, beta: {1}, eps: {2}, sigma: {3}".format(self.fit_result.alpha, self.fit_result.beta, self.fit_result.eps, np.median(sigma)))
         k_data = np.array([proc_im.k_value for proc_im in self.quad_scan_data_analysis.proc_images])
         ap = self.quad_scan_data_analysis.acc_params
         a_list = list()
         b_list = list()
+        ay_list = list()
+        by_list = list()
         for ind in range(k_data.shape[0]):
-            M = mq.calc_response_matrix(k_data[ind, :], ap.quad_list, ap.screen_pos, axis)
+            M = mq.calc_response_matrix(k_data[ind, :], ap.quad_list, ap.screen_pos, "x")
             a_list.append(M[0, 0])
             b_list.append(M[0, 1])
+            My = mq.calc_response_matrix(k_data[ind, :], ap.quad_list, ap.screen_pos, "y")
+            ay_list.append(My[0, 0])
+            by_list.append(My[0, 1])
         q = np.array([proc_im.q for proc_im in self.quad_scan_data_analysis.proc_images])
         en_data = np.array([proc_im.enabled for proc_im in self.quad_scan_data_analysis.proc_images])
-        # self.sigma_x_plot.setData(x=a_list, y=b_list, symbol="t", brush=pq.mkBrush(150, 170, 250, 220), size=10, pen=None)
-        if self.fit_result.alpha is not None:
-            th, r_maj, r_min = mq.calc_ellipse(self.fit_result.alpha, self.fit_result.beta, self.fit_result.eps, np.median(sigma))
+
+        if isinstance(self.fit_result, list):
+            root.info("Alpha: {0}, beta: {1}, eps: {2}, sigma: {3}".format(self.fit_result[0].alpha, self.fit_result[0].beta,
+                                                                           self.fit_result[0].eps, np.median(sigma)))
+            th, r_maj, r_min = mq.calc_ellipse(self.fit_result[0].alpha, self.fit_result[0].beta, self.fit_result[0].eps, np.median(sigma_x[3:]))
             psi = np.linspace(0, 2 * np.pi, 500)
             ae, be = mq.get_ab(psi, th, r_maj, r_min)
-            # self.fit_x_plot.setData(x=ae, y=be, pen=pq.mkPen(180, 170, 50, width=2.0))
-            self.ui.fit_widget.set_data(x_data=ae, y_data=be, curve_name="fit")
+            self.ui.fit_widget.set_data(x_data=ae, y_data=be, curve_name="fit_x")
+            th_y, r_maj_y, r_min_y = mq.calc_ellipse(self.fit_result[1].alpha, self.fit_result[1].beta, self.fit_result[1].eps,
+                                                     np.median(sigma_y))
+            ae_y, be_y = mq.get_ab(psi, th_y, r_maj_y, r_min_y)
+            self.ui.fit_widget.set_data(x_data=ae_y, y_data=be_y, curve_name="fit_y")
         xd = np.arange(len(q))
-        # self.ui.charge_widget.set_data(x_data=xd, y_data=mq.eps_n_list, curve_name="eps_x")
-        self.ui.charge_widget.set_data(x_data=xd, y_data=q, curve_name="charge")
-        # self.ui.charge_widget.set_data(x_data=xd, y_data=mq.beta_list, curve_name="beta_x")
-        # self.ui.charge_widget.set_data(x_data=xd, y_data=mq.alpha_list, curve_name="alpha_x")
-        en_data = np.array([proc_im.enabled for proc_im in self.quad_scan_data_analysis.proc_images])
         sigma_symbol_list = list()
         sigma_brush_list = list()
         so_brush = pq.mkBrush(150, 150, 250, 150)
@@ -1631,19 +1637,26 @@ class QuadScanGui(QtWidgets.QWidget):
         qx_brush = pq.mkBrush(250, 100, 100, 200)
         for en in en_data:
             if not en:
-                sigma_symbol_list.append("t")
+                sigma_symbol_list.append("x")
                 sigma_brush_list.append(sx_brush)
-                q_symbol_list.append("t")
+                q_symbol_list.append("x")
                 q_brush_list.append(qx_brush)
             else:
-                sigma_symbol_list.append("o")
+                sigma_symbol_list.append("t")
                 sigma_brush_list.append(so_brush)
                 q_symbol_list.append("s")
                 q_brush_list.append(qo_brush)
-        self.ui.charge_widget.set_data(x_data=xd, y_data=sigma_x, curve_name="sigma_x", symbol=sigma_symbol_list, symbolBrush=sigma_brush_list)
-        self.ui.charge_widget.set_data(x_data=xd, y_data=sigma_y, curve_name="sigma_y")
-        self.ui.fit_widget.set_data(x_data=np.array(a_list), y_data=np.array(b_list), curve_name="ab", symbol=sigma_symbol_list,
-                                    symbolBrush=sigma_brush_list)
+        self.ui.charge_widget.set_data(x_data=xd, y_data=sigma_x, curve_name="sigma_x",
+                                       symbol=sigma_symbol_list)#, symbolBrush=sigma_brush_list)
+        self.ui.charge_widget.set_data(x_data=xd, y_data=sigma_y, curve_name="sigma_y",
+                                       symbol=sigma_symbol_list)#, symbolBrush=sigma_brush_list)
+        self.ui.charge_widget.set_data(x_data=xd, y_data=q, curve_name="charge",
+                                       symbol=sigma_symbol_list)#, symbolBrush=sigma_brush_list)
+        # self.ui.fit_widget.set_data(x_data=np.array(a_list), y_data=np.array(b_list), curve_name="ab_x",
+        #                             symbol=sigma_symbol_list, width=None)#, symbolBrush=sigma_brush_list)
+        self.ui.fit_widget.set_data(x_data=np.array(a_list), y_data=np.array(b_list), curve_name="ab_x")#, symbolBrush=sigma_brush_list)
+        self.ui.fit_widget.set_data(x_data=np.array(ay_list), y_data=np.array(by_list), curve_name="ab_y",
+                                    symbol=sigma_symbol_list, width=None)#, symbolBrush=sigma_brush_list)
 
     def plot_ab_data(self):
         root.info("Plotting ab data")
@@ -2200,12 +2213,9 @@ class QuadScanGui(QtWidgets.QWidget):
         else:
             task = FitQuadDataTaskMulti(self.quad_scan_data_analysis.proc_images,
                                         self.quad_scan_data_analysis.acc_params,
-                                        algo=algo, axis=axis, name="fit_multi",
+                                        algo=algo, axis="both", name="fit_multi",
                                         callback_list=[TaskCallbackSignal(self.update_fit_result)])
 
-        # cc = TaskCallbackSignal()
-        # cc.connect(self.update_fit_result)
-        # task.add_callback(cc)
         task.start()
         root.info("Task {0} started".format(task.get_name()))
 
@@ -2220,9 +2230,24 @@ class QuadScanGui(QtWidgets.QWidget):
                 dist = p.dist
         self.ui.p_image_index_slider.setValue(ind)
         self.update_image_selection()
-        en_data[ind] = False
+        if self.ui.enable_point_radioutton.isChecked():
+            enabled = True
+            toggle = False
+        elif self.ui.disable_point_radiobutton.isChecked():
+            enabled = False
+            toggle = False
+        else:
+            enabled = True
+            toggle = True
+        if toggle:
+            en_data[ind] = not en_data[ind]
+            root.info("Toggling point {0}".format(ind))
+        else:
+            en_data[ind] = enabled
+            root.info("Point {0} {1}".format(ind, enabled))
+
         proc_im = self.quad_scan_data_analysis.proc_images[ind]
-        proc_im = proc_im._replace(enabled=False)
+        proc_im = proc_im._replace(enabled=en_data[ind])
         proc_image_list = self.quad_scan_data_analysis.proc_images
         proc_image_list[ind] = proc_im
         self.quad_scan_data_analysis = self.quad_scan_data_analysis._replace(proc_images=proc_image_list)
@@ -2261,7 +2286,15 @@ class QuadScanGui(QtWidgets.QWidget):
         x = [proc_im.k_value for proc_im in self.quad_scan_data_analysis.proc_images]
         # en_data = [proc_im.enabled for proc_im in self.quad_scan_data_analysis.proc_images]
         en_data = self.user_enable_list
-        enabled = not right             # True if left button is pressed
+        if self.ui.enable_point_radioutton.isChecked():
+            enabled = True
+            toggle = False
+        elif self.ui.disable_point_radiobutton.isChecked():
+            enabled = False
+            toggle = False
+        else:
+            enabled = True
+            toggle = True
         eps = 1e-9
         mouse_pos = self.mapFromGlobal(QtGui.QCursor.pos())
         root.debug("Mouse pos: {0}".format(mouse_pos))
@@ -2273,20 +2306,25 @@ class QuadScanGui(QtWidgets.QWidget):
             pos = p.pos()
             # We need to loop through the list of data points to find the index of the points clicked:
             for k_i, k_val in enumerate(x):
-                    # Check if the point is within eps:
-                    if abs(pos.x() - k_val) < eps:
-                        if abs(pos.y() - (y[k_i])) < eps:
-                            d = (pos.x() - mouse_pos.x())**2 + (pos.y() - mouse_pos.y())**2
-                            if d < sel_dist:
-                                k_sel_i = k_i
-                                sel_dist = d
-                            if en_data[k_i] != enabled:
-                                if d < tog_dist:
-                                    k_toggle_i = k_i
-                                    tog_dist = d
+                # Check if the point is within eps:
+                if abs(pos.x() - k_val) < eps:
+                    if abs(pos.y() - (y[k_i])) < eps:
+                        d = (pos.x() - mouse_pos.x())**2 + (pos.y() - mouse_pos.y())**2
+                        if d < sel_dist:
+                            k_sel_i = k_i
+                            sel_dist = d
+                        if en_data[k_i] != enabled:
+                            if d < tog_dist:
+                                k_toggle_i = k_i
+                                tog_dist = d
 
         if k_toggle_i is not None:
-            en_data[k_toggle_i] = enabled
+            if toggle:
+                en_data[k_toggle_i] = not en_data[k_toggle_i]
+                root.info("Toggling point {0}".format(k_toggle_i))
+            else:
+                en_data[k_toggle_i] = enabled
+                root.info("Point {0} {1}".format(k_toggle_i, enabled))
             proc_im = self.quad_scan_data_analysis.proc_images[k_toggle_i]
             proc_im = proc_im._replace(enabled=enabled)
             proc_image_list = self.quad_scan_data_analysis.proc_images
@@ -2308,8 +2346,17 @@ class QuadScanGui(QtWidgets.QWidget):
         :return:
         """
         root.info("Enable all points in processed data")
-        self.user_enable_list = [True for x in range(len(self.user_enable_list))]
+        with self.gui_lock:
+            if self.ui.enable_point_radioutton.isChecked():
+                self.user_enable_list = [True for x in range(len(self.user_enable_list))]
+            elif self.ui.disable_point_radiobutton.isChecked():
+                self.user_enable_list = [False for x in range(len(self.user_enable_list))]
+            else:
+                self.user_enable_list = [not x for x in self.user_enable_list]
         self.start_processing()
+
+    def set_enable_point(self, point_ind, curve, enable=None):
+        pass
 
     def camera_mouse_moved(self, event):
         pos = self.ui.camera_widget.view.mapSceneToView(event[0])
