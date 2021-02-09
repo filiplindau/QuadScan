@@ -23,7 +23,7 @@ f = logging.Formatter("%(asctime)s - %(module)s.   %(funcName)s - %(levelname)s 
 fh = logging.StreamHandler()
 fh.setFormatter(f)
 logger.addHandler(fh)
-logger.setLevel(logging.DEBUG)
+logger.setLevel(logging.WARNING)
 
 
 class QTangoColors(object):
@@ -324,6 +324,9 @@ class QTangoStripTool(QtWidgets.QFrame):
 
     def set_curve_color(self, curve_name, color):
         self.plot_widget.set_curve_color(curve_name, color)
+
+    def stack_vertically(self):
+        self.plot_widget.stack_vertically()
 
     def paintEvent(self, a0):
         super(QTangoStripTool, self).paintEvent(a0)
@@ -1124,6 +1127,9 @@ class QTangoStripToolPlotWidget(pg.PlotWidget):
         self.curve_item_dict[curve_name].setData(x_data, y_data, **kargs)
         if auto_range:
             vb.autoRange()
+            for gr_list in self.curve_group_list:
+                if curve_name in gr_list:
+                    self.auto_range_group(gr_list)
         if self.curve_focus == curve_name:
             pi = self.getPlotItem()
             axis_viewrange = self.curve_vb_dict[curve_name].viewRange()
@@ -1229,7 +1235,32 @@ class QTangoStripToolPlotWidget(pg.PlotWidget):
         Stack curves vertically to separate them
         :return:
         """
-        pass
+        dr = 1.0 / len(self.curve_group_list)
+        r_gap = 0.05
+        for ind, curve_group in enumerate(self.curve_group_list[::-1]):
+            vr = [dr * ind + r_gap / 2, dr * (ind + 1) - r_gap / 2]
+            y_range = [np.inf, -np.inf]
+            for cn in curve_group:
+                vb = self.curve_vb_dict[cn]
+                child_range = vb.childrenBounds(frac=[1.0, 1.0])
+                try:
+                    y_range[0] = np.minimum(child_range[1][0], y_range[0])
+                    y_range[1] = np.maximum(child_range[1][1], y_range[1])
+                except TypeError:
+                    pass
+            if y_range[0] == np.inf:
+                y_range[0] = 0
+            if y_range[1] == -np.inf:
+                y_range[1] = 1
+            k = (y_range[1] - y_range[0]) / (vr[1] - vr[0])
+            m = y_range[0] - k * vr[0]
+            y_min = m
+            y_max = k + m
+            for cn in curve_group:
+                logger.info("Curve {0} setting range {1}-{2}".format(cn, y_min, y_max))
+                vb = self.curve_vb_dict[cn]
+                vb.setRange(yRange=[y_min, y_max])
+                self.update_curve_range_signal.emit(cn, y_min, y_max)
 
     def points_clicked(self, curve, points):
         ind = [p.index() for p in points]
@@ -1414,6 +1445,7 @@ if __name__ == "__main__":
             strip_tool2.set_data(x_data, y_data, name)
         strip_tool2.remove_curve("Curve 2")
         strip_tool2.plot_widget.set_y_link("Curve 3", "Curve 1")
+        strip_tool2.plot_widget.stack_vertically()
 
     elif test == "trend":
         test_stream = TestStream()

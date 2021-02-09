@@ -929,7 +929,11 @@ class MultiQuadLookup(object):
                 weights = np.exp(-(charge / charge[0] - 1)**2 / s_q**2)
             Mw = M * np.sqrt(weights[:, np.newaxis])
             sw = sigma**2 * np.sqrt(weights)
-            ldata = np.linalg.lstsq(Mw, sw, -1)
+            try:
+                ldata = np.linalg.lstsq(Mw, sw, -1)
+            except np.linalg.LinAlgError as e:
+                logger.info("\nMw: {0}\n\nsw: {1}\n\nsigma: {2}".format(Mw, sw, sigma))
+                raise e
 
             if axis == "x":
                 try:

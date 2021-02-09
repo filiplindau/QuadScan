@@ -815,19 +815,21 @@ class QuadScanGui(QtWidgets.QWidget):
         except AttributeError:
             pass
 
-        self.ui.p_roi_cent_x_spinbox.setValue(acc_params.roi_center[1])
-        self.ui.p_roi_cent_y_spinbox.setValue(acc_params.roi_center[0])
-        self.ui.p_roi_size_w_spinbox.setValue(acc_params.roi_dim[1])
-        self.ui.p_roi_size_h_spinbox.setValue(acc_params.roi_dim[0])
+        self.ui.p_roi_cent_x_spinbox.setValue(acc_params.roi_center[0])
+        self.ui.p_roi_cent_y_spinbox.setValue(acc_params.roi_center[1])
+        self.ui.p_roi_size_w_spinbox.setValue(acc_params.roi_dim[0])
+        self.ui.p_roi_size_h_spinbox.setValue(acc_params.roi_dim[1])
         # Init image view as the ROI:
-        pos = [acc_params.roi_center[1] - acc_params.roi_dim[1] / 2.0,
-               acc_params.roi_center[0] - acc_params.roi_dim[0] / 2.0]
+        pos = [acc_params.roi_center[0] - acc_params.roi_dim[0] / 2.0,
+               acc_params.roi_center[1] - acc_params.roi_dim[1] / 2.0]
+        root.info("\nroi_center: {0}\nroi_dim: {1}\npos: {2}".format(acc_params.roi_center, acc_params.roi_dim, pos))
         if self.ui.p_raw_image_radio.isChecked():
             self.process_image_view = [0, 0, acc_params.roi_dim[1], acc_params.roi_dim[0]]
             x_range = [pos[0], pos[0] + self.process_image_view[2]]
             y_range = [pos[1], pos[1] + self.process_image_view[3]]
         else:
             self.process_image_view = [pos[1], pos[0], acc_params.roi_dim[1], acc_params.roi_dim[0]]
+            # self.process_image_view = [pos[0], pos[1], acc_params.roi_dim[1], acc_params.roi_dim[0]]
             x_range = [0, self.process_image_view[2]]
             y_range = [0, self.process_image_view[3]]
         root.debug("x range: {0}, y range: {1}".format(x_range, y_range))
@@ -835,13 +837,13 @@ class QuadScanGui(QtWidgets.QWidget):
 
         self.ui.process_image_widget.roi.blockSignals(True)
         self.ui.process_image_widget.roi.setPos(pos, update=False)
-        self.ui.process_image_widget.roi.setSize([acc_params.roi_dim[1], acc_params.roi_dim[0]])
+        self.ui.process_image_widget.roi.setSize([acc_params.roi_dim[0], acc_params.roi_dim[1]])
         self.ui.process_image_widget.roi.blockSignals(False)
 
         root.info("Analysis parameters: \n\nROI\n"
                   "pos {0} x {1}\ndim {2} x {3}\n\n"
                   "From image widget:\npos {0} x {1}\ndim {2} x {3}\n"
-                  "".format(pos[0], pos[1], acc_params.roi_dim[1], acc_params.roi_dim[0],
+                  "".format(pos[0], pos[1], acc_params.roi_dim[0], acc_params.roi_dim[1],
                             self.ui.process_image_widget.roi.pos()[0], self.ui.process_image_widget.roi.pos()[1],
                             self.ui.process_image_widget.roi.size()[0], self.ui.process_image_widget.roi.size()[1]))
 
@@ -877,9 +879,6 @@ class QuadScanGui(QtWidgets.QWidget):
                 plot = pq.PlotCurveItem(pen=pq.mkPen(col_fit_x, width=2), brush=pq.mkBrush(col_fit_x))
                 self.ui.charge_widget.add_curve("fit_x", plot)
 
-                charge_plot = MyScatterPlotItem(pen=pq.mkPen(col_charge, width=0), brush=pq.mkBrush(col_charge), symbol="o")
-                self.ui.charge_widget.add_curve("charge", charge_plot)
-
                 plot = MyScatterPlotItem(pen=pq.mkPen(col_sigma_x, width=0), brush=pq.mkBrush(col_sigma_x), symbol="s")
                 self.ui.charge_widget.add_curve("sigma_x", plot, visible=True)
                 self.ui.charge_widget.set_y_link("sigma_x", "fit_x")
@@ -888,12 +887,46 @@ class QuadScanGui(QtWidgets.QWidget):
                 self.ui.charge_widget.add_curve("sigma_y", plot, visible=False)
                 self.ui.charge_widget.set_y_link("sigma_y", "sigma_x")
 
+                charge_plot = MyScatterPlotItem(pen=pq.mkPen(col_charge, width=0), brush=pq.mkBrush(col_charge), symbol="o")
+                self.ui.charge_widget.add_curve("charge", charge_plot)
+
                 self.ui.charge_widget.set_legend_position("right")
             elif scan_type == "multi_disk":
+                self.ui.charge_widget.add_curve("sigma_x", symbol="s", symbolPen=pq.mkPen(col_sigma_x, width=0), symbolBrush=pq.mkBrush(col_sigma_x),
+                                                pen=pq.mkPen(col_sigma_x, width=0), width=1, visible=True)
+                self.ui.charge_widget.add_curve("sigma_y", symbol="h", symbolPen=pq.mkPen(col_sigma_y, width=0), symbolBrush=pq.mkBrush(col_sigma_y),
+                                                pen=pq.mkPen(col_sigma_y, width=0), width=1, visible=True)
+                self.ui.charge_widget.set_y_link("sigma_y", "sigma_x")
                 self.ui.charge_widget.add_curve("charge", symbol="o", symbolBrush=pq.mkBrush(col_charge),
                                                 symbolPen=pq.mkPen(col_charge, width=0), pen=pq.mkPen(col_charge, width=0))
+
+                self.ui.charge_widget.set_legend_position("right")
+
+                self.ui.fit_widget.add_curve("fit_x", pen=pq.mkPen(col_fit_x, width=2), width=2, visible=True)
+                self.ui.fit_widget.add_curve("ab_x", symbol="t", symbolPen=pq.mkPen(col_sigma_x, width=0), symbolBrush=pq.mkBrush(col_sigma_x),
+                                             color=col_sigma_x, width=None, visible=True)
+                self.ui.fit_widget.set_y_link("ab_x", "fit_x")
+                self.ui.fit_widget.add_curve("fit_y", pen=pq.mkPen(col_fit_y, width=2), width=2, visible=True)
+                self.ui.fit_widget.add_curve("ab_y", symbol="s", symbolPen=pq.mkPen(col_sigma_y, width=0), symbolBrush=pq.mkBrush(col_sigma_y),
+                                             color=col_sigma_y, width=None, visible=True)
+                self.ui.fit_widget.set_y_link("ab_y", "fit_x")
+                self.ui.fit_widget.set_y_link("fit_y", "fit_x")
+                self.ui.fit_widget.set_legend_position("right")
+
+            elif scan_type == "multi_scan":
+                self.ui.charge_widget.add_curve("charge", symbol="o", symbolBrush=pq.mkBrush(col_charge),
+                                                symbolPen=pq.mkPen(col_charge, width=0), pen=pq.mkPen(col_charge, width=0))
+                col = pq.mkColor(100, 180, 50)
+                self.ui.charge_widget.add_curve("eps_x", symbol="t1", symbolBrush=pq.mkBrush(col),
+                                                symbolPen=pq.mkPen(col, width=0), pen=pq.mkPen(col, width=0))
+                col = pq.mkColor(30, 100, 200)
+                self.ui.charge_widget.add_curve("beta_x", symbol="t2", symbolBrush=pq.mkBrush(col),
+                                                symbolPen=pq.mkPen(col, width=0), pen=pq.mkPen(col, width=0))
+                col = pq.mkColor(30, 170, 120)
+                self.ui.charge_widget.add_curve("alpha_x", symbol="t3", symbolBrush=pq.mkBrush(col),
+                                                symbolPen=pq.mkPen(col, width=0), pen=pq.mkPen(col, width=0))
                 self.ui.charge_widget.add_curve("sigma_x", symbol="s", symbolPen=pq.mkPen(col_sigma_x, width=0), symbolBrush=pq.mkBrush(col_sigma_x),
-                                                pen=pq.mkPen(col_sigma_x), width=None, visible=True)
+                                                pen=pq.mkPen(col_sigma_x, width=0), width=1, visible=True)
                 self.ui.charge_widget.add_curve("sigma_y", symbol="h", symbolPen=pq.mkPen(col_sigma_y, width=0), symbolBrush=pq.mkBrush(col_sigma_y),
                                                 pen=pq.mkPen(col_sigma_y, width=0), width=1, visible=True)
                 self.ui.charge_widget.set_y_link("sigma_y", "sigma_x")
@@ -910,34 +943,6 @@ class QuadScanGui(QtWidgets.QWidget):
                 self.ui.fit_widget.set_y_link("ab_y", "fit_x")
                 self.ui.fit_widget.set_y_link("fit_y", "fit_x")
                 self.ui.fit_widget.set_legend_position("right")
-
-            elif scan_type == "multi_scan":
-                col = pq.mkColor(180, 120, 70)
-                self.ui.charge_widget.add_curve("charge", symbol="o", symbolBrush=pq.mkBrush(col),
-                                                symbolPen=pq.mkPen(col, width=0), pen=pq.mkPen(col, width=0))
-
-                col = pq.mkColor(100, 180, 50)
-                self.ui.charge_widget.add_curve("eps_x", symbol="t1", symbolBrush=pq.mkBrush(col),
-                                                symbolPen=pq.mkPen(col, width=0), pen=pq.mkPen(col, width=0))
-
-                col = pq.mkColor(30, 100, 200)
-                self.ui.charge_widget.add_curve("beta_x", symbol="t2", symbolBrush=pq.mkBrush(col),
-                                                symbolPen=pq.mkPen(col, width=0), pen=pq.mkPen(col, width=0))
-
-                col = pq.mkColor(30, 170, 120)
-                self.ui.charge_widget.add_curve("alpha_x", symbol="t3", symbolBrush=pq.mkBrush(col),
-                                                symbolPen=pq.mkPen(col, width=0), pen=pq.mkPen(col, width=0))
-
-                col = pq.mkColor(130, 70, 150)
-                self.ui.charge_widget.add_curve("sigma_x", symbol="s", symbolBrush=pq.mkBrush(col),
-                                                symbolPen=pq.mkPen(col, width=0), pen=pq.mkPen(col, width=0))
-
-                col = pq.mkColor(150, 30, 130)
-                self.ui.charge_widget.add_curve("sigma_y", symbol="h", symbolBrush=pq.mkBrush(col),
-                                                symbolPen=pq.mkPen(col, width=0), pen=pq.mkPen(col, width=0))
-                self.ui.charge_widget.set_y_link("sigma_y", "sigma_x")
-
-                self.ui.charge_widget.set_legend_position("right")
 
     def update_section(self):
         """
@@ -1390,7 +1395,7 @@ class QuadScanGui(QtWidgets.QWidget):
                 image = image_struct.pic_roi
                 try:
                     self.ui.process_image_widget.roi.hide()
-                    self.ui.process_image_widget.setImage(np.transpose(image), autoRange=False, autoLevels=auto_levels)
+                    self.ui.process_image_widget.setImage(np.transpose(image), autoRange=auto_range, autoLevels=auto_levels)
                 except TypeError as e:
                     root.error("Error setting image: {0}".format(e))
 
@@ -1647,26 +1652,34 @@ class QuadScanGui(QtWidgets.QWidget):
                 q_symbol_list.append("s")
                 q_brush_list.append(qo_brush)
         self.ui.charge_widget.set_data(x_data=xd, y_data=sigma_x, curve_name="sigma_x",
-                                       symbol=sigma_symbol_list)#, symbolBrush=sigma_brush_list)
+                                       symbol=sigma_symbol_list, auto_range=True)
         self.ui.charge_widget.set_data(x_data=xd, y_data=sigma_y, curve_name="sigma_y",
-                                       symbol=sigma_symbol_list)#, symbolBrush=sigma_brush_list)
+                                       symbol=sigma_symbol_list, auto_range=True)
         self.ui.charge_widget.set_data(x_data=xd, y_data=q, curve_name="charge",
-                                       symbol=sigma_symbol_list)#, symbolBrush=sigma_brush_list)
-        # self.ui.fit_widget.set_data(x_data=np.array(a_list), y_data=np.array(b_list), curve_name="ab_x",
-        #                             symbol=sigma_symbol_list, width=None)#, symbolBrush=sigma_brush_list)
-        self.ui.fit_widget.set_data(x_data=np.array(a_list), y_data=np.array(b_list), curve_name="ab_x")#, symbolBrush=sigma_brush_list)
+                                       symbol=sigma_symbol_list, auto_range=True)
+        self.ui.charge_widget.stack_vertically()
+        self.ui.fit_widget.set_data(x_data=np.array(a_list), y_data=np.array(b_list), curve_name="ab_x",
+                                    symbol=sigma_symbol_list, width=None)
         self.ui.fit_widget.set_data(x_data=np.array(ay_list), y_data=np.array(by_list), curve_name="ab_y",
                                     symbol=sigma_symbol_list, width=None)#, symbolBrush=sigma_brush_list)
 
     def plot_ab_data(self):
         root.info("Plotting ab data")
+
         mq: MultiQuadLookup = self.quad_scan_step_result["multiquad"]
         psi = np.linspace(0, 2 * np.pi, 500)
         ae, be = mq.get_ab(psi, mq.theta_list[-1], mq.r_maj_list[-1], mq.r_min_list[-1])
-        a = mq.a_list
-        b = mq.b_list
-        self.sigma_x_plot.setData(x=a, y=b, symbol="t", brush=pq.mkBrush(150, 170, 250, 220), size=10, pen=None)
-        self.fit_x_plot.setData(x=ae, y=be, pen=pq.mkPen(180, 170, 50, width=2.0))
+        a = np.array(mq.a_list)
+        b = np.array(mq.b_list)
+        ay = np.array(mq.a_y_list)
+        by = np.array(mq.b_y_list)
+        self.ui.fit_widget.set_data(x_data=a, y_data=b, curve_name="ab_x",
+                                    symbol="t", width=None)
+        self.ui.fit_widget.set_data(x_data=ay, y_data=by, curve_name="ab_y",
+                                    symbol="t", width=None)#, symbolBrush=sigma_brush_list)
+
+        self.ui.fit_widget.set_data(x_data=ae, y_data=be, curve_name="fit_x")
+
         root.info("eps {0}".format(mq.eps_n_list))
         xd = np.arange(len(mq.eps_n_list))
         self.ui.charge_widget.set_data(x_data=xd, y_data=mq.eps_n_list, curve_name="eps_x")
@@ -1675,6 +1688,7 @@ class QuadScanGui(QtWidgets.QWidget):
         self.ui.charge_widget.set_data(x_data=xd, y_data=mq.alpha_list, curve_name="alpha_x")
         self.ui.charge_widget.set_data(x_data=xd, y_data=mq.x_list, curve_name="sigma_x")
         self.ui.charge_widget.set_data(x_data=xd, y_data=mq.y_list, curve_name="sigma_y")
+        self.ui.charge_widget.stack_vertically()
 
     def set_algo(self):
         root.info("Setting fit algo")
@@ -2154,6 +2168,8 @@ class QuadScanGui(QtWidgets.QWidget):
             self.update_analysis_parameters()
             # self.update_proc_image_signal.emit(None)
             self.update_image_selection()
+            self.start_processing()
+            self.start_fit()
 
     def start_processing(self):
         # if len(self.processing_tasks) > 0:
