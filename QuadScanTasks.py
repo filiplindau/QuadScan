@@ -328,9 +328,9 @@ class LoadQuadScanDirTask(Task):
 
         data_dict["pixel_size"] = [np.double(px[0]), np.double(px[1])]
         rc = data_dict["roi_center"].split(" ")
-        data_dict["roi_center"] = [np.double(rc[1]), np.double(rc[0])]
+        data_dict["roi_center"] = [np.double(rc[0]), np.double(rc[1])]
         rd = data_dict["roi_dim"].split(" ")
-        data_dict["roi_dim"] = [np.double(rd[1]), np.double(rd[0])]
+        data_dict["roi_dim"] = [np.double(rd[0]), np.double(rd[1])]
         try:
             data_dict["bpp"] = np.int(data_dict["bpp"])
         except KeyError:

@@ -776,7 +776,7 @@ class QuadScanGui(QtWidgets.QWidget):
                         self.update_analysis_parameters()
                         # self.update_proc_image_signal.emit(None)
                         self.update_image_selection()
-                        # self.start_processing()
+                        self.start_processing()
                         # self.update_fit_signal.emit()
                         # self.start_fit()
                 elif isinstance(task, LoadMultiQuadScanDirTask):
@@ -875,22 +875,24 @@ class QuadScanGui(QtWidgets.QWidget):
             col_fit_x = (28, 86, 4)
             col_fit_y = (91, 22, 76)
             if scan_type == "single":
-
-                plot = pq.PlotCurveItem(pen=pq.mkPen(col_fit_x, width=2), brush=pq.mkBrush(col_fit_x))
-                self.ui.charge_widget.add_curve("fit_x", plot)
-
-                plot = MyScatterPlotItem(pen=pq.mkPen(col_sigma_x, width=0), brush=pq.mkBrush(col_sigma_x), symbol="s")
-                self.ui.charge_widget.add_curve("sigma_x", plot, visible=True)
-                self.ui.charge_widget.set_y_link("sigma_x", "fit_x")
-
-                plot = MyScatterPlotItem(pen=pq.mkPen(col_sigma_y, width=0), brush=pq.mkBrush(col_sigma_y), symbol="h")
-                self.ui.charge_widget.add_curve("sigma_y", plot, visible=False)
+                self.ui.charge_widget.add_curve("charge", symbol="o", color=col_charge,
+                                                symbolPen=pq.mkPen(col_charge, width=0), width=None)
+                col = pq.mkColor(30, 100, 200)
+                self.ui.charge_widget.add_curve("fit_x", pen=pq.mkPen(col, width=2), width=2)
+                self.ui.charge_widget.add_curve("sigma_x", symbol="s", symbolPen=pq.mkPen(col_sigma_x, width=0),
+                                                symbolBrush=pq.mkBrush(col_sigma_x), width=None, visible=True, color=col_sigma_x)
+                self.ui.charge_widget.add_curve("sigma_y", symbol="h", symbolPen=pq.mkPen(col_sigma_y, width=0),
+                                                symbolBrush=pq.mkBrush(col_sigma_y), width=None, visible=True, color=col_sigma_y)
                 self.ui.charge_widget.set_y_link("sigma_y", "sigma_x")
-
-                charge_plot = MyScatterPlotItem(pen=pq.mkPen(col_charge, width=0), brush=pq.mkBrush(col_charge), symbol="o")
-                self.ui.charge_widget.add_curve("charge", charge_plot)
-
+                self.ui.charge_widget.set_y_link("fit_x", "sigma_x")
                 self.ui.charge_widget.set_legend_position("right")
+
+                self.ui.fit_widget.add_curve("ab_x", symbol="t", symbolPen=pq.mkPen(col_sigma_x, width=0), symbolBrush=pq.mkBrush(col_sigma_x),
+                                             color=col_sigma_x, width=None, visible=True)
+                self.ui.fit_widget.add_curve("fit_el", pen=pq.mkPen(col_fit_x, width=2), width=2, visible=True)
+                self.ui.fit_widget.set_y_link("ab_x", "fit_el")
+                self.ui.fit_widget.set_legend_position("right")
+
             elif scan_type == "multi_disk":
                 self.ui.charge_widget.add_curve("sigma_x", symbol="s", symbolPen=pq.mkPen(col_sigma_x, width=0), symbolBrush=pq.mkBrush(col_sigma_x),
                                                 pen=pq.mkPen(col_sigma_x, width=0), width=1, visible=True)
@@ -1559,9 +1561,9 @@ class QuadScanGui(QtWidgets.QWidget):
         qx_brush = pq.mkBrush(250, 100, 100, 200)
         for en in en_data:
             if not en:
-                sigma_symbol_list.append("t")
+                sigma_symbol_list.append("x")
                 sigma_brush_list.append(sx_brush)
-                q_symbol_list.append("t")
+                q_symbol_list.append("x")
                 q_brush_list.append(qx_brush)
             else:
                 sigma_symbol_list.append("o")
@@ -1569,28 +1571,40 @@ class QuadScanGui(QtWidgets.QWidget):
                 q_symbol_list.append("s")
                 q_brush_list.append(qo_brush)
 
-        # self.sigma_x_plot.setData(x=k, y=sigma, symbol=sigma_symbol_list, brush=sigma_brush_list, size=10, pen=None)
-        # self.charge_plot.setData(x=k, y=q, symbol=q_symbol_list, brush=q_brush_list, size=10, pen=None)
-        self.ui.charge_widget.set_data(x_data=k, y_data=sigma_x, curve_name="sigma_x")
-        self.ui.charge_widget.set_data(x_data=k, y_data=sigma_y, curve_name="sigma_y")
-        self.ui.charge_widget.set_data(x_data=k, y_data=q, curve_name="charge")
-        # self.charge_plot.setData(x=k, y=q, symbol=q_symbol_list, symbolBrush=q_brush_list,
-        #                          symbolPen=None, pen=None)
-        # y_range = [0, q.max()]
-        # x_range = [k.min(), k.max()]
-        # self.ui.charge_widget.getViewBox().setRange(xRange=x_range, yRange=y_range, disableAutoRange=True)
+        self.ui.charge_widget.set_data(x_data=k, y_data=sigma_x, curve_name="sigma_x",
+                                       symbol=sigma_symbol_list, auto_range=True)
+        self.ui.charge_widget.set_data(x_data=k, y_data=sigma_y, curve_name="sigma_y",
+                                       symbol=sigma_symbol_list, auto_range=True)
+        self.ui.charge_widget.set_data(x_data=k, y_data=q, curve_name="charge",
+                                       symbol=sigma_symbol_list, auto_range=True)
 
         if not isinstance(self.fit_result, Exception):
             fit_data = self.fit_result.fit_data
             if fit_data is not None:
-                # self.fit_x_plot.setData(x=fit_data[0], y=fit_data[1])
-                # self.ui.fit_widget.update()
-                # self.ui.charge_widget.update()
                 self.ui.charge_widget.set_data(x_data=fit_data[0], y_data=fit_data[1], curve_name="fit_x")
         else:
             self.fit_x_plot.setData(x=[], y=[])
             self.ui.fit_widget.update()
             self.ui.charge_widget.update()
+        self.ui.charge_widget.stack_vertically()
+
+        # Plotting a-b
+        ap = self.quad_scan_data_analysis.acc_params
+        d = ap.quad_screen_dist
+        L = ap.quad_length
+        s2 = sigma ** 2
+        ind = np.isfinite(s2)
+        k_sqrt = np.sqrt(k[ind] * (1 + 0j))
+        a = np.real(np.cos(k_sqrt * L) - d * k_sqrt * np.sin(k_sqrt * L))
+        b = np.real(1 / k_sqrt * np.sin(k_sqrt * L) + d * np.cos(k_sqrt * L))
+        self.ui.fit_widget.set_data(x_data=np.array(a), y_data=np.array(b), curve_name="ab_x",
+                                    symbol=sigma_symbol_list, width=None)
+        mq = MultiQuadLookup()
+        psi = np.linspace(0, 2 * np.pi, 500)
+        th, r_maj, r_min = mq.calc_ellipse(self.fit_result.alpha, self.fit_result.beta,
+                                           self.fit_result.eps, np.maximum(np.min(sigma), 0.1e-3))
+        ae, be = mq.get_ab(psi, th, r_maj, r_min)
+        self.ui.fit_widget.set_data(x_data=ae, y_data=be, curve_name="fit_el")
 
     def plot_sigma_data_multi(self):
         use_x_axis = self.ui.p_x_radio.isChecked()

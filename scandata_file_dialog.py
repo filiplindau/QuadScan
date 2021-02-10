@@ -71,7 +71,7 @@ class OpenScanFileDialog(QtWidgets.QDialog):
         QtWidgets.QWidget.__init__(self, parent)
 
         self.logger = logging.getLogger("FileDialog")
-        self.logger.setLevel(logging.WARNING)
+        self.logger.setLevel(logging.DEBUG)
 
         if start_dir is None:
             start_dir = QtCore.QDir.currentPath()
@@ -93,12 +93,17 @@ class OpenScanFileDialog(QtWidgets.QDialog):
         self.ui.file_treeview.setModel(self.model)
         self.logger.debug("UI model {0}".format(self.ui.file_treeview.selectionModel()))
         self.ui.file_treeview.setSortingEnabled(True)
-        self.ui.file_treeview.sortByColumn(0, QtCore.Qt.AscendingOrder)
+        self.ui.file_treeview.sortByColumn(4, QtCore.Qt.AscendingOrder)
         self.ui.file_treeview.setAnimated(False)
         self.ui.file_treeview.setIndentation(20)
         self.ui.file_treeview.setColumnWidth(0, self.settings.value("filename_col", 400, type=int))
         self.logger.debug("Column width: {0}".format(self.settings.value("filename_col", 400, type=int)))
         self.ui.file_treeview.selectionModel().selectionChanged.connect(self.update_selection_from_tree)
+        head = self.ui.file_treeview.header()
+        head.setSortIndicatorShown(True)
+        head.setSectionsClickable(True)
+        # head.sectionClicked.connect(self.ui.file_treeview.sortByColumn)
+        # head.sortIndicatorChanged.connect(self.sortByColumn)
 
         self.logger.info("Current path: {0}".format(start_dir))
         self.target_path_list = list()
@@ -122,6 +127,11 @@ class OpenScanFileDialog(QtWidgets.QDialog):
         splitter_sizes = self.settings.value("splitter", [None], type="QVariantList")
         if splitter_sizes[0] is not None:
             self.ui.splitter.setSizes([np.int(s) for s in splitter_sizes])
+
+    def sortByColumn(self, ind, order):
+        self.logger.info("Sorting column {0}, order {1}".format(ind, order))
+        self.ui.file_treeview.sortByColumn(ind, order)
+        self.model.sort(ind, order)
 
     def closeEvent(self, event):
         self.settings.setValue('window_size_w', np.int(self.size().width()))

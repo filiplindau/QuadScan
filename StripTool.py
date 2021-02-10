@@ -23,7 +23,7 @@ f = logging.Formatter("%(asctime)s - %(module)s.   %(funcName)s - %(levelname)s 
 fh = logging.StreamHandler()
 fh.setFormatter(f)
 logger.addHandler(fh)
-logger.setLevel(logging.WARNING)
+logger.setLevel(logging.DEBUG)
 
 
 class QTangoColors(object):
@@ -216,17 +216,19 @@ class QTangoStripTool(QtWidgets.QFrame):
         self.plot_widget.update_curve_range_signal.connect(self.set_range)
 
     def add_curve(self, name, curve=None, unit=None, visible=True, **kwargs):
+        legend_item = QTangoStripToolLegendItem(name, unit=unit, color=None, sizes=self.sizes, colors=self.colors)
+        legend_item.clicked.connect(self.set_curve_focus)
+        legend_item.show_check.toggled.connect(self.toggle_curve_show)
+        self.legend_widget.addItem(legend_item)
         curve_new = self.plot_widget.addCurve(name, curve, **kwargs)
         curve_new.sigClicked.connect(self.set_curve_focus)
         if curve is None:
             curve_new.sigPointsClicked.connect(self.set_curve_focus)
         plot_color = self.plot_widget.get_curve_color(name).name()
-        logger.debug("Adding curve {0} with color {1}".format(name, plot_color))
-        legend_item = QTangoStripToolLegendItem(name, unit=unit, color=plot_color, sizes=self.sizes, colors=self.colors)
-        legend_item.clicked.connect(self.set_curve_focus)
-        legend_item.show_check.toggled.connect(self.toggle_curve_show)
-        self.legend_widget.addItem(legend_item)
+        legend_item.update_stylesheet(plot_color)
         self.set_curve_visible(name, visible)
+        self.set_y_link(name, name)
+        logger.debug("Added curve {0} with color {1}".format(name, plot_color))
 
     def remove_curve(self, name):
         logger.info("Removing curve {0}".format(name))
@@ -316,14 +318,35 @@ class QTangoStripTool(QtWidgets.QFrame):
         # self.legend_widget.set_position(position)
 
     def set_range(self, name, r_min, r_max):
-        # logger.info("Setting range for curve {0}: {1:.2f} - {2:.2f}".format(name, r_min, r_max))
+        logger.info("Setting range for curve {0}: {1:.2f} - {2:.2f}".format(name, r_min, r_max))
         self.legend_widget.items[name].set_range([r_min, r_max])
 
     def set_y_link(self, curve_name_1, curve_name_2):
-        self.plot_widget.set_y_link(curve_name_1, curve_name_2)
+        logger.debug("c1: {0}, c2: {1}".format(curve_name_1, curve_name_2))
+        old_group, new_group = self.plot_widget.set_y_link(curve_name_1, curve_name_2)
+        logger.debug("Old group: {0}, new group {1}".format(old_group, new_group))
+        color_list = list()
+        for curve_name in old_group:
+            color_list.append(self.plot_widget.get_curve_color(curve_name))
+        for curve_name in old_group:
+            li = self.legend_widget.get_item(curve_name)
+            li.set_group_list(color_list)
+        color_list = list()
+        for curve_name in new_group:
+            color_list.append(self.plot_widget.get_curve_color(curve_name))
+        for curve_name in new_group:
+            li = self.legend_widget.get_item(curve_name)
+            li.set_group_list(color_list)
 
     def set_curve_color(self, curve_name, color):
         self.plot_widget.set_curve_color(curve_name, color)
+        gr_list = self.plot_widget.get_link_group(curve_name)
+        color_list = list()
+        for curve_name in gr_list:
+            color_list.append(self.plot_widget.get_curve_color(curve_name))
+        for curve_name in gr_list:
+            li = self.legend_widget.get_item(curve_name)
+            li.set_group_list(color_list)
 
     def stack_vertically(self):
         self.plot_widget.stack_vertically()
@@ -369,11 +392,50 @@ class DummyLabel(QtWidgets.QFrame):
         self.setStyleSheet(st)
 
 
+class QTangoStripToolGroupWidget(QtWidgets.QWidget):
+    def __init__(self, color_list=None, parent=None):
+        super().__init__(parent)
+        self.color_list = None
+        self.set_color_list(color_list)
+        logger.debug("Group widget created")
+        self.setMinimumWidth(8)
+        self.setMaximumWidth(8)
+
+    def set_color_list(self, color_list):
+        if not isinstance(color_list, list):
+            color_list = list(color_list)
+        self.color_list = list()
+        for c in color_list:
+            col = pg.mkColor(c)
+            col.setAlphaF(1)
+            self.color_list.append(col)
+        self.update()
+
+    def paintEvent(self, a0: QtGui.QPaintEvent) -> None:
+        painter = QtGui.QPainter()
+        w = self.width()
+        h = self.height()
+        dy = h / len(self.color_list)
+        painter.begin(self)
+        brush = QtGui.QBrush(self.color_list[0])
+        pen = QtGui.QPen(self.color_list[0])
+        pen.setCapStyle(QtCore.Qt.FlatCap)
+        pen.setWidth(w)
+        for ind, c in enumerate(self.color_list):
+            pen.setColor(c)
+            painter.setPen(pen)
+            brush.setColor(c)
+            painter.setBrush(brush)
+            painter.drawLine(QtCore.QPoint(int(w / 2), int(dy * ind)), QtCore.QPoint(int(w / 2), int(dy * (ind + 1))))
+        painter.end()
+
+
 class QTangoStripToolLegendItem(QtWidgets.QFrame):
     clicked = QtCore.pyqtSignal()
 
     def __init__(self, name, range=[0, 1], color=None, unit=None, sizes=None, colors=None, parent=None):
-        QtWidgets.QFrame.__init__(self)
+        QtWidgets.QFrame.__init__(self, parent=parent)
+        two_row = True
         self.setObjectName(self.__class__.__name__)
         self.attrColors = QTangoColors()
         self.sizes = QTangoSizes()
@@ -391,13 +453,32 @@ class QTangoStripToolLegendItem(QtWidgets.QFrame):
         self.range_label = QtWidgets.QLabel("[{0}-{1}] ".format(to_precision2(range[0], 2, 4, True),
                                                                 to_precision2(range[1], 2, 4, True)))
         self.unit_label = QtWidgets.QLabel(unit)
+        self.current_value_label = QtWidgets.QLabel()
+        self.group_label = QTangoStripToolGroupWidget([self.color], parent=self)
         self.show_check = QtWidgets.QRadioButton(parent=self)
         self.show_check.setChecked(True)
-        lay.addWidget(self.name_label)
-        lay.addSpacerItem(QtWidgets.QSpacerItem(3, 0, QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed))
-        lay.addWidget(self.range_label)
-        lay.addWidget(self.unit_label)
-        lay.addWidget(self.show_check)
+        if two_row:
+            lay_v = QtWidgets.QVBoxLayout()
+            lay_h1 = QtWidgets.QHBoxLayout()
+            lay_h2 = QtWidgets.QHBoxLayout()
+            lay_h1.addWidget(self.name_label)
+            lay_h1.addSpacerItem(QtWidgets.QSpacerItem(3, 0, QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed))
+            lay_h1.addWidget(self.show_check)
+            lay_h2.addWidget(self.range_label)
+            lay_h2.addWidget(self.current_value_label)
+            lay_h2.addSpacerItem(QtWidgets.QSpacerItem(3, 0, QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed))
+            lay_h2.addWidget(self.unit_label)
+            lay_v.addLayout(lay_h1)
+            lay_v.addLayout(lay_h2)
+            lay.addLayout(lay_v)
+            lay.addWidget(self.group_label)
+        else:
+            lay.addWidget(self.name_label)
+            lay.addSpacerItem(QtWidgets.QSpacerItem(3, 0, QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed))
+            lay.addWidget(self.range_label)
+            lay.addWidget(self.unit_label)
+            lay.addWidget(self.show_check)
+            lay.addWidget(self.group_label)
         self.setLayout(lay)
         self.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed)
         self.update_stylesheet()
@@ -461,7 +542,7 @@ class QTangoStripToolLegendItem(QtWidgets.QFrame):
 
     def set_range(self, range):
         self.range = range
-        self.range_label.setText("[{0}-{1}] ".format(to_precision2(range[0], 2, 4, True),
+        self.range_label.setText("[{0}, {1}] ".format(to_precision2(range[0], 2, 4, True),
                                                      to_precision2(range[1], 2, 4, True)))
 
     def set_unit(self, unit):
@@ -472,6 +553,9 @@ class QTangoStripToolLegendItem(QtWidgets.QFrame):
         if a0.button() == QtCore.Qt.LeftButton:
             logger.debug("{0}: Emitting clicked signal".format(self.name))
             self.clicked.emit()
+
+    def set_group_list(self, color_group_list):
+        self.group_label.set_color_list(color_group_list)
 
     def contextMenuEvent(self, a0: QtGui.QContextMenuEvent) -> None:
         context_menu = QtWidgets.QMenu(self)
@@ -487,6 +571,7 @@ class QTangoStripToolLegendItem(QtWidgets.QFrame):
         col_act = context_menu.addAction("Set color")
         as_act = context_menu.addAction("Autoscale this curve")
         as_act.setEnabled(False)
+        vs_act = context_menu.addAction("Vertically stack curves")
 
         action = context_menu.exec_(self.mapToGlobal(a0.pos()))
         if action == col_act:
@@ -500,14 +585,16 @@ class QTangoStripToolLegendItem(QtWidgets.QFrame):
             self.update_stylesheet(color.name())
             self.parent().parent().set_curve_color(self.name, color)
         elif action in gr_act_dict:
-            self.parent().parent().plot_widget.set_y_link(self.name, gr_act_dict[action][0])
+            self.parent().parent().set_y_link(self.name, gr_act_dict[action][0])
         elif action == unlink_act:
-            self.parent().parent().plot_widget.set_y_link(self.name, self.name)
+            self.parent().parent().set_y_link(self.name, self.name)
+        elif action == vs_act:
+            self.parent().parent().stack_vertically()
 
 
 class QTangoStripToolLegendWidget(QtWidgets.QWidget):
     def __init__(self, position="bottom", sizes=None, colors=None, parent=None):
-        super().__init__(parent)
+        super().__init__(parent=parent)
         self.items = OrderedDict()
         self.item_name_list = list()
         self.legend_gridlayout = QtWidgets.QGridLayout()
@@ -534,8 +621,8 @@ class QTangoStripToolLegendWidget(QtWidgets.QWidget):
         else:
             it = self.items.pop(item)
         self.item_name_list.remove(it.name)
-        it.deleteLater()
         self.set_position(self.position)
+        it.deleteLater()
 
     def get_item(self, item_id) -> QTangoStripToolLegendItem:
         if isinstance(item_id, str):
@@ -947,7 +1034,7 @@ class QTangoStripToolPlotWidget(pg.PlotWidget):
         if curve_pen is not None:
             col = curve_pen.color()
             col.setAlphaF(self.selected_pen_alpha)
-            logger.info("Selected curve pen: {0}".format(curve_pen))
+            logger.info("Selected curve pen: {0}".format(curve_pen.widthF()))
             logger.info("Selected curve color: {0}".format(col))
             curve_pen.setColor(col)
             w = curve_pen.widthF()
@@ -957,6 +1044,7 @@ class QTangoStripToolPlotWidget(pg.PlotWidget):
                 dw = 0
             curve_pen.setWidth(w + dw)
             curve_selected.setPen(curve_pen)
+            logger.info("Selected curve pen new: {0}".format(curve_pen.widthF()))
 
         if isinstance(curve_brush, list):
             for b in curve_brush:
@@ -969,7 +1057,7 @@ class QTangoStripToolPlotWidget(pg.PlotWidget):
                 col.setAlphaF(self.unselected_pen_alpha)
                 curve_brush.setColor(col)
             except AttributeError as e:
-                logger.error("Brush error {0}: {1}".format(e, curve_old_brush))
+                logger.error("Brush error {0}: {1}".format(e, curve_brush))
         w = curve_selected.opts["symbolSize"]
         dw = self.selected_pen_factor
         if isinstance(w, list):
@@ -1211,24 +1299,38 @@ class QTangoStripToolPlotWidget(pg.PlotWidget):
         """
         logger.debug("Curve group list: {0}".format(self.curve_group_list))
         # self.curve_group_dict.pop(name)
+        old_group = list()
         for gr_ind, gr_list in enumerate(self.curve_group_list):
             if curve_1 in gr_list:
                 gr_list.remove(curve_1)
+                old_group = gr_list
                 if len(gr_list) == 0:
                     self.curve_group_list.pop(gr_ind)
         found = False
+        new_group = list()
         for gr_list in self.curve_group_list:
             if curve_2 in gr_list:
                 gr_list.append(curve_1)
                 found = True
+                new_group = gr_list
                 break
         if not found:
             self.curve_group_list.append([curve_1])
+            new_group = [curve_1]
         self.auto_range_group(gr_list)
-        # if enable:
-        #     self.curve_vb_list[curve_index_1].linkView(pg.ViewBox.YAxis, self.curve_vb_list[curve_index_2])
-        # else:
-        #     self.curve_vb_list[curve_index_1].linkView(pg.ViewBox.YAxis, None)
+        return old_group, new_group
+
+    def get_link_group(self, curve_name):
+        """
+        Return a list of curve names of the group that contains curve_name
+
+        :param curve_name:
+        :return:
+        """
+        for gr_list in self.curve_group_list:
+            if curve_name in gr_list:
+                return gr_list
+        return None
 
     def stack_vertically(self):
         """
@@ -1436,7 +1538,7 @@ if __name__ == "__main__":
             strip_tool.set_data(x_data, y_data, name)
             # strip_tool.curve_vb_list[c].setRange(yRange=[c-1, c+1])
         # strip_tool.set_legend_position("bottom")
-        strip_tool.plot_widget.set_y_link("Curve 1", "Curve 2")
+        strip_tool.set_y_link("Curve 1", "Curve 2")
         for c in range(5):
             x_data = np.linspace(-10, 10, 1000)
             y_data = x_data**(c % 3) + np.random.random(x_data.shape)
@@ -1444,7 +1546,7 @@ if __name__ == "__main__":
             strip_tool2.add_curve(name, width=2)
             strip_tool2.set_data(x_data, y_data, name)
         strip_tool2.remove_curve("Curve 2")
-        strip_tool2.plot_widget.set_y_link("Curve 3", "Curve 1")
+        strip_tool2.set_y_link("Curve 3", "Curve 1")
         strip_tool2.plot_widget.stack_vertically()
 
     elif test == "trend":
