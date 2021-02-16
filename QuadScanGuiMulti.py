@@ -1410,6 +1410,8 @@ class QuadScanGui(QtWidgets.QWidget):
                                                                    self.quad_scan_data_analysis.acc_params.num_k - 1))
             self.ui.p_image_label.setText("image {0}/{1}".format(image_struct.image_ind,
                                                                  self.quad_scan_data_analysis.acc_params.num_images - 1))
+            self.set_highlight()
+
         else:
             # If an image was sent directly to the method, such as when updating a loading task
             try:
@@ -1417,6 +1419,13 @@ class QuadScanGui(QtWidgets.QWidget):
                 self.ui.process_image_widget.setImage(np.transpose(image), autoRange=auto_range, autoLevels=auto_levels)
             except TypeError as e:
                 root.error("Error setting image: {0}".format(e))
+
+    def set_highlight(self):
+        im_ind = self.ui.p_image_index_slider.value()
+        for c_name in self.ui.charge_widget.plot_widget.curve_item_dict:
+            self.ui.charge_widget.plot_widget.set_highlight(c_name, im_ind)
+        for c_name in self.ui.fit_widget.plot_widget.curve_item_dict:
+            self.ui.fit_widget.plot_widget.set_highlight(c_name, im_ind)
 
     def update_fit_callback(self, task=None):
         if task is not None:
@@ -1676,6 +1685,7 @@ class QuadScanGui(QtWidgets.QWidget):
                                     symbol=sigma_symbol_list, width=None)
         self.ui.fit_widget.set_data(x_data=np.array(ay_list), y_data=np.array(by_list), curve_name="ab_y",
                                     symbol=sigma_symbol_list, width=None)#, symbolBrush=sigma_brush_list)
+        self.set_highlight()
 
     def plot_ab_data(self):
         root.info("Plotting ab data")

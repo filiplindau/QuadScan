@@ -395,13 +395,13 @@ class TangoMultiQuadScanTask(Task):
         # How to deal with multiple images?
         image = res[2][0].value
 
-        sigma_x, sigma_y, image_p = self.process_image(image, self.scan_param.charge_ratio)
+        sigma_x, sigma_y, image_p, bkg = self.process_image(image, self.scan_param.charge_ratio)
         line_x = image_p.sum(0)
         line_y = image_p.sum(1)
         proc_image = ProcessedImage(k_ind=self.current_step, k_value=k_current, image_ind=0,
                                     pic_roi=image_p, line_x=line_x, line_y=line_y, x_cent=image_p.shape[0] / 2,
                                     y_cent=image_p.shape[1] / 2, sigma_x=0.0, sigma_y=0.0,
-                                    q=0, threshold=0, enabled=True)
+                                    q=0, threshold=bkg, enabled=True)
         # self.image_list.append(image)
         # self.image_p_list.append(proc_image)
         charge = image_p.sum()
@@ -425,7 +425,7 @@ class TangoMultiQuadScanTask(Task):
         self.logger.debug("Step time: {0:.3f} s".format(time.time() - t0))
         return k_current, image, proc_image, timestamp, k_set
 
-    def process_image(self, image, keep_charge_ratio=0.95):
+    def process_image(self, image, keep_charge_ratio=0.95, bkg_threshold=None):
         t0 = time.time()
         self.logger.info("Process image roi: {0}\n image size: {1}x{2}".format(self.roi, image.shape[0], image.shape[1]))
         # image_roi = np.double(image[self.roi[1]:self.roi[1]+self.roi[3], self.roi[0]:self.roi[0]+self.roi[2]])
@@ -434,7 +434,10 @@ class TangoMultiQuadScanTask(Task):
         # Median filter and background subtraction:
         # Improve background subtraction!
         image_p = medfilt2d(image_roi, 5)
-        bkg = image_p[0:50, 0:50].max() * 2
+        if bkg_threshold is None:
+            bkg = image_p[0:50, 0:50].max() * 2
+        else:
+            bkg = bkg_threshold
         image_p[image_p < bkg] = 0
 
         # Find charge to keep:
@@ -465,7 +468,7 @@ class TangoMultiQuadScanTask(Task):
                           "sigma {3:.3f} x {4:.3f} mm\n\n"
                           "Time: {2:.3f} ms".format(image_roi.shape[1], image_roi.shape[0],
                                                     1e3 * (time.time() - t0), sigma_x * 1e3, sigma_y * 1e3))
-        return sigma_x, sigma_y, image_p
+        return sigma_x, sigma_y, image_p, bkg
 
     def do_scan(self, section="MS1", n_steps=16, save=True, alpha0=0, beta0=10, eps_n_0=2e-6):
         self.n_steps = n_steps

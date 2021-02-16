@@ -752,12 +752,13 @@ class MultiQuadLookup(object):
             r_min_y = self.r_min_y_list[-1]
 
         # Calculate next a-b values to target
-        next_a, next_b = self.set_target_ab(self.current_step, theta, r_maj, r_min, axis="x")
-        next_a_y, next_b_y = self.set_target_ab(self.current_step, theta_y, r_maj_y, r_min_y, axis="y")
+        step = self.current_step
+        next_a, next_b = self.set_target_ab(step, theta, r_maj, r_min, axis="x")
+        next_a_y, next_b_y = self.set_target_ab(step, theta_y, r_maj_y, r_min_y, axis="y")
 
         # Determine quad settings to achieve these a-b values
         if not (np.isnan(next_a) or np.isnan(next_b)):
-            next_k = self.solve_quads_list(next_a, next_b, next_a_y, next_b_y)
+            next_k = self.solve_quads_list(next_a, next_b, next_a_y, next_b_y, step)
         else:
             next_k = None
 
@@ -988,28 +989,34 @@ class MultiQuadLookup(object):
             b_list = self.b_y_list
         if self.algo == "const_size":
             if step < 3:
-
-                # try:
-                #     psi = self.psi_target[-1] - 0.01
-                # except IndexError:
-                #     psi = np.arccos((self.a_list[0] + self.b_list[0] * np.tan(theta)) * np.cos(theta) / r_maj)
-                # target_a = r_maj * np.cos(psi) * np.cos(theta) - r_min * np.sin(psi) * np.sin(theta)
-                # target_b = r_maj * np.cos(psi) * np.sin(theta) + r_min * np.sin(psi) * np.cos(theta)
-
                 c = x_list[-1] / target_sigma
                 d_psi = 0.01
                 # psi = np.arccos((self.a_list[-1] + self.b_list[-1] * np.tan(theta)) * np.cos(theta) / (c * r_maj))
                 psi = self.get_psi(a_list[-1], b_list[-1], theta, c * r_maj, c * r_min)
-                a1 = c * r_maj * np.cos(psi + d_psi) * np.cos(theta) - c * r_min * np.sin(psi + d_psi) * np.sin(theta)
-                b1 = c * r_maj * np.cos(psi + d_psi) * np.sin(theta) + c * r_min * np.sin(psi + d_psi) * np.cos(theta)
-                da = a1 - a_list[-1]
-                db = b1 - b_list[-1]
-                d_ab = 0.5 / np.sqrt(da**2 + db**2)
-                self.logger.debug("da: {0:.3f}, db: {1:.3f}".format(da, db))
-                target_a = a_list[-1] + d_ab * da
-                target_b = b_list[-1] + d_ab * db
+
+                method = "radial"
+                if method == "ellipse":
+                    a1 = c * r_maj * np.cos(psi + d_psi) * np.cos(theta) - c * r_min * np.sin(psi + d_psi) * np.sin(theta)
+                    b1 = c * r_maj * np.cos(psi + d_psi) * np.sin(theta) + c * r_min * np.sin(psi + d_psi) * np.cos(theta)
+                    da = a1 - a_list[-1]
+                    db = b1 - b_list[-1]
+                    d_ab = 0.5 / np.sqrt(da**2 + db**2)
+                    self.logger.debug("da: {0:.3f}, db: {1:.3f}".format(da, db))
+                    target_a = a_list[-1] + d_ab * da
+                    target_b = b_list[-1] + d_ab * db
+                elif method == "radial":
+                    dab = 0.2
+                    r_v = np.array([a_list[0], b_list[0]])
+                    r_v = r_v / np.sqrt(r_v[0]**2 + r_v[1]**2)
+                    th_v = np.array([r_v[1], -r_v[0]])
+                    if step == 1:
+                        target_a = a_list[0] + dab * r_v[0]
+                        target_b = b_list[0] + dab * r_v[1]
+                    else:
+                        target_a = a_list[0] + dab * th_v[0]
+                        target_b = b_list[0] + dab * th_v[1]
             else:
-                method = "length"
+                method = "dist"
                 if method == "psi":
                     a_min, a_max, b_min, b_max = self.get_ab_range(self.max_k, axis)
                     psi_v = np.linspace(0, 2 * np.pi, 5000)
@@ -1061,7 +1068,48 @@ class MultiQuadLookup(object):
                         ind_p = np.argmax(l > dp ** 2)
                         target_a = a[ind_p]
                         target_b = b[ind_p]
-                psi = self.get_psi(target_a, target_b, theta, r_maj, r_min)
+
+                elif method == "dist":
+                    # Find point on ellipse at distance from previous points
+                    psi_v = np.linspace(0, 2 * np.pi, 1000)
+                    psi0 = self.get_psi(a_list[0], b_list[0], theta, r_maj, r_min)
+                    a, b = self.get_ab(psi_v, theta, r_maj, r_min)
+                    a_min, a_max, b_min, b_max = self.get_ab_range(self.max_k, axis)
+                    ind = np.all([a < a_max, a > a_min, b < b_max, b > b_min], axis=0)
+                    a_g = a[ind]
+                    b_g = b[ind]
+                    old_a = np.array(a_list)
+                    old_b = np.array(b_list)
+                    am, oam = np.meshgrid(a_g, old_a)
+                    bm, obm = np.meshgrid(b_g, old_b)
+                    ab_dist = np.sqrt((am - oam)**2 + (bm - obm)**2)
+                    ind0 = ab_dist.argmin(axis=1).min()
+                    psi0 = psi_v[ind][ind0]
+
+                    # Estimate 1D density of shots along ellipse
+
+                    # find first point after psi_0 where dist > target dist
+                    da = np.diff(a, prepend=0)
+                    db = np.diff(b, prepend=0)
+                    dr = np.sqrt(da**2 + db**2)
+                    l = dr[ind][ind0:].cumsum()         # Length along ellipse
+
+                    sr = l[-1] / self.n_steps / 2                           # Shot radius
+                    rho = (sr / (ab_dist + sr)).sum(axis=0)     # Density along ellipse
+
+                    # Find first index where density drops to 0.5:
+                    ind_rho = (rho < 0.5).argmin()
+                    if ind_rho == 0:
+                        # No density below 0.5, take the lowest density point
+                        ind_rho = rho.argmin()
+                    target_a = a_g[0:][ind_rho]
+                    target_b = b_g[0:][ind_rho]
+
+                    # Ellipse circumference:
+                    p = np.pi * (3 * (r_min + r_maj) - np.sqrt((3 * r_min + r_maj)*(r_min + 3 * r_maj)))
+                    dp = p / np.maximum(1, self.n_steps - 3)
+
+                psi = self.get_psi(target_a, target_b, theta, r_maj, r_min) # Used only for logging purposes
             self.psi_target.append(psi)
         else:
             target_a = 1
@@ -1235,7 +1283,7 @@ class MultiQuadLookup(object):
         self.logger.debug("Time: {0:.3f} s".format(time.time() - t0))
         return k_target
 
-    def solve_quads_list(self, target_a, target_b, target_a_y, target_b_y):
+    def solve_quads_list(self, target_a, target_b, target_a_y, target_b_y, step):
         t0 = time.time()
         self.logger.debug("Target a: {0:.3f}, target b: {1:.3f}".format(target_a, target_b))
 
@@ -1277,6 +1325,8 @@ class MultiQuadLookup(object):
             return None
         target_size = np.array([self.target_sigma_x * self.target_sigma_y]).reshape(-1, 1)
         th_size = 0.5e-3
+
+        # 3) Find index of point closest to the target size (area)
         try:
             # ind_size = ((size_v - target_size) ** 2).sum(-1) < th_size**4
             ind_size = ((size_v - target_size) ** 2).sum(-1).argmin()
@@ -1286,6 +1336,11 @@ class MultiQuadLookup(object):
             ind_size = ((size_v - target_size) ** 2).sum(-1).argmin()
             self.logger.warning("Best effort: a_y={0:.3f}, b_y={1:.3f}".format(ab_val_y[ind_size, 0], ab_val_y[ind_size, 1]))
             return None
+
+        # Alternatively find the point closest to target a-b
+        dab_x = (self.a_v_lu[ind_a] - target_a)**2 + (self.b_v_lu[ind_b] - target_b)**2
+        dab_y = (ab_val_y[:, 0] - target_a_y)**2 + (ab_val_y[:, 1] - target_b_y)**2
+        ind_size = (dab_x + dab_y).argmin()
 
         k_old = np.array(self.k_list[-1])
         k_target = self.k_m_lu[ind_a][ind_b][ind_size, :]

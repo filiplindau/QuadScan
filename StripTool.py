@@ -23,7 +23,7 @@ f = logging.Formatter("%(asctime)s - %(module)s.   %(funcName)s - %(levelname)s 
 fh = logging.StreamHandler()
 fh.setFormatter(f)
 logger.addHandler(fh)
-logger.setLevel(logging.DEBUG)
+logger.setLevel(logging.INFO)
 
 
 class QTangoColors(object):
@@ -273,7 +273,7 @@ class QTangoStripTool(QtWidgets.QFrame):
 
     def toggle_curve_show(self, state):
         name = self.sender().parent().name
-        logger.info("Checkbox {0} new state {1}".format(name, state))
+        logger.debug("Checkbox {0} new state {1}".format(name, state))
         if state:
             self.plot_widget.set_curve_visible(name, True)
         else:
@@ -318,7 +318,7 @@ class QTangoStripTool(QtWidgets.QFrame):
         # self.legend_widget.set_position(position)
 
     def set_range(self, name, r_min, r_max):
-        logger.info("Setting range for curve {0}: {1:.2f} - {2:.2f}".format(name, r_min, r_max))
+        logger.debug("Setting range for curve {0}: {1:.2f} - {2:.2f}".format(name, r_min, r_max))
         self.legend_widget.items[name].set_range([r_min, r_max])
 
     def set_y_link(self, curve_name_1, curve_name_2):
@@ -472,6 +472,7 @@ class QTangoStripToolLegendItem(QtWidgets.QFrame):
             lay_v.addLayout(lay_h2)
             lay.addLayout(lay_v)
             lay.addWidget(self.group_label)
+            lay.setContentsMargins(6, 2, 4, 2)
         else:
             lay.addWidget(self.name_label)
             lay.addSpacerItem(QtWidgets.QSpacerItem(3, 0, QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed))
@@ -532,7 +533,8 @@ class QTangoStripToolLegendItem(QtWidgets.QFrame):
                     border-color: {0};
                     background-color: {0};
                 }}
-                      """.format(self.color, self.attrColors.backgroundColor, 1, self.border_width*4, 8 - self.border_width*4)
+                      """.format(self.color, self.attrColors.backgroundColor, 1, self.border_width*3, 8 - self.border_width*3)
+        logger.debug("Updating stylesheet for {0}:\n{1}".format(self.name, st))
         self.setStyleSheet(st)
         self.update()
 
@@ -622,7 +624,8 @@ class QTangoStripToolLegendWidget(QtWidgets.QWidget):
             it = self.items.pop(item)
         self.item_name_list.remove(it.name)
         self.set_position(self.position)
-        it.deleteLater()
+        it.setParent(None)
+        # it.deleteLater()
 
     def get_item(self, item_id) -> QTangoStripToolLegendItem:
         if isinstance(item_id, str):
@@ -649,11 +652,11 @@ class QTangoStripToolLegendWidget(QtWidgets.QWidget):
             self.current_focus_item.update_stylesheet(new_width=1)
         i.update_stylesheet(new_width=3)
         self.current_focus_item = i
-        logger.debug("Setting focus stylesheet to {0}".format(i.name))
 
     def del_lay(self):
         for i in range(len(self.items)):
             self.legend_gridlayout.takeAt(0)
+
         self.inner_layout.takeAt(0)
         self.layout().takeAt(0)
 
@@ -712,6 +715,8 @@ class QTangoStripToolPlotWidget(pg.PlotWidget):
         self.selected_pen_factor = 3
         self.unselected_pen_alpha = 0.5
         self.selected_pen_alpha = 0.8
+        self.symbol_size = 10
+        self.highlight_symbol_size = 20
 
         self.attrColors = QTangoColors()
         self.sizes = QTangoSizes()
@@ -732,6 +737,7 @@ class QTangoStripToolPlotWidget(pg.PlotWidget):
         self.curve_ax_dict = dict()             # Dict of axes for curves.
         self.curve_item_dict = dict()           # Dict of the actual curve objects (plotcurveitems or scatterplotitems)
         self.current_data_index_dict = dict()
+        self.highlighted_point_dict = dict()
 
         self.trend_menu = None
 
@@ -864,12 +870,13 @@ class QTangoStripToolPlotWidget(pg.PlotWidget):
 
         if curve is None:
             curve_new = pg.PlotDataItem(name=name, antialias=True, **kwargs)
+            if "color" in kwargs:
+                curve_color = pg.mkColor(kwargs["color"])
+            else:
+                curve_color = pg.mkColor(
+                    self.attrColors.legend_color_list[curve_index % len(self.attrColors.legend_color_list)])
+            curve_color.setAlphaF(self.unselected_pen_alpha)
             if "pen" not in kwargs:
-                if "color" in kwargs:
-                    curve_color = pg.mkColor(kwargs["color"])
-                else:
-                    curve_color = pg.mkColor(self.attrColors.legend_color_list[curve_index % len(self.attrColors.legend_color_list)])
-                    curve_color.setAlphaF(self.unselected_pen_alpha)
                 if width is None:
                     pen = None
                     logger.info("Pen None")
@@ -877,8 +884,11 @@ class QTangoStripToolPlotWidget(pg.PlotWidget):
                 else:
                     pen = pg.mkPen(curve_color, width=width)
                 curve_new.opts["pen"] = pen
+            if "symbolBrush" not in kwargs:
                 curve_new.setSymbolBrush(curve_color)
                 curve_new.setSymbolPen(curve_color, width=0)
+            if "symbolSize" not in kwargs:
+                curve_new.setSymbolSize(self.symbol_size)
             # curve_new.setClickable(True)
             curve_new.curve.setClickable(True)
             curve_new.sigPointsClicked.connect(self.points_clicked)
@@ -904,19 +914,12 @@ class QTangoStripToolPlotWidget(pg.PlotWidget):
         curve_new.setZValue(-100)
         vb.addItem(curve_new)
 
-        # self.curve_list.append(curve_new)
-        # self.curve_vb_list.append(vb)
-        # self.curve_ax_list.append(ax)
-        # self.curve_name_list.append(name)
-        # self.curve_group_list.append([curve_index])
         self.curve_item_dict[name] = curve_new
         self.curve_vb_dict[name] = vb
         self.curve_ax_dict[name] = ax
         self.curve_group_list.append([name])
+        self.highlighted_point_dict[name] = None
         self.setupData(name)
-        # self.legend.addItem(curve_new, name)
-
-        # self.setupData(curve_index)
 
         curve_new.sigClicked.connect(self.setCurveFocus)
         # self.setCurveFocus(name)
@@ -936,6 +939,9 @@ class QTangoStripToolPlotWidget(pg.PlotWidget):
         curve = self.curve_item_dict.pop(name)
         # self.curve_name_list.pop(ind)
         self.getPlotItem().removeItem(vb)
+        curve.setParent(None)
+        ax.setParent(None)
+        vb.setParent(None)
         curve.deleteLater()
         ax.deleteLater()
         vb.deleteLater()
@@ -1003,7 +1009,7 @@ class QTangoStripToolPlotWidget(pg.PlotWidget):
                     col.setAlphaF(self.unselected_pen_alpha)
                     curve_old_brush.setColor(col)
                 except AttributeError as e:
-                    logger.error("Brush error {0}: {1}".format(e, curve_old_brush))
+                    pass
             w = curve_old.opts["symbolSize"]
             dw = self.selected_pen_factor
             if isinstance(w, list):
@@ -1011,9 +1017,8 @@ class QTangoStripToolPlotWidget(pg.PlotWidget):
                     w -= dw
             else:
                 w -= dw
-            curve_old.setSymbolSize(w)
-            # curve_old.setSymbolBrush(curve_old_brush)
             curve_old.opts["symbolBrush"] = curve_old_brush
+            curve_old.opts["symbolSize"] = w
             curve_old.updateItems()
 
             vb_old = self.curve_vb_dict[self.curve_focus]
@@ -1034,8 +1039,6 @@ class QTangoStripToolPlotWidget(pg.PlotWidget):
         if curve_pen is not None:
             col = curve_pen.color()
             col.setAlphaF(self.selected_pen_alpha)
-            logger.info("Selected curve pen: {0}".format(curve_pen.widthF()))
-            logger.info("Selected curve color: {0}".format(col))
             curve_pen.setColor(col)
             w = curve_pen.widthF()
             if w > 0:
@@ -1044,7 +1047,6 @@ class QTangoStripToolPlotWidget(pg.PlotWidget):
                 dw = 0
             curve_pen.setWidth(w + dw)
             curve_selected.setPen(curve_pen)
-            logger.info("Selected curve pen new: {0}".format(curve_pen.widthF()))
 
         if isinstance(curve_brush, list):
             for b in curve_brush:
@@ -1057,16 +1059,15 @@ class QTangoStripToolPlotWidget(pg.PlotWidget):
                 col.setAlphaF(self.unselected_pen_alpha)
                 curve_brush.setColor(col)
             except AttributeError as e:
-                logger.error("Brush error {0}: {1}".format(e, curve_brush))
+                pass
         w = curve_selected.opts["symbolSize"]
         dw = self.selected_pen_factor
         if isinstance(w, list):
             for s in w:
-                w += dw
+                s += dw
         else:
             w += dw
-        curve_selected.setSymbolSize(w)
-        # curve_selected.setSymbolBrush(curve_brush)
+        curve_selected.opts["symbolSize"] = w
         curve_selected.opts["symbolBrush"] = curve_brush
         curve_selected.updateItems()
 
@@ -1094,10 +1095,8 @@ class QTangoStripToolPlotWidget(pg.PlotWidget):
             ci.setPen(pen)
         try:
             sym_brush = ci.opts["symbolBrush"]
-            logger.debug("Symbol brush color: {0}".format(sym_brush.color().name()))
             sym_brush.setColor(color)
             ci.opts["symbolBrush"] = sym_brush
-            logger.debug("Symbol brush new color: {0}".format(ci.opts["symbolBrush"].color().name()))
             ci.opts["symbolPen"].setColor(color)
         except KeyError:
             logger.debug("No symbol brush")
@@ -1226,6 +1225,21 @@ class QTangoStripToolPlotWidget(pg.PlotWidget):
             pi.vb.setRange(xRange=axis_viewrange[0])
         self.updateViews(curve_name)
 
+    def set_highlight(self, curve_name, point_index):
+
+        pdi = self.curve_item_dict[curve_name]
+        spi = pdi.scatter
+        x = spi.data["size"]
+        try:
+            x[self.highlighted_point_dict[curve_name]] = self.symbol_size
+            if point_index is not None:
+                x[point_index] = self.highlight_symbol_size
+        except IndexError as e:
+            return
+        pdi.opts['symbolSize'] = x
+        pdi.updateItems()
+        self.highlighted_point_dict[curve_name] = point_index
+
     def autoScale(self, curve_name=None):
         if curve_name is not None:
             for gr in self.curve_group_list:
@@ -1247,11 +1261,11 @@ class QTangoStripToolPlotWidget(pg.PlotWidget):
                 center = vr.center().y()
             top = center + sc * (vr.top() - center)
             bottom = center + sc * (vr.bottom() - center)
-            logger.info("Curve {0}: vr {1}, center {2}, top {3}, bottom {4}".format(name, vr, center, top, bottom))
+            logger.debug("Curve {0}: vr {1}, center {2}, top {3}, bottom {4}".format(name, vr, center, top, bottom))
             self.setYRange(top, bottom, padding=0)
 
     def auto_range_all(self):
-        logger.info("Auto ranging all curves.")
+        logger.debug("Auto ranging all curves.")
         pi = self.getPlotItem()
         x_min = np.inf
         x_max = -np.inf
@@ -1261,8 +1275,6 @@ class QTangoStripToolPlotWidget(pg.PlotWidget):
             x_min = np.minimum(x_min, vr[0][0])
             x_max = np.maximum(x_max, vr[0][1])
             self.update_curve_range_signal.emit(name, vr[1][0], vr[1][1])
-            # vb.setGeometry(pi.vb.sceneBoundingRect())
-            # vb.linkedViewChanged(pi.vb, vb.XAxis)
             if name == self.curve_focus:
                 pi.vb.setRange(yRange=vr[1], padding=0.1)
         pi.vb.setRange(xRange=[x_min, x_max], padding=0.05)
@@ -1283,7 +1295,7 @@ class QTangoStripToolPlotWidget(pg.PlotWidget):
         if y_range[1] == -np.inf:
             y_range[1] = 1
         for cn in curve_group:
-            logger.info("Curve {0} setting range {1}".format(cn, y_range))
+            logger.debug("Curve {0} setting range {1}".format(cn, y_range))
             vb = self.curve_vb_dict[cn]
             vb.setRange(yRange=y_range)
             self.update_curve_range_signal.emit(cn, y_range[0], y_range[1])
@@ -1298,7 +1310,6 @@ class QTangoStripToolPlotWidget(pg.PlotWidget):
         :return:
         """
         logger.debug("Curve group list: {0}".format(self.curve_group_list))
-        # self.curve_group_dict.pop(name)
         old_group = list()
         for gr_ind, gr_list in enumerate(self.curve_group_list):
             if curve_1 in gr_list:
@@ -1359,7 +1370,7 @@ class QTangoStripToolPlotWidget(pg.PlotWidget):
             y_min = m
             y_max = k + m
             for cn in curve_group:
-                logger.info("Curve {0} setting range {1}-{2}".format(cn, y_min, y_max))
+                logger.debug("Curve {0} setting range {1}-{2}".format(cn, y_min, y_max))
                 vb = self.curve_vb_dict[cn]
                 vb.setRange(yRange=[y_min, y_max])
                 self.update_curve_range_signal.emit(cn, y_min, y_max)
@@ -1531,7 +1542,7 @@ if __name__ == "__main__":
         w.show()
 
         for c in range(3):
-            x_data = np.linspace(-600, 0, 1000)
+            x_data = np.linspace(-600, 0, 50)
             y_data = np.sin(2*np.pi*x_data/240.0 * (c + 1)) + 10 * c
             name = "Curve {0}".format(c + 1)
             strip_tool.add_curve(name, symbol="t", width=None)
@@ -1546,8 +1557,12 @@ if __name__ == "__main__":
             strip_tool2.add_curve(name, width=2)
             strip_tool2.set_data(x_data, y_data, name)
         strip_tool2.remove_curve("Curve 2")
+        strip_tool2.add_curve("Curve 2")
         strip_tool2.set_y_link("Curve 3", "Curve 1")
         strip_tool2.plot_widget.stack_vertically()
+        strip_tool.plot_widget.set_highlight("Curve 1", 10)
+        strip_tool.plot_widget.set_highlight("Curve 1", 15)
+        # strip_tool.plot_widget.set_highlight("Curve 1", None)
 
     elif test == "trend":
         test_stream = TestStream()
