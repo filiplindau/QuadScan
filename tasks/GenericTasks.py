@@ -161,7 +161,7 @@ class Task(object):
         self.callback_list = callback_list
 
         self.logger = logging.getLogger("Task.{0}".format(self.name.upper()))
-        self.logger.setLevel(logging.WARNING)
+        self.logger.setLevel(logging.DEBUG)
 
         for e in trigger_dict.values():
             self.add_trigger(e)

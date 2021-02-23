@@ -1376,6 +1376,7 @@ class QTangoStripToolPlotWidget(pg.PlotWidget):
                 self.update_curve_range_signal.emit(cn, y_min, y_max)
 
     def points_clicked(self, curve, points):
+        points = list(points)
         ind = [p.index() for p in points]
         pos = [curve.mapToScene(p.pos().toQPoint()) for p in points]
         mouse_pos = self.mapFromGlobal(QtGui.QCursor.pos())

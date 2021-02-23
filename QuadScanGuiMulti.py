@@ -987,7 +987,7 @@ class QuadScanGui(QtWidgets.QWidget):
                 # Update write values in a task:
                 k_task = TangoReadAttributeTask("mainfieldcomponent", qd.crq, self.device_handler,
                                                 name="k_read_quad{0}_{1}".format(ind+1, qd.name),
-                                                callback_list=[self.read_k_init])
+                                                callback_list=[TaskCallbackSignal(self.read_k_init)])
                 k_task.start()
 
             for sc in screens:
@@ -1042,6 +1042,7 @@ class QuadScanGui(QtWidgets.QWidget):
         if quad_name is not None and screen_name is not None:
             if self.current_screen is None:
                 self.set_section(quads[0], screens[0])
+                pass
             else:
                 if self.current_screen.name != screen_name or sect != self.current_section:
                     self.screen_init_flag = True
@@ -1074,22 +1075,26 @@ class QuadScanGui(QtWidgets.QWidget):
             load_quad = new_quad.name != self.current_quad.name
         except AttributeError:
             load_quad = True
+
         if load_quad:
             for t in self.quad_tasks:
                 t.cancel()
             self.quad_tasks = list()
             k_task = TangoReadAttributeTask("mainfieldcomponent", new_quad.crq, self.device_handler,
-                                            name="k_read", callback_list=[self.read_k])
+                                            name="k_read", callback_list=[TaskCallbackSignal(self.read_k)])
             # k_task.start()
+
             k_rep_task = RepeatTask(k_task, -1, 0.3, name="k_repeat")
             k_rep_task.start()
             self.quad_init_flag = True
             self.quad_tasks.append(k_rep_task)
             self.current_quad = new_quad
+
             self.ui.current_quad_sel_label.setText("{0}".format(new_quad.mag.upper()))
             # Add more device connections here
+
             e_task = TangoReadAttributeTask("energy", new_quad.crq, self.device_handler,
-                                            name="e_read", callback_list=[self.read_k])
+                                            name="e_read", callback_list=[TaskCallbackSignal(self.read_k)])
             e_task.start()
 
         try:
@@ -1102,7 +1107,7 @@ class QuadScanGui(QtWidgets.QWidget):
 
             task_list = list()
             task_list.append(TangoReadAttributeTask("roi", new_screen.liveviewer, self.device_handler,
-                                                    name="cam_roi_read", callback_list=[self.read_image]))
+                                                    name="cam_roi_read", callback_list=[TaskCallbackSignal(self.read_image)]))
             cam_cal_task = BagOfTasksTask([TangoReadAttributeTask("measurementruler", new_screen.beamviewer,
                                                                   self.device_handler, name="cam_cal_ruler"),
                                            TangoReadAttributeTask("measurementrulerwidth", new_screen.beamviewer,
@@ -1110,7 +1115,7 @@ class QuadScanGui(QtWidgets.QWidget):
                                            TangoReadAttributeTask("roi", new_screen.beamviewer,
                                                                   self.device_handler, name="cam_cal_read"),
                                            ],
-                                          name="cam_cal_read", callback_list=[self.read_image])
+                                          name="cam_cal_read", callback_list=[TaskCallbackSignal(self.read_image)])
             task_list.append(cam_cal_task)
             cam_seq_task = SequenceTask(task_list, name="cam_init_seq")
             cam_seq_task.start()
@@ -1118,28 +1123,28 @@ class QuadScanGui(QtWidgets.QWidget):
             self.screen_tasks = list()
 
             image_task = TangoReadAttributeTask("image", new_screen.liveviewer, self.device_handler,
-                                                name="cam_image_read", callback_list=[self.read_image])
+                                                name="cam_image_read", callback_list=[TaskCallbackSignal(self.read_image)])
             rep_task = RepeatTask(image_task, -1, 0.3, name="cam_image_repeat")
             rep_task.add_trigger(cam_seq_task)
             self.screen_tasks.append(rep_task)
             rep_task.start()
 
             cam_state_task = TangoReadAttributeTask("state", new_screen.liveviewer, self.device_handler,
-                                                    name="cam_state_read", callback_list=[self.read_image])
+                                                    name="cam_state_read", callback_list=[TaskCallbackSignal(self.read_image)])
             rep_task = RepeatTask(cam_state_task, -1, 0.5, name="cam_state_repeat")
             rep_task.add_trigger(cam_seq_task)
             self.screen_tasks.append(rep_task)
             rep_task.start()
 
             cam_framerate_task = TangoReadAttributeTask("framerate", new_screen.liveviewer, self.device_handler,
-                                                    name="cam_reprate_read", callback_list=[self.read_image])
+                                                    name="cam_reprate_read", callback_list=[TaskCallbackSignal(self.read_image)])
             rep_task = RepeatTask(cam_framerate_task, -1, 0.5, name="cam_reprate_repeat")
             rep_task.add_trigger(cam_seq_task)
             self.screen_tasks.append(rep_task)
             rep_task.start()
 
             screen_in_task = TangoReadAttributeTask("statusin", new_screen.screen, self.device_handler,
-                                                    name="screen_in_read", callback_list=[self.read_image])
+                                                    name="screen_in_read", callback_list=[TaskCallbackSignal(self.read_image)])
             rep_task = RepeatTask(screen_in_task, -1, 0.5, name="screen_in_repeat")
             rep_task.add_trigger(cam_seq_task)
             self.screen_tasks.append(rep_task)
@@ -1154,6 +1159,7 @@ class QuadScanGui(QtWidgets.QWidget):
             self.current_screen = new_screen
 
             # Add more device connections here
+            root.info("Exiting set_section...")
 
     def set_section_all_quads(self, quad_list, new_screen):
         """
@@ -1177,7 +1183,7 @@ class QuadScanGui(QtWidgets.QWidget):
         for new_quad in quad_list:
             self.quad_tasks = list()
             k_task = TangoReadAttributeTask("mainfieldcomponent", new_quad.crq, self.device_handler,
-                                            name="k_read", callback_list=[self.read_k])
+                                            name="k_read", callback_list=[TaskCallbackSignal(self.read_k)])
             # k_task.start()
             k_rep_task = RepeatTask(k_task, -1, 0.3, name="k_repeat")
             k_rep_task.start()
@@ -1187,7 +1193,7 @@ class QuadScanGui(QtWidgets.QWidget):
             self.ui.current_quad_sel_label.setText("{0}".format(new_quad.mag.upper()))
             # Add more device connections here
             e_task = TangoReadAttributeTask("energy", new_quad.crq, self.device_handler,
-                                            name="e_read", callback_list=[self.read_k])
+                                            name="e_read", callback_list=[TaskCallbackSignal(self.read_k)])
             e_task.start()
 
         try:

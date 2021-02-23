@@ -2457,8 +2457,8 @@ def test_f(in_data):
 
 if __name__ == "__main__":
     tests = ["delay", "dev_handler", "exc", "monitor", "load_im", "load_im_dir", "proc_im",
-             "scan", "fit", "populate"]
-    test = "load_im_dir"
+             "scan", "fit", "populate", "populate_dummy"]
+    test = "populate_dummy"
     if test == "delay":
         t1 = DelayTask(2.0, name="task1")
         t2 = DelayTask(1.0, name="task2", trigger_dict={"delay": t1})
@@ -2549,6 +2549,49 @@ if __name__ == "__main__":
 
     elif test == "populate":
         t1 = PopulateDeviceListTask(["MS1", "MS2"], name="pop", action_exec_type="process")
+        t1.start()
+        logger.info("Task started, doing something else")
+        time.sleep(0.5)
+        logger.info("Ok, then")
+        # logger.info("Populate returned: {0}".format(t1.get_result(True)))
+
+    elif test == "populate_dummy":
+        section_list = ["MS1", "MS2"]
+        device_handler = DeviceHandler(name="Handler")
+        ms1_dict = {"mag": ["127.0.0.1:10000/i-ms1/mag/qb-01#dbase=no",
+                            "127.0.0.1:10000/i-ms1/mag/qb-02#dbase=no",
+                            "127.0.0.1:10000/i-ms1/mag/qb-03#dbase=no",
+                            "127.0.0.1:10000/i-ms1/mag/qb-04#dbase=no"],
+                    "crq": "127.0.0.1:10000/i-ms1/mag/qb-01#dbase=no",
+                    "screen": "127.0.0.1:10001/i-ms1/dia/scrn-01#dbase=no",
+                    "beamviewer": "127.0.0.1:10003/lima/beamviewer/i-ms1-dia-scrn-01#dbase=no",
+                    "liveviewer": "127.0.0.1:10002/lima/liveviewer/i-ms1-dia-scrn-01#dbase=no",
+                    "limaccd": "127.0.0.1:10004/lima/limaccd/i-ms1-dia-scrn-01#dbase=no"}
+
+        ms2_dict = {"mag": ["127.0.0.1:10000/i-ms2/mag/qb-01#dbase=no",
+                            "127.0.0.1:10000/i-ms2/mag/qb-02#dbase=no",
+                            "127.0.0.1:10000/i-ms2/mag/qb-03#dbase=no",
+                            "127.0.0.1:10000/i-ms2/mag/qb-04#dbase=no"],
+                    "crq": "127.0.0.1:10000/i-ms2/mag/qb-01#dbase=no",
+                    "screen": "127.0.0.1:10001/i-ms2/dia/scrn-02#dbase=no",
+                    "beamviewer": "127.0.0.1:10003/lima/beamviewer/i-ms2-dia-scrn-02#dbase=no",
+                    "liveviewer": "127.0.0.1:10002/lima/liveviewer/i-ms2-dia-scrn-02#dbase=no",
+                    "limaccd": "127.0.0.1:10004/lima/limaccd/i-ms2-dia-scrn-02#dbase=no"}
+
+        ms3_dict = {"mag": ["127.0.0.1:10000/i-ms3/mag/qf-01#dbase=no",
+                            "127.0.0.1:10000/i-ms3/mag/qf-02#dbase=no",
+                            "127.0.0.1:10000/i-ms3/mag/qf-03#dbase=no",
+                            "127.0.0.1:10000/i-ms3/mag/qf-04#dbase=no"],
+                    "crq": "127.0.0.1:10000/i-ms3/mag/qb-01#dbase=no",
+                    "screen": "127.0.0.1:10001/i-ms3/dia/scrn-01#dbase=no",
+                    "beamviewer": "127.0.0.1:10003/lima/beamviewer/i-ms3-dia-scrn-01#dbase=no",
+                    "liveviewer": "127.0.0.1:10002/lima/liveviewer/i-ms3-dia-scrn-01#dbase=no",
+                    "limaccd": "127.0.0.1:10004/lima/limaccd/i-ms3-dia-scrn-01#dbase=no"}
+
+        dummy_name_dict = {"MS1": ms1_dict, "MS2": ms2_dict, "MS3": ms3_dict, "SP02": ms3_dict}
+
+        t1 = PopulateDummyDeviceList(sections=section_list, dummy_name_dict=dummy_name_dict,
+                                     device_handler=device_handler, name="pop_sections", action_exec_type="process")
         t1.start()
         logger.info("Task started, doing something else")
         time.sleep(0.5)
