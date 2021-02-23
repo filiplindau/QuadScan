@@ -45,42 +45,42 @@ pq.graphicsItems.GradientEditorItem.Gradients['thermalclip'] = {
 
 
 no_database = True
-dummy_name_dict = {"mag": "192.168.1.101:10000/i-ms1/mag/qb-01#dbase=no",
-                   "crq": "192.168.1.101:10000/i-ms1/mag/qb-01#dbase=no",
-                   "screen": "192.168.1.101:10001/i-ms1/dia/scrn-01#dbase=no",
-                   "beamviewer": "192.168.1.101:10003/lima/beamviewer/i-ms1-dia-scrn-01#dbase=no",
-                   "liveviewer": "192.168.1.101:10002/lima/liveviewer/i-ms1-dia-scrn-01#dbase=no",
-                   "limaccd": "192.168.1.101:10004/lima/limaccd/i-ms1-dia-scrn-01#dbase=no"}
+dummy_name_dict = {"mag": "127.0.0.1:10000/i-ms1/mag/qb-01#dbase=no",
+                   "crq": "127.0.0.1:10000/i-ms1/mag/qb-01#dbase=no",
+                   "screen": "127.0.0.1:10001/i-ms1/dia/scrn-01#dbase=no",
+                   "beamviewer": "127.0.0.1:10003/lima/beamviewer/i-ms1-dia-scrn-01#dbase=no",
+                   "liveviewer": "127.0.0.1:10002/lima/liveviewer/i-ms1-dia-scrn-01#dbase=no",
+                   "limaccd": "127.0.0.1:10004/lima/limaccd/i-ms1-dia-scrn-01#dbase=no"}
 
-ms1_dict = {"mag": ["192.168.1.101:10000/i-ms1/mag/qb-01#dbase=no",
-                    "192.168.1.101:10000/i-ms1/mag/qb-02#dbase=no",
-                    "192.168.1.101:10000/i-ms1/mag/qb-03#dbase=no",
-                    "192.168.1.101:10000/i-ms1/mag/qb-04#dbase=no"],
-                   "crq": "192.168.1.101:10000/i-ms1/mag/qb-01#dbase=no",
-                   "screen": "192.168.1.101:10001/i-ms1/dia/scrn-01#dbase=no",
-                   "beamviewer": "192.168.1.101:10003/lima/beamviewer/i-ms1-dia-scrn-01#dbase=no",
-                   "liveviewer": "192.168.1.101:10002/lima/liveviewer/i-ms1-dia-scrn-01#dbase=no",
-                   "limaccd": "192.168.1.101:10004/lima/limaccd/i-ms1-dia-scrn-01#dbase=no"}
+ms1_dict = {"mag": ["127.0.0.1:10000/i-ms1/mag/qb-01#dbase=no",
+                    "127.0.0.1:10000/i-ms1/mag/qb-02#dbase=no",
+                    "127.0.0.1:10000/i-ms1/mag/qb-03#dbase=no",
+                    "127.0.0.1:10000/i-ms1/mag/qb-04#dbase=no"],
+                   "crq": "127.0.0.1:10000/i-ms1/mag/qb-01#dbase=no",
+                   "screen": "127.0.0.1:10001/i-ms1/dia/scrn-01#dbase=no",
+                   "beamviewer": "127.0.0.1:10003/lima/beamviewer/i-ms1-dia-scrn-01#dbase=no",
+                   "liveviewer": "127.0.0.1:10002/lima/liveviewer/i-ms1-dia-scrn-01#dbase=no",
+                   "limaccd": "127.0.0.1:10004/lima/limaccd/i-ms1-dia-scrn-01#dbase=no"}
 
-ms2_dict = {"mag": ["192.168.1.101:10000/i-ms2/mag/qb-01#dbase=no",
-                    "192.168.1.101:10000/i-ms2/mag/qb-02#dbase=no",
-                    "192.168.1.101:10000/i-ms2/mag/qb-03#dbase=no",
-                    "192.168.1.101:10000/i-ms2/mag/qb-04#dbase=no"],
-                   "crq": "192.168.1.101:10000/i-ms2/mag/qb-01#dbase=no",
-                   "screen": "192.168.1.101:10001/i-ms2/dia/scrn-02#dbase=no",
-                   "beamviewer": "192.168.1.101:10003/lima/beamviewer/i-ms2-dia-scrn-02#dbase=no",
-                   "liveviewer": "192.168.1.101:10002/lima/liveviewer/i-ms2-dia-scrn-02#dbase=no",
-                   "limaccd": "192.168.1.101:10004/lima/limaccd/i-ms2-dia-scrn-02#dbase=no"}
+ms2_dict = {"mag": ["127.0.0.1:10000/i-ms2/mag/qb-01#dbase=no",
+                    "127.0.0.1:10000/i-ms2/mag/qb-02#dbase=no",
+                    "127.0.0.1:10000/i-ms2/mag/qb-03#dbase=no",
+                    "127.0.0.1:10000/i-ms2/mag/qb-04#dbase=no"],
+                   "crq": "127.0.0.1:10000/i-ms2/mag/qb-01#dbase=no",
+                   "screen": "127.0.0.1:10001/i-ms2/dia/scrn-02#dbase=no",
+                   "beamviewer": "127.0.0.1:10003/lima/beamviewer/i-ms2-dia-scrn-02#dbase=no",
+                   "liveviewer": "127.0.0.1:10002/lima/liveviewer/i-ms2-dia-scrn-02#dbase=no",
+                   "limaccd": "127.0.0.1:10004/lima/limaccd/i-ms2-dia-scrn-02#dbase=no"}
 
-ms3_dict = {"mag": ["192.168.1.101:10000/i-ms3/mag/qf-01#dbase=no",
-                    "192.168.1.101:10000/i-ms3/mag/qf-02#dbase=no",
-                    "192.168.1.101:10000/i-ms3/mag/qf-03#dbase=no",
-                    "192.168.1.101:10000/i-ms3/mag/qf-04#dbase=no"],
-                   "crq": "192.168.1.101:10000/i-ms3/mag/qb-01#dbase=no",
-                   "screen": "192.168.1.101:10001/i-ms3/dia/scrn-01#dbase=no",
-                   "beamviewer": "192.168.1.101:10003/lima/beamviewer/i-ms3-dia-scrn-01#dbase=no",
-                   "liveviewer": "192.168.1.101:10002/lima/liveviewer/i-ms3-dia-scrn-01#dbase=no",
-                   "limaccd": "192.168.1.101:10004/lima/limaccd/i-ms3-dia-scrn-01#dbase=no"}
+ms3_dict = {"mag": ["127.0.0.1:10000/i-ms3/mag/qf-01#dbase=no",
+                    "127.0.0.1:10000/i-ms3/mag/qf-02#dbase=no",
+                    "127.0.0.1:10000/i-ms3/mag/qf-03#dbase=no",
+                    "127.0.0.1:10000/i-ms3/mag/qf-04#dbase=no"],
+                   "crq": "127.0.0.1:10000/i-ms3/mag/qb-01#dbase=no",
+                   "screen": "127.0.0.1:10001/i-ms3/dia/scrn-01#dbase=no",
+                   "beamviewer": "127.0.0.1:10003/lima/beamviewer/i-ms3-dia-scrn-01#dbase=no",
+                   "liveviewer": "127.0.0.1:10002/lima/liveviewer/i-ms3-dia-scrn-01#dbase=no",
+                   "limaccd": "127.0.0.1:10004/lima/limaccd/i-ms3-dia-scrn-01#dbase=no"}
 
 dummy_name_dict = {"MS1": ms1_dict, "MS2": ms2_dict, "MS3": ms3_dict, "SP02": ms3_dict}
 
