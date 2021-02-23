@@ -250,6 +250,7 @@ class QuadScanGui(QtWidgets.QWidget):
         t1.add_callback(self.populate_sections)
 
         root.info("Exit gui init")
+        root.info("Window size: {0}".format(self.geometry()))
 
     def setup_layout(self):
         """
