@@ -2201,16 +2201,32 @@ QSplitter::handle:horizontal {
   <tabstop>section_combobox</tabstop>
   <tabstop>quad_combobox</tabstop>
   <tabstop>screen_combobox</tabstop>
+  <tabstop>electron_energy_spinbox</tabstop>
+  <tabstop>quad1_slider</tabstop>
+  <tabstop>quad1_spinbox</tabstop>
+  <tabstop>quad2_slider</tabstop>
+  <tabstop>quad2_spinbox</tabstop>
+  <tabstop>quad3_slider</tabstop>
+  <tabstop>quad3_spinbox</tabstop>
+  <tabstop>quad4_slider</tabstop>
+  <tabstop>quad4_spinbox</tabstop>
+  <tabstop>quad5_slider</tabstop>
+  <tabstop>quad5_spinbox</tabstop>
+  <tabstop>quad6_slider</tabstop>
+  <tabstop>quad6_spinbox</tabstop>
   <tabstop>camera_start_button</tabstop>
   <tabstop>camera_stop_button</tabstop>
   <tabstop>screen_in_button</tabstop>
   <tabstop>screen_out_button</tabstop>
-  <tabstop>electron_energy_spinbox</tabstop>
+  <tabstop>single_quadscan_radiobutton</tabstop>
+  <tabstop>multi_quadscan_radiobutton</tabstop>
   <tabstop>k_current_spinbox</tabstop>
   <tabstop>k_start_spinbox</tabstop>
   <tabstop>set_start_k_button</tabstop>
   <tabstop>k_end_spinbox</tabstop>
   <tabstop>set_end_k_button</tabstop>
+  <tabstop>targetsize_spinbox</tabstop>
+  <tabstop>set_targetsize_button</tabstop>
   <tabstop>num_k_spinbox</tabstop>
   <tabstop>num_images_spinbox</tabstop>
   <tabstop>reprate_spinbox</tabstop>
@@ -2221,6 +2237,7 @@ QSplitter::handle:horizontal {
   <tabstop>update_analysis_radiobutton</tabstop>
   <tabstop>load_disk_button</tabstop>
   <tabstop>load_scan_button</tabstop>
+  <tabstop>p_image_index_slider</tabstop>
   <tabstop>p_raw_image_radio</tabstop>
   <tabstop>p_filtered_image_radio</tabstop>
   <tabstop>p_roi_cent_x_spinbox</tabstop>
@@ -2234,7 +2251,9 @@ QSplitter::handle:horizontal {
   <tabstop>p_x_radio</tabstop>
   <tabstop>p_y_radio</tabstop>
   <tabstop>process_button</tabstop>
-  <tabstop>p_image_index_slider</tabstop>
+  <tabstop>enable_point_radioutton</tabstop>
+  <tabstop>toggle_point_radiobutton</tabstop>
+  <tabstop>disable_point_radiobutton</tabstop>
   <tabstop>p_enable_all_button</tabstop>
   <tabstop>status_textedit</tabstop>
  </tabstops>
@@ -2243,7 +2262,7 @@ QSplitter::handle:horizontal {
  </resources>
  <connections/>
  <buttongroups>
-  <buttongroup name="buttonGroup_2"/>
   <buttongroup name="buttonGroup"/>
+  <buttongroup name="buttonGroup_2"/>
  </buttongroups>
 </ui>
