@@ -14,7 +14,7 @@ import sys
 import glob
 import numpy as np
 import itertools
-from quadscan_gui_striptool import Ui_QuadScanDialog
+from quadscan_gui_onerow import Ui_QuadScanDialog
 from scandata_file_dialog import OpenScanFileDialog
 from collections import OrderedDict
 import threading
@@ -258,82 +258,40 @@ class QuadScanGui(QtWidgets.QWidget):
         :return:
         """
         # Plotting widgets:
-        self.ui.camera_widget.ui.histogram.gradient.loadPreset('thermalclip')
-        self.ui.camera_widget.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
-        self.ui.camera_widget.getView().setAspectLocked(False)
-        self.ui.camera_widget.setImage(np.random.random((64, 64)))
-        self.ui.camera_widget.ui.roiBtn.hide()
-        self.ui.camera_widget.ui.menuBtn.hide()
-        self.ui.camera_widget.roi.sigRegionChanged.disconnect()
-        self.ui.camera_widget.roi.show()
+        self.ui.image_widget.ui.histogram.gradient.loadPreset('thermalclip')
+        self.ui.image_widget.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
+        self.ui.image_widget.getView().setAspectLocked(False)
+        self.ui.image_widget.setImage(np.random.random((64, 64)))
+        self.ui.image_widget.ui.roiBtn.hide()
+        self.ui.image_widget.ui.menuBtn.hide()
+        self.ui.image_widget.roi.sigRegionChanged.disconnect()
+        self.ui.image_widget.roi.show()
 
-        self.ui.camera_widget.roi.blockSignals(True)
-        self.ui.camera_widget.roi.setPos((0, 0))
-        self.ui.camera_widget.roi.setSize((64, 64))
-        self.ui.camera_widget.roi.blockSignals(False)
+        self.ui.image_widget.roi.blockSignals(True)
+        self.ui.image_widget.roi.setPos((0, 0))
+        self.ui.image_widget.roi.setSize((64, 64))
+        self.ui.image_widget.roi.blockSignals(False)
 
-        # hw = self.ui.process_image_widget.getHistogramWidget()
+        # hw = self.ui.image_widget.getHistogramWidget()
         # hw.item = MyHistogramItem()
         # hw.setCentralItem(hw.item)
-        # hw.item.setImageItem(self.ui.process_image_widget.getImageItem())
-        self.ui.process_image_widget.ui.histogram.gradient.loadPreset('thermalclip')
-        self.ui.process_image_widget.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
-        self.ui.process_image_widget.getView().setAspectLocked(False)
-        self.ui.process_image_widget.setImage(np.random.random((64, 64)))
-        self.ui.process_image_widget.ui.roiBtn.hide()
-        self.ui.process_image_widget.ui.menuBtn.hide()
-        self.ui.process_image_widget.roi.sigRegionChanged.disconnect()
-        h = self.ui.process_image_widget.getHistogramWidget()
+        # hw.item.setImageItem(self.ui.image_widget.getImageItem())
+        h = self.ui.image_widget.getHistogramWidget()
         h.item.sigLevelChangeFinished.connect(self.update_process_image_threshold)
-        self.ui.process_image_widget.roi.show()
+        self.ui.image_widget.roi.show()
 
-        self.ui.process_image_widget.roi.blockSignals(True)
-        roi = self.ui.process_image_widget.roi      # type: pq.ROI
+        self.ui.image_widget.roi.blockSignals(True)
+        roi = self.ui.image_widget.roi      # type: pq.ROI
         roi_handles = roi.getHandles()
         roi.removeHandle(roi_handles[1])
-        self.ui.process_image_widget.roi.setPos((0, 0))
-        self.ui.process_image_widget.roi.setSize((64, 64))
-        self.ui.process_image_widget.roi.blockSignals(False)
-
-        # self.line_x_plot = self.ui.lineout_widget.plot()
-        # self.line_x_plot.setPen((200, 25, 10))
-        # self.line_y_plot = self.ui.lineout_widget.plot()
-        # self.line_y_plot.setPen((10, 200, 25))
-        # self.ui.lineout_widget.setLabel("bottom", "Line coord", "px")
-        # self.ui.lineout_widget.showGrid(True)
-
-        # self.sigma_x_plot = self.ui.fit_widget.plot()
-        # self.sigma_x_plot = MyScatterPlotItem()
-        # self.ui.fit_widget.getPlotItem().addItem(self.sigma_x_plot)
-        # self.sigma_x_plot.setPen((10, 200, 25))
-        # self.fit_x_plot = self.ui.fit_widget.plot()
-        # self.fit_x_plot.setPen(pq.mkPen(color=(180, 180, 250), width=2))
-        # self.ui.fit_widget.setLabel("bottom", "K", " 1/m²")
-        # self.ui.fit_widget.setLabel("left", "sigma", "m")
-        # self.ui.fit_widget.getPlotItem().showGrid(alpha=0.3)
-
-        # self.charge_plot = self.ui.charge_widget.plot()
-        # self.charge_plot = MyScatterPlotItem()
-        # self.ui.charge_widget.getPlotItem().addItem(self.charge_plot)
-        # self.ui.charge_widget.add_curve("charge")
-        # self.ui.charge_widget.add_curve("eps", self.charge_plot)
-        # self.ui.charge_widget.set_legend_position("right")
-        # self.charge_plot.setPen(None)
-        # self.charge_plot.setBrush((100, 180, 50))
-        # self.charge_plot.setSymbol("t1")
-        # self.ui.charge_widget.setLabel("bottom", "K", " 1/m²")
-        # self.ui.charge_widget.setLabel("left", "charge", "a.u.")
-        # self.ui.charge_widget.getPlotItem().showGrid(alpha=0.3)
-        # self.ui.charge_widget.disableAutoRange()
+        self.ui.image_widget.roi.setPos((0, 0))
+        self.ui.image_widget.roi.setSize((64, 64))
+        self.ui.image_widget.roi.blockSignals(False)
 
         # Combobox init
         self.ui.fit_algo_combobox.addItem("Full matrix repr")
         self.ui.fit_algo_combobox.addItem("Thin lens approx")
         self.ui.fit_algo_combobox.setCurrentIndex(0)
-
-        # Scan status init
-        self.ui.scan_status_label.setText("STOPPED: k -/- image -/-")
-        self.ui.scan_progress_label.setText("[----------]")
 
         # Quad input init
         self.ui.quad1_spinbox.editingFinished.connect(self.update_quad_spinbox)
@@ -426,7 +384,7 @@ class QuadScanGui(QtWidgets.QWidget):
         self.ui.single_quadscan_radiobutton.toggled.connect(self.change_scan_type)
         self.ui.camera_start_button.clicked.connect(self.start_camera)
         self.ui.camera_stop_button.clicked.connect(self.stop_camera)
-        self.ui.camera_widget.roi.sigRegionChangeFinished.connect(self.update_camera_roi)
+        self.ui.image_widget.roi.sigRegionChangeFinished.connect(self.update_camera_roi)
         self.ui.screen_in_button.clicked.connect(self.insert_screen)
         self.ui.screen_out_button.clicked.connect(self.remove_screen)
         self.ui.scan_start_button.clicked.connect(self.start_scan)
@@ -436,8 +394,8 @@ class QuadScanGui(QtWidgets.QWidget):
         self.ui.quad_combobox.currentIndexChanged.connect(self.update_section)
         self.ui.screen_combobox.currentIndexChanged.connect(self.update_section)
 
-        self.ui.process_image_widget.roi.sigRegionChangeFinished.connect(self.update_process_image_roi)
-        hw = self.ui.process_image_widget.getHistogramWidget()
+        self.ui.image_widget.roi.sigRegionChangeFinished.connect(self.update_process_image_roi)
+        hw = self.ui.image_widget.getHistogramWidget()
         # hw.sigLevelChangeFinished.connect(self.update_process_image_histogram)
         hw.item.blockSignals(True)
         self.ui.process_button.clicked.connect(self.start_processing)
@@ -500,10 +458,8 @@ class QuadScanGui(QtWidgets.QWidget):
         self.ui.k_current_spinbox.installEventFilter(self)
 
         # Setup signal proxies for mouse tracking
-        self.camera_proxy = pq.SignalProxy(self.ui.camera_widget.scene.sigMouseMoved,
+        self.camera_proxy = pq.SignalProxy(self.ui.image_widget.scene.sigMouseMoved,
                                            rateLimit=30, slot=self.camera_mouse_moved)
-        self.process_image_proxy = pq.SignalProxy(self.ui.process_image_widget.scene.sigMouseMoved,
-                                                  rateLimit=30, slot=self.process_image_mouse_moved)
         self.change_scan_type()
 
     def eventFilter(self, obj, event):
@@ -590,12 +546,12 @@ class QuadScanGui(QtWidgets.QWidget):
         roi_h = self.ui.p_roi_size_h_spinbox.value()
         pos = [roi_x - roi_w / 2.0, roi_y - roi_h / 2.0]
 
-        self.ui.process_image_widget.roi.blockSignals(True)
-        self.ui.process_image_widget.roi.setPos(pos, update=False)
-        self.ui.process_image_widget.roi.setSize([roi_w, roi_h])
-        self.ui.process_image_widget.roi.blockSignals(False)
+        self.ui.image_widget.roi.blockSignals(True)
+        self.ui.image_widget.roi.setPos(pos, update=False)
+        self.ui.image_widget.roi.setSize([roi_w, roi_h])
+        self.ui.image_widget.roi.blockSignals(False)
 
-        self.ui.process_image_widget
+        self.ui.image_widget
         self.start_processing()
 
     def load_data_disk(self):
@@ -616,7 +572,7 @@ class QuadScanGui(QtWidgets.QWidget):
         load_dir = filedialog.get_selected_path()
         self.last_load_dir = load_dir
         root.debug("Loading from directory {0}".format(load_dir))
-        self.ui.process_image_widget.getHistogramWidget().item.blockSignals(True)    # Block signals to avoid threshold problems
+        self.ui.image_widget.getHistogramWidget().item.blockSignals(True)    # Block signals to avoid threshold problems
         self.load_image_max = 0.0
 
         self.load_init_flag = True
@@ -655,7 +611,7 @@ class QuadScanGui(QtWidgets.QWidget):
             source_name = "Scan data {0}-{1}".format(self.current_quad.mag, self.current_screen.screen)
             self.ui.data_source_label.setText(source_name)
 
-            hw = self.ui.process_image_widget.getHistogramWidget()
+            hw = self.ui.image_widget.getHistogramWidget()
             hl = hw.getLevels()
             hw.setLevels(self.ui.p_threshold_spinbox.value(), self.scan_image_max)
             root.debug("Proc images len: {0}".format(len(self.quad_scan_data_scan.proc_images)))
@@ -738,16 +694,16 @@ class QuadScanGui(QtWidgets.QWidget):
                         x_range = [pos[0], pos[0] + self.process_image_view[2]]
                         y_range = [pos[1], pos[1] + self.process_image_view[3]]
                         root.debug("Init image view {0}, {1}".format(x_range, y_range))
-                        self.ui.process_image_widget.view.setAspectLocked(True, 1)
-                        self.ui.process_image_widget.view.setRange(xRange=x_range, yRange=y_range)
+                        self.ui.image_widget.view.setAspectLocked(True, 1)
+                        self.ui.image_widget.view.setRange(xRange=x_range, yRange=y_range)
                         self.load_init_flag = False
 
-                    hw = self.ui.process_image_widget.getHistogramWidget()  # type: pq.HistogramLUTWidget
+                    hw = self.ui.image_widget.getHistogramWidget()  # type: pq.HistogramLUTWidget
                     hw.item.blockSignals(True)
                     self.update_image_selection(image.image, auto_levels=True, auto_range=False)
             else:
                 root.debug("Load data complete. Storing quad scan data.")
-                hw = self.ui.process_image_widget.getHistogramWidget()      # type: pq.HistogramLUTWidget
+                hw = self.ui.image_widget.getHistogramWidget()      # type: pq.HistogramLUTWidget
                 hw.item.blockSignals(True)
                 self.ui.p_threshold_spinbox.blockSignals(True)
                 hl = hw.getLevels()
@@ -834,19 +790,19 @@ class QuadScanGui(QtWidgets.QWidget):
             x_range = [0, self.process_image_view[2]]
             y_range = [0, self.process_image_view[3]]
         root.debug("x range: {0}, y range: {1}".format(x_range, y_range))
-        self.ui.process_image_widget.view.setRange(xRange=x_range, yRange=y_range)
+        self.ui.image_widget.view.setRange(xRange=x_range, yRange=y_range)
 
-        self.ui.process_image_widget.roi.blockSignals(True)
-        self.ui.process_image_widget.roi.setPos(pos, update=False)
-        self.ui.process_image_widget.roi.setSize([acc_params.roi_dim[0], acc_params.roi_dim[1]])
-        self.ui.process_image_widget.roi.blockSignals(False)
+        self.ui.image_widget.roi.blockSignals(True)
+        self.ui.image_widget.roi.setPos(pos, update=False)
+        self.ui.image_widget.roi.setSize([acc_params.roi_dim[0], acc_params.roi_dim[1]])
+        self.ui.image_widget.roi.blockSignals(False)
 
         root.info("Analysis parameters: \n\nROI\n"
                   "pos {0} x {1}\ndim {2} x {3}\n\n"
                   "From image widget:\npos {0} x {1}\ndim {2} x {3}\n"
                   "".format(pos[0], pos[1], acc_params.roi_dim[0], acc_params.roi_dim[1],
-                            self.ui.process_image_widget.roi.pos()[0], self.ui.process_image_widget.roi.pos()[1],
-                            self.ui.process_image_widget.roi.size()[0], self.ui.process_image_widget.roi.size()[1]))
+                            self.ui.image_widget.roi.pos()[0], self.ui.image_widget.roi.pos()[1],
+                            self.ui.image_widget.roi.size()[0], self.ui.image_widget.roi.size()[1]))
 
         # self.ui.p_image_index_slider.setMaximum(acc_params.num_images-1)
         n_img = np.maximum(0, len(self.quad_scan_data_analysis.proc_images) - 1)
@@ -1090,7 +1046,7 @@ class QuadScanGui(QtWidgets.QWidget):
             self.quad_tasks.append(k_rep_task)
             self.current_quad = new_quad
 
-            self.ui.current_quad_sel_label.setText("{0}".format(new_quad.mag.upper()))
+            # self.ui.current_quad_sel_label.setText("{0}".format(new_quad.mag.upper()))
             # Add more device connections here
 
             e_task = TangoReadAttributeTask("energy", new_quad.crq, self.device_handler,
@@ -1190,7 +1146,7 @@ class QuadScanGui(QtWidgets.QWidget):
             self.quad_init_flag = True
             self.quad_tasks.append(k_rep_task)
             self.current_quad = new_quad
-            self.ui.current_quad_sel_label.setText("{0}".format(new_quad.mag.upper()))
+            # self.ui.current_quad_sel_label.setText("{0}".format(new_quad.mag.upper()))
             # Add more device connections here
             e_task = TangoReadAttributeTask("energy", new_quad.crq, self.device_handler,
                                             name="e_read", callback_list=[TaskCallbackSignal(self.read_k)])
@@ -1266,8 +1222,8 @@ class QuadScanGui(QtWidgets.QWidget):
         :return:
         """
         root.info("Updating ROI for process image")
-        pos = self.ui.process_image_widget.roi.pos()
-        size = self.ui.process_image_widget.roi.size()
+        pos = self.ui.image_widget.roi.pos()
+        size = self.ui.image_widget.roi.size()
         center = [pos[0] + size[0] / 2.0, pos[1] + size[1] / 2.0]
         self.ui.p_roi_cent_x_spinbox.blockSignals(True)
         self.ui.p_roi_cent_x_spinbox.setValue(center[0])
@@ -1293,7 +1249,7 @@ class QuadScanGui(QtWidgets.QWidget):
         :return:
         """
         # Save current view:
-        view_range = self.ui.process_image_widget.view.viewRange()
+        view_range = self.ui.image_widget.view.viewRange()
         pos = [view_range[0][0], view_range[1][0]]
         size = [view_range[0][1] - view_range[0][0], view_range[1][1] - view_range[1][0]]
 
@@ -1303,7 +1259,7 @@ class QuadScanGui(QtWidgets.QWidget):
         y_range = [self.process_image_view[1],
                    self.process_image_view[1] + self.process_image_view[3]]
         root.debug("x range: {0}, y range: {1}".format(x_range, y_range))
-        self.ui.process_image_widget.view.setRange(xRange=x_range, yRange=y_range)
+        self.ui.image_widget.view.setRange(xRange=x_range, yRange=y_range)
 
         self.process_image_view = [pos[0], pos[1], size[0], size[1]]
 
@@ -1314,7 +1270,7 @@ class QuadScanGui(QtWidgets.QWidget):
 
     def update_process_image_threshold(self):
         root.info("Updating image threshold from histogram widget")
-        hl = self.ui.process_image_widget.getHistogramWidget().getLevels()
+        hl = self.ui.image_widget.getHistogramWidget().getLevels()
         root.debug("Levels: {0}".format(hl))
         self.ui.p_threshold_spinbox.blockSignals(True)
         self.ui.p_threshold_spinbox.setValue(hl[0])
@@ -1323,7 +1279,7 @@ class QuadScanGui(QtWidgets.QWidget):
 
     def update_process_threshold_from_spinbox(self):
         root.info("Updating image threshold from spinbox widget")
-        hw = self.ui.process_image_widget.getHistogramWidget()
+        hw = self.ui.image_widget.getHistogramWidget()
         hl = hw.getLevels()
         th = self.ui.p_threshold_spinbox.value()
         hw.blockSignals(True)
@@ -1332,7 +1288,7 @@ class QuadScanGui(QtWidgets.QWidget):
         self.start_processing()
 
     def update_process_image_histogram(self):
-        levels = self.ui.process_image_widget.getHistogramWidget().getLevels()
+        levels = self.ui.image_widget.getHistogramWidget().getLevels()
         root.info("Histogram changed: {0}".format(levels))
         self.ui.p_threshold_spinbox.setValue(levels[0])
         self.start_processing()
@@ -1340,8 +1296,8 @@ class QuadScanGui(QtWidgets.QWidget):
     def update_camera_roi(self):
         root.info("Updating ROI for camera image")
         cam = self.current_screen.liveviewer
-        pos = self.ui.camera_widget.roi.pos()
-        size = self.ui.camera_widget.roi.size()
+        pos = self.ui.image_widget.roi.pos()
+        size = self.ui.image_widget.roi.size()
         roi = [int(pos[0]), int(pos[0] + size[0]), int(pos[1]), int(pos[1] + size[1])]
 
         task = TangoWriteAttributeTask("roi", cam, self.device_handler, roi, "write_cam_roi")
@@ -1382,9 +1338,9 @@ class QuadScanGui(QtWidgets.QWidget):
                 image = image_struct.image
                 try:
 
-                    self.ui.process_image_widget.setImage(np.transpose(image), autoRange=auto_range, autoLevels=auto_levels)
-                    self.ui.process_image_widget.roi.show()
-                    self.ui.process_image_widget.update()
+                    self.ui.image_widget.setImage(np.transpose(image), autoRange=auto_range, autoLevels=auto_levels)
+                    self.ui.image_widget.roi.show()
+                    self.ui.image_widget.update()
                 except TypeError as e:
                     root.error("Error setting image: {0}".format(e))
 
@@ -1403,8 +1359,8 @@ class QuadScanGui(QtWidgets.QWidget):
                     return
                 image = image_struct.pic_roi
                 try:
-                    self.ui.process_image_widget.roi.hide()
-                    self.ui.process_image_widget.setImage(np.transpose(image), autoRange=auto_range, autoLevels=auto_levels)
+                    self.ui.image_widget.roi.hide()
+                    self.ui.image_widget.setImage(np.transpose(image), autoRange=auto_range, autoLevels=auto_levels)
                 except TypeError as e:
                     root.error("Error setting image: {0}".format(e))
 
@@ -1422,8 +1378,8 @@ class QuadScanGui(QtWidgets.QWidget):
         else:
             # If an image was sent directly to the method, such as when updating a loading task
             try:
-                # self.ui.process_image_widget.setImage(image)
-                self.ui.process_image_widget.setImage(np.transpose(image), autoRange=auto_range, autoLevels=auto_levels)
+                # self.ui.image_widget.setImage(image)
+                self.ui.image_widget.setImage(np.transpose(image), autoRange=auto_range, autoLevels=auto_levels)
             except TypeError as e:
                 root.error("Error setting image: {0}".format(e))
 
@@ -1483,12 +1439,12 @@ class QuadScanGui(QtWidgets.QWidget):
     def update_camera_image(self, new_image):
         # root.debug("Updating camera image")
         if self.screen_init_flag:
-            self.ui.camera_widget.setImage(np.transpose(new_image), autoRange=True, autoLevels=True)
+            self.ui.image_widget.setImage(np.transpose(new_image), autoRange=True, autoLevels=True)
             self.screen_init_flag = False
         else:
-            self.ui.camera_widget.setImage(np.transpose(new_image), autoRange=False, autoLevels=False)
-        self.ui.camera_widget.roi.show()
-        self.ui.camera_widget.update()
+            self.ui.image_widget.setImage(np.transpose(new_image), autoRange=False, autoLevels=False)
+        self.ui.image_widget.roi.show()
+        self.ui.image_widget.update()
 
     def update_quad_slider(self):
         sender = self.sender()
@@ -1831,12 +1787,12 @@ class QuadScanGui(QtWidgets.QWidget):
             root.error("Scan not started. Could not generate daq_info")
 
     def start_multi_scan(self):
-        image = self.ui.camera_widget.getImageItem().image
+        image = self.ui.image_widget.getImageItem().image
         sigma_x = self.ui.targetsize_spinbox.value() * 1e-6
         sigma_y = self.ui.targetsize_spinbox.value() * 1e-6
         charge = None
-        roi_size = self.ui.camera_widget.roi.size()
-        roi_pos = self.ui.camera_widget.roi.pos()
+        roi_size = self.ui.image_widget.roi.size()
+        roi_pos = self.ui.image_widget.roi.pos()
         roi_center = [roi_pos[0] + roi_size[0] / 2.0, roi_pos[1] + roi_size[1] / 2.0]
         roi_dim = [roi_size[0], roi_size[1]]
         self.prepare_plots("multi_scan")
@@ -1863,8 +1819,8 @@ class QuadScanGui(QtWidgets.QWidget):
 
     def stop_scan(self):
         root.info("Stop scan pressed")
-        self.ui.scan_status_label.setText("STOPPED: k -/- image -/-")
-        self.ui.scan_progress_label.setText("[----------]")
+        # self.ui.scan_status_label.setText("STOPPED: k -/- image -/-")
+        # self.ui.scan_progress_label.setText("[----------]")
         if self.scan_task is not None:
             self.scan_task.cancel()
 
@@ -1912,8 +1868,8 @@ class QuadScanGui(QtWidgets.QWidget):
         k0 = self.ui.k_start_spinbox.value()
         k1 = self.ui.k_end_spinbox.value()
         dk = (k1 - k0) / np.maximum(1, self.ui.num_k_spinbox.value() - 1)
-        roi_size = self.ui.camera_widget.roi.size()
-        roi_pos = self.ui.camera_widget.roi.pos()
+        roi_size = self.ui.image_widget.roi.size()
+        roi_pos = self.ui.image_widget.roi.pos()
         roi_center = [roi_pos[1] + roi_size[1] / 2.0, roi_pos[0] + roi_size[0] / 2.0]
         roi_dim = [roi_size[1], roi_size[0]]
         root.info("ROI: pos {0}, size {1}, center {2}".format(roi_pos, roi_size, roi_center))
@@ -2019,7 +1975,8 @@ class QuadScanGui(QtWidgets.QWidget):
                 # images = self.quad_scan_data_scan.images + quad_image_list
                 # self.quad_scan_data_scan._replace(images=images)
         else:
-            self.ui.scan_status_label.setText("DONE")
+            # self.ui.scan_status_label.setText("DONE")
+            pass
         # if self.ui.update_analysis_radiobutton.isChecked():
             # self.quad_scan_data_analysis = self.quad_scan_data_scan
             # self.update_analysis_parameters()
@@ -2052,7 +2009,7 @@ class QuadScanGui(QtWidgets.QWidget):
             k_value = float(name_elements[3])
             root.info("Scan image {0} {1} (size {2}), sending for processing".format(k_ind, im_ind, image.shape))
             self.update_camera_signal.emit(image)
-            # self.ui.camera_widget.setImage(image, autoLevels=False, autoRange=False)
+            # self.ui.image_widget.setImage(image, autoLevels=False, autoRange=False)
             quadimage = QuadImage(k_ind=k_ind, k_value=k_value, image_ind=im_ind, image=image)
             k_list = ["{0:.2f}".format(im.k_value) for im in self.quad_scan_data_scan.images]
             root.info("QuadScanData len image: {0}".format(len(self.quad_scan_data_scan.images)))
@@ -2067,10 +2024,10 @@ class QuadScanGui(QtWidgets.QWidget):
             task.start()
 
             s = "RUNNING: k {0}/{1} image {2}/{3}".format(k_ind+1, float(num_k), im_ind+1, float(num_images))
-            self.ui.scan_status_label.setText(s)
+            # self.ui.scan_status_label.setText(s)
             p = int((k_ind + (im_ind + 1) / float(num_images)) / float(num_k) * 10)
             # root.debug("p={0}".format(p))
-            self.ui.scan_progress_label.setText("[{0}{1}]".format("="*p, "-"*(10-p)))
+            # self.ui.scan_progress_label.setText("[{0}{1}]".format("="*p, "-"*(10-p)))
 
             try:
                 self.scan_image_max = np.maximum(self.scan_image_max, np.max(image))
@@ -2130,7 +2087,7 @@ class QuadScanGui(QtWidgets.QWidget):
             self.ui.p_image_index_slider.blockSignals(False)
             self.update_image_selection(auto_levels=True)
 
-        # self.ui.process_image_widget.setImage(proc_image.pic_roi)
+        # self.ui.image_widget.setImage(proc_image.pic_roi)
         self.update_fit_signal.emit()
 
     def save_image_callback(self, task):
@@ -2186,7 +2143,7 @@ class QuadScanGui(QtWidgets.QWidget):
                 # images = self.quad_scan_data_scan.images + quad_image_list
                 # self.quad_scan_data_scan._replace(images=images)
         else:
-            self.ui.scan_status_label.setText("DONE")
+            # self.ui.scan_status_label.setText("DONE")
             res = task.get_result(wait=False)
             self.quad_scan_data_scan = QuadScanData(res["acc_params"], res["images"], res["images_p"])
             self.quad_scan_data_analysis = self.quad_scan_data_scan
@@ -2407,8 +2364,8 @@ class QuadScanGui(QtWidgets.QWidget):
         pass
 
     def camera_mouse_moved(self, event):
-        pos = self.ui.camera_widget.view.mapSceneToView(event[0])
-        pic = self.ui.camera_widget.getProcessedImage()
+        pos = self.ui.image_widget.view.mapSceneToView(event[0])
+        pic = self.ui.image_widget.getProcessedImage()
         x = int(pos.x())
         y = int(pos.y())
         if x >= 0 and y >= 0:
@@ -2434,8 +2391,8 @@ class QuadScanGui(QtWidgets.QWidget):
         self.ui.status_textedit.verticalScrollBar().setValue(self.ui.status_textedit.verticalScrollBar().maximum())
 
     def process_image_mouse_moved(self, event):
-        pos = self.ui.process_image_widget.view.mapSceneToView(event[0])
-        pic = self.ui.process_image_widget.getProcessedImage()
+        pos = self.ui.image_widget.view.mapSceneToView(event[0])
+        pic = self.ui.image_widget.getProcessedImage()
         x = int(pos.x())
         y = int(pos.y())
         if x >= 0 and y >= 0:
@@ -2456,7 +2413,7 @@ class QuadScanGui(QtWidgets.QWidget):
 
         if "k_read" in name:
             k = task.get_result(wait=False)
-            self.ui.current_k_label.setText(u"k={0:.2f} 1/m\u00B2".format(k.value))
+            # self.ui.current_k_label.setText(u"k={0:.2f} 1/m\u00B2".format(k.value))
             if self.quad_init_flag:
                 self.ui.k_current_spinbox.setValue(k.value)
                 self.quad_init_flag = False
@@ -2497,23 +2454,28 @@ class QuadScanGui(QtWidgets.QWidget):
             else:
                 self.update_camera_signal.emit(result.value)
         elif "cam_state_read" in name:
-            self.ui.camera_state_label.setText("{0}".format(str(result.value)).upper())
+            pass
+            # self.ui.camera_state_label.setText("{0}".format(str(result.value)).upper())
         elif "cam_reprate_read" in name:
             try:
-                old_rate = float(self.ui.reprate_label.text().split()[0])
+                # old_rate = float(self.ui.reprate_label.text().split()[0])
+                old_rate = -1
+                pass
             except ValueError:
                 old_rate = -1
             if result.value != old_rate:
                 # Update label and read image task rate if framerate is changed:
-                self.ui.reprate_label.setText("{0:.1f} Hz".format(result.value))
+                # self.ui.reprate_label.setText("{0:.1f} Hz".format(result.value))
                 for t in self.screen_tasks:
                     if t.get_name() == "cam_image_repeat":
                         t.delay = 1.0 / result.value
         elif "screen_in_read" in name:
             if result.value:
-                self.ui.screen_state_label.setText("{0} IN".format(str(self.ui.screen_combobox.currentText())))
+                # self.ui.screen_state_label.setText("{0} IN".format(str(self.ui.screen_combobox.currentText())))
+                pass
             else:
-                self.ui.screen_state_label.setText("{0} OUT".format(str(self.ui.screen_combobox.currentText())))
+                # self.ui.screen_state_label.setText("{0} OUT".format(str(self.ui.screen_combobox.currentText())))
+                pass
         elif "cam_cal_read" in name:
             try:
                 meas_rul = eval(result[0].value)
@@ -2522,8 +2484,8 @@ class QuadScanGui(QtWidgets.QWidget):
                 root.info("\n=============================\n"
                           "Cam cal: {0:.4f}\n\n"
                           "=============================\n".format(cal))
-                # self.ui.camera_widget.roi.setPos([roi[0], roi[2]])
-                # self.ui.camera_widget.roi.setSize([roi[1]-roi[0], roi[3]-roi[2]])
+                # self.ui.image_widget.roi.setPos([roi[0], roi[2]])
+                # self.ui.image_widget.roi.setSize([roi[1]-roi[0], roi[3]-roi[2]])
             except TypeError as e:
                 s = "Could not read calibration. Got {0}".format(result)
                 root.exception(s)
@@ -2536,8 +2498,8 @@ class QuadScanGui(QtWidgets.QWidget):
         elif "cam_roi_read" in name:
             roi = result.value
             root.debug("Camera ROI: {0}".format(roi))
-            self.ui.camera_widget.roi.setPos([roi[0], roi[2]])
-            self.ui.camera_widget.roi.setSize([roi[1] - roi[0], roi[3] - roi[2]])
+            self.ui.image_widget.roi.setPos([roi[0], roi[2]])
+            self.ui.image_widget.roi.setSize([roi[1] - roi[0], roi[3] - roi[2]])
         else:
             root.error("Task {0} not useful for camera updating".format(name))
 
