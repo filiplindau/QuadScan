@@ -623,9 +623,9 @@ class QTangoStripToolLegendWidget(QtWidgets.QWidget):
         else:
             it = self.items.pop(item)
         self.item_name_list.remove(it.name)
-        self.set_position(self.position)
+        self.set_position(self.position)        # The widget is removed from the layout here
         it.setParent(None)
-        # it.deleteLater()
+        it.deleteLater()
 
     def get_item(self, item_id) -> QTangoStripToolLegendItem:
         if isinstance(item_id, str):
@@ -938,7 +938,10 @@ class QTangoStripToolPlotWidget(pg.PlotWidget):
         ax = self.curve_ax_dict.pop(name)
         curve = self.curve_item_dict.pop(name)
         # self.curve_name_list.pop(ind)
-        self.getPlotItem().removeItem(vb)
+        pi = self.getPlotItem()
+        pi.removeItem(vb)
+        pi.removeItem(ax)
+        pi.removeItem(curve)
         curve.setParent(None)
         ax.setParent(None)
         vb.setParent(None)
@@ -1560,6 +1563,7 @@ if __name__ == "__main__":
         strip_tool2.remove_curve("Curve 2")
         strip_tool2.add_curve("Curve 2")
         strip_tool2.set_y_link("Curve 3", "Curve 1")
+        strip_tool2.remove_curve("Curve 4")
         strip_tool2.plot_widget.stack_vertically()
         strip_tool.plot_widget.set_highlight("Curve 1", 10)
         strip_tool.plot_widget.set_highlight("Curve 1", 15)

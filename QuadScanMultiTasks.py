@@ -50,7 +50,7 @@ f = logging.Formatter("%(asctime)s - %(name)s.   %(funcName)s - %(levelname)s - 
 fh = logging.StreamHandler()
 fh.setFormatter(f)
 logger.addHandler(fh)
-logger.setLevel(logging.DEBUG)
+logger.setLevel(logging.INFO)
 
 
 class TangoMultiQuadScanTask(Task):
@@ -128,6 +128,7 @@ class TangoMultiQuadScanTask(Task):
         guess_alpha = self.scan_param.guess_alpha
         guess_beta = self.scan_param.guess_beta
         guess_eps_n = self.scan_param.guess_eps_n
+        dab = self.scan_param.initial_step_ab
 
         self.set_section(section)
 
@@ -135,7 +136,7 @@ class TangoMultiQuadScanTask(Task):
             self.generate_daq_info()
 
         self.mq_lookup.start_scan(target_sigma_x, target_sigma_y, None, section,
-                                  n_steps, guess_alpha, guess_beta, guess_eps_n)
+                                  n_steps, guess_alpha, guess_beta, guess_eps_n, dab)
 
         k_next = self.get_quad_magnets()
         self.current_step = 0
@@ -789,15 +790,40 @@ class FitQuadDataTaskMulti(Task):
         sw = sigma**2 * np.sqrt(weights)
         self.logger.debug("Mw {0}".format(Mw))
         self.logger.debug("sw {0}".format(sw))
-        ldata = np.linalg.lstsq(Mw, sw, -1)
 
-        residual = ldata[1]
+        alpha0 = np.NaN
+        beta0 = np.NaN
+        eps0 = np.NaN
 
-        x = ldata[0]
-        eps2 = x[2] * x[0] - x[1] ** 2
-        eps = np.sqrt(eps2)
-        alpha = x[1] / eps
-        beta = x[0] / eps
+        try:
+            ldata = np.linalg.lstsq(Mw, sw, -1)
+            x = ldata[0]
+            eps2 = x[2] * x[0] - x[1] ** 2
+            if eps2 < 0:
+                eps2 = eps0 ** 2
+            eps = np.sqrt(eps2)
+            alpha = x[1] / eps
+            beta = x[0] / eps
+            if beta < 0:
+                beta = beta0
+                alpha = alpha0
+            residual = ldata[1]
+        except np.linalg.LinAlgError:
+            logger.info("\nMw: {0}\n\nsw: {1}\n\nsigma: {2}".format(Mw, sw, sigma))
+            eps = eps0
+            alpha = alpha0
+            beta = beta0
+            residual = None
+
+        # ldata = np.linalg.lstsq(Mw, sw, -1)
+        #
+        # residual = ldata[1]
+        #
+        # x = ldata[0]
+        # eps2 = x[2] * x[0] - x[1] ** 2
+        # eps = np.sqrt(eps2)
+        # alpha = x[1] / eps
+        # beta = x[0] / eps
 
         self.logger.debug("Found twiss parameters:"
                           "\n alpha = {0:.3f}\n beta  = {1:.3f}\n eps = {2:.3f}e-06".format(alpha, beta,

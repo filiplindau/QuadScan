@@ -1845,6 +1845,7 @@ class QuadScanGui(QtWidgets.QWidget):
                                     charge_ratio=self.ui.p_keep_charge_ratio_spinbox.value(),
                                     background_level=self.ui.p_threshold_spinbox.value(),
                                     guess_alpha=0.0, guess_beta=10.0, guess_eps_n=1e-6,
+                                    initial_step_ab=0.5,
                                     n_steps=self.ui.num_k_spinbox.value(), scan_pos_tol=0.01, scan_pos_check_interval=0.2,
                                     screen_name=self.ui.screen_combobox.currentText(),
                                     roi_center=roi_center, roi_dim=roi_dim,
@@ -2488,7 +2489,7 @@ class QuadScanGui(QtWidgets.QWidget):
                 root.info("Image task cancelled.")
 
                 for t in self.screen_tasks:
-                    root.info("{0}: cancel state: {1}".format(t.get_name(), t.is_cancelled()))
+                    root.debug("{0}: cancel state: {1}".format(t.get_name(), t.is_cancelled()))
                     if t.is_cancelled():
                         root.info("{0} cancelled.".format(t.name))
                         t.cancelled = False

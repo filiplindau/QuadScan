@@ -90,7 +90,7 @@ the measured attributes for each scan position. This in turn contains a list of 
 
 ScanParamMulti = namedtuple("ScanParamMulti", "section target_sigma_x target_sigma_y "
                                               "charge_ratio background_level "
-                                              "guess_alpha guess_beta guess_eps_n "
+                                              "guess_alpha guess_beta guess_eps_n initial_step_ab "
                                               "n_steps scan_pos_tol scan_pos_check_interval "
                                               "screen_name roi_center roi_dim "
                                               "measure_number measure_interval "

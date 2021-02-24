@@ -47,7 +47,7 @@ f = logging.Formatter("%(asctime)s - %(name)s.   %(funcName)s - %(levelname)s - 
 fh = logging.StreamHandler()
 fh.setFormatter(f)
 logger.addHandler(fh)
-logger.setLevel(logging.DEBUG)
+logger.setLevel(logging.INFO)
 
 
 class TangoDeviceConnectTask(Task):
@@ -519,8 +519,6 @@ class ImageProcessorTask(Task):
     def __init__(self, roi_cent=None, roi_dim=None, threshold=None, cal=[1.0, 1.0], kernel=3, process_exec="process",
                  name=None, timeout=None, trigger_dict=dict(), callback_list=list()):
         Task.__init__(self,  name, timeout=timeout, trigger_dict=trigger_dict, callback_list=callback_list)
-        self.logger.setLevel(logging.DEBUG)
-
         self.kernel = kernel
         self.cal = cal
         self.threshold = threshold
@@ -535,7 +533,7 @@ class ImageProcessorTask(Task):
 
         self.queue_empty_event = threading.Event()
         self.pending_images_in_queue = 0
-        self.logger.setLevel(logging.DEBUG)
+        self.logger.setLevel(logging.INFO)
 
     def action(self):
         self.logger.info("{0} entering action. ".format(self))
@@ -1351,7 +1349,7 @@ def work_func_shared_cv2(mem_ind, im_ind, im_size, threshold, roi_cent, roi_dim,
 
 
 def work_func_shared_cv2_mask(mem_ind, im_ind, im_size, threshold, roi_cent, roi_dim,
-                     cal=[1.0, 1.0], kernel=3, bpp=16, normalize=False, keep_charge_ratio=1.0):
+                              cal=[1.0, 1.0], kernel=3, bpp=16, normalize=False, keep_charge_ratio=1.0):
     """
 
     :param mem_ind: Image index into the shared memory
@@ -1437,7 +1435,7 @@ def work_func_shared_cv2_mask(mem_ind, im_ind, im_size, threshold, roi_cent, roi
                              thresh=bkg_cut, maxval=1, type=cv2.THRESH_BINARY)[1]
         pic_proc3 = cv2.multiply(pic_proc2, mask)
 
-        logger.info("pic_roi max: {0}, mask sum: {1}, pic_proc3 max: {2}".format(pic_roi.max(), mask.sum(), pic_proc3.max()))
+        logger.debug("pic_roi max: {0}, mask sum: {1}, pic_proc3 max: {2}".format(pic_roi.max(), mask.sum(), pic_proc3.max()))
 
         # t4 = time.time()
         # logger.debug("{0}: Threshold time {1:.2f} ms".format(im_ind, (t4-t3)*1e3))
@@ -1457,7 +1455,7 @@ def work_func_shared_cv2_mask(mem_ind, im_ind, im_size, threshold, roi_cent, roi
         d = (h[1][1] - h[1][0])/2.0
         th_q = h[1][th_ind] - d
         pic_proc3[pic_proc3 < th_q] = 0.0
-        logger.info("Pic_roi max: {0}, threshold index: {1}, threshold: {2}, ch ratio: {3}\n"
+        logger.debug("Pic_roi max: {0}, threshold index: {1}, threshold: {2}, ch ratio: {3}\n"
                      "hq: {4}".format(n_bins, th_ind, th_q, keep_charge_ratio, hq[0:20]))
 
         # Centroid and sigma calculations:
@@ -1472,7 +1470,7 @@ def work_func_shared_cv2_mask(mem_ind, im_ind, im_size, threshold, roi_cent, roi
         else:
             enabled = True
         try:
-            logger.info("cal {0}".format(cal))
+            logger.debug("cal {0}".format(cal))
             try:
                 x_v = cal[0] * np.arange(line_x.shape[0])
                 y_v = cal[1] * np.arange(line_y.shape[0])

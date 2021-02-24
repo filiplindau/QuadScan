@@ -361,10 +361,11 @@ class MultiQuadLookup(object):
         self.guess_alpha = None
         self.guess_beta = None
         self.guess_eps_n = None
+        self.dab = None
 
         self.residuals = list()
 
-        self.logger.setLevel(logging.DEBUG)
+        self.logger.setLevel(logging.INFO)
 
     def reset_data(self):
         self.a_list = list()
@@ -635,7 +636,7 @@ class MultiQuadLookup(object):
             self.save_inv_lookup(section, self.k_m_lu, self.ab_lu, self.a_v_lu, self.b_v_lu)
 
     def start_scan(self, current_sigma_x, current_sigma_y, current_charge=None, section="MS1", n_steps=16,
-                   guess_alpha=0.0, guess_beta=40.0, guess_eps_n=2e-6):
+                   guess_alpha=0.0, guess_beta=40.0, guess_eps_n=2e-6, dab=0.2):
         """
         Start a new multi-quad scan using current beam size as target beam size. Initial guess should be provided
         if known.
@@ -649,6 +650,7 @@ class MultiQuadLookup(object):
         :param guess_alpha: Staring guess of beam twiss parameter alpha. Used for first two steps.
         :param guess_beta: Staring guess of beam twiss parameter beta. Used for first two steps.
         :param guess_eps_n: Staring guess of beam twiss parameter normalized emittance. Used for first two steps.
+        :param dab: step in ab space for the initial 3 shots
         :return:
         """
         self.logger.info("Start scan: sigma {0:.3f} x {1:.3f} mm".format(current_sigma_x*1e3, current_sigma_y*1e3))
@@ -661,6 +663,7 @@ class MultiQuadLookup(object):
         self.guess_alpha = guess_alpha
         self.guess_beta = guess_beta
         self.guess_eps_n = guess_eps_n
+        self.dab = dab
 
         # a_min, a_max, b_min, b_max = self.get_ab_range(self.max_k)
         a_min = self.A_lu[:, 0].min()
@@ -753,8 +756,8 @@ class MultiQuadLookup(object):
 
         # Calculate next a-b values to target
         step = self.current_step
-        next_a, next_b = self.set_target_ab(step, theta, r_maj, r_min, axis="x")
-        next_a_y, next_b_y = self.set_target_ab(step, theta_y, r_maj_y, r_min_y, axis="y")
+        next_a, next_b = self.set_target_ab(step, theta, r_maj, r_min, axis="x", dab=self.dab)
+        next_a_y, next_b_y = self.set_target_ab(step, theta_y, r_maj_y, r_min_y, axis="y", dab=self.dab)
 
         # Determine quad settings to achieve these a-b values
         if not (np.isnan(next_a) or np.isnan(next_b)):
@@ -930,11 +933,6 @@ class MultiQuadLookup(object):
                 weights = np.exp(-(charge / charge[0] - 1)**2 / s_q**2)
             Mw = M * np.sqrt(weights[:, np.newaxis])
             sw = sigma**2 * np.sqrt(weights)
-            try:
-                ldata = np.linalg.lstsq(Mw, sw, -1)
-            except np.linalg.LinAlgError as e:
-                logger.info("\nMw: {0}\n\nsw: {1}\n\nsigma: {2}".format(Mw, sw, sigma))
-                raise e
 
             if axis == "x":
                 try:
@@ -955,27 +953,34 @@ class MultiQuadLookup(object):
                     beta0 = 10.0
                     eps0 = 2e-6
 
-            self.logger.info("Least squares: {0}".format(ldata))
-            self.residuals.append(ldata[1])
-
-            x = ldata[0]
-            eps2 = x[2] * x[0] - x[1] ** 2
-            if eps2 < 0:
-                eps2 = eps0 ** 2
-            eps = np.sqrt(eps2)
-            alpha = x[1] / eps
-            beta = x[0] / eps
-            if beta < 0:
-                beta = beta0
+            try:
+                ldata = np.linalg.lstsq(Mw, sw, -1)
+                x = ldata[0]
+                eps2 = x[2] * x[0] - x[1] ** 2
+                if eps2 < 0:
+                    eps2 = eps0 ** 2
+                eps = np.sqrt(eps2)
+                alpha = x[1] / eps
+                beta = x[0] / eps
+                if beta < 0:
+                    beta = beta0
+                    alpha = alpha0
+                self.logger.info("Least squares: {0}".format(ldata))
+                self.residuals.append(ldata[1])
+            except np.linalg.LinAlgError as e:
+                logger.info("\nMw: {0}\n\nsw: {1}\n\nsigma: {2}".format(Mw, sw, sigma))
+                eps = eps0
                 alpha = alpha0
+                beta = beta0
+                self.residuals.append(None)
 
             self.logger.debug("Found twiss parameters:"
-                              "\n alpha_{3} = {0:.3f}\n beta_{3}  = {1:.3f}\n eps_n_{3} = {2:.3f}e-06".format(alpha, beta,
-                                                                                       eps * self.gamma_energy * 1e6, axis))
+                              "\n alpha_{3} = {0:.3f}\n beta_{3}  = {1:.3f}\n "
+                              "eps_n_{3} = {2:.3f}e-06".format(alpha, beta, eps * self.gamma_energy * 1e6, axis))
 
         return alpha, beta, eps
 
-    def set_target_ab(self, step, theta, r_maj, r_min, axis="x"):
+    def set_target_ab(self, step, theta, r_maj, r_min, axis="x", dab=0.2):
         self.logger.debug("{0}: Determine new target a,b for axis {1}, step {2}".format(self, axis, step))
         if axis == "x":
             x_list = self.x_list
@@ -1005,7 +1010,6 @@ class MultiQuadLookup(object):
                     target_a = a_list[-1] + d_ab * da
                     target_b = b_list[-1] + d_ab * db
                 elif method == "radial":
-                    dab = 0.2
                     r_v = np.array([a_list[0], b_list[0]])
                     r_v = r_v / np.sqrt(r_v[0]**2 + r_v[1]**2)
                     th_v = np.array([r_v[1], -r_v[0]])
