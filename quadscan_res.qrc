@@ -1,5 +1,7 @@
 <RCC>
   <qresource prefix="icons">
+    <file>hor_split_dots.png</file>
+    <file>vert_split_dots.png</file>
     <file>vert_splitter_handle.png</file>
     <file>hor_splitter_handle.png</file>
     <file>eps.png</file>
