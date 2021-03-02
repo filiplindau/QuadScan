@@ -593,7 +593,6 @@ class QuadScanGui(QtWidgets.QWidget):
         self.ui.process_image_widget.roi.setSize([roi_w, roi_h])
         self.ui.process_image_widget.roi.blockSignals(False)
 
-        self.ui.process_image_widget
         self.start_processing()
 
     def load_data_disk(self):
@@ -725,10 +724,12 @@ class QuadScanGui(QtWidgets.QWidget):
                         self.load_image_max = m
 
                     if self.load_init_flag:
-                        pos = [acc_params.roi_center[1] - acc_params.roi_dim[1] / 2.0,
-                               acc_params.roi_center[0] - acc_params.roi_dim[0] / 2.0]
+                        pos = [acc_params.roi_center[0] - acc_params.roi_dim[0] / 2.0,
+                               acc_params.roi_center[1] - acc_params.roi_dim[1] / 2.0]
+                        # pos = [acc_params.roi_center[0] - acc_params.roi_dim[0] / 2.0,
+                        #        acc_params.roi_center[1] - acc_params.roi_dim[1] / 2.0]
 
-                        self.process_image_view = [0, 0, acc_params.roi_dim[1], acc_params.roi_dim[0]]
+                        self.process_image_view = [0, 0, acc_params.roi_dim[0], acc_params.roi_dim[1]]
                         x_range = [pos[0], pos[0] + self.process_image_view[2]]
                         y_range = [pos[1], pos[1] + self.process_image_view[3]]
                         root.debug("Init image view {0}, {1}".format(x_range, y_range))
@@ -819,11 +820,11 @@ class QuadScanGui(QtWidgets.QWidget):
                acc_params.roi_center[1] - acc_params.roi_dim[1] / 2.0]
         root.info("\nroi_center: {0}\nroi_dim: {1}\npos: {2}".format(acc_params.roi_center, acc_params.roi_dim, pos))
         if self.ui.p_raw_image_radio.isChecked():
-            self.process_image_view = [0, 0, acc_params.roi_dim[1], acc_params.roi_dim[0]]
+            self.process_image_view = [0, 0, acc_params.roi_dim[0], acc_params.roi_dim[1]]
             x_range = [pos[0], pos[0] + self.process_image_view[2]]
             y_range = [pos[1], pos[1] + self.process_image_view[3]]
         else:
-            self.process_image_view = [pos[1], pos[0], acc_params.roi_dim[1], acc_params.roi_dim[0]]
+            self.process_image_view = [pos[0], pos[1], acc_params.roi_dim[0], acc_params.roi_dim[1]]
             # self.process_image_view = [pos[0], pos[1], acc_params.roi_dim[1], acc_params.roi_dim[0]]
             x_range = [0, self.process_image_view[2]]
             y_range = [0, self.process_image_view[3]]
@@ -1080,7 +1081,7 @@ class QuadScanGui(QtWidgets.QWidget):
             self.quad_tasks.append(k_rep_task)
             self.current_quad = new_quad
 
-            self.ui.current_quad_sel_label.setText("{0}".format(new_quad.mag.upper()))
+            # self.ui.current_quad_sel_label.setText("{0}".format(new_quad.mag.upper()))
             # Add more device connections here
 
             e_task = TangoReadAttributeTask("energy", new_quad.crq, self.device_handler,
@@ -1770,6 +1771,14 @@ class QuadScanGui(QtWidgets.QWidget):
         :return:
         """
         root.info("Start scan pressed")
+        roi_size = self.ui.camera_widget.roi.size()
+        roi_pos = self.ui.camera_widget.roi.pos()
+        self.ui.process_image_widget.roi.blockSignals(True)
+        self.ui.process_image_widget.roi.setPos(roi_pos, update=False)
+        self.ui.process_image_widget.roi.setSize([roi_size[0], roi_size[1]])
+        self.ui.process_image_widget.roi.blockSignals(False)
+        self.process_image_view = [0, 0, roi_size[0], roi_size[1]]
+
         if self.assert_scan_start_conditions():
             if self.ui.single_quadscan_radiobutton.isChecked():
                 root.info("\n\nStarting SINGLE quad scan")
@@ -1785,6 +1794,7 @@ class QuadScanGui(QtWidgets.QWidget):
         if self.generate_daq_info():
             self.scan_image_max = 0.0
             self.prepare_plots("single")
+
             k0 = self.ui.k_start_spinbox.value()
             k1 = self.ui.k_end_spinbox.value()
             dk = (k1 - k0) / np.maximum(1, self.ui.num_k_spinbox.value() - 1)
@@ -1899,8 +1909,8 @@ class QuadScanGui(QtWidgets.QWidget):
         dk = (k1 - k0) / np.maximum(1, self.ui.num_k_spinbox.value() - 1)
         roi_size = self.ui.camera_widget.roi.size()
         roi_pos = self.ui.camera_widget.roi.pos()
-        roi_center = [roi_pos[1] + roi_size[1] / 2.0, roi_pos[0] + roi_size[0] / 2.0]
-        roi_dim = [roi_size[1], roi_size[0]]
+        roi_center = [roi_pos[0] + roi_size[0] / 2.0, roi_pos[1] + roi_size[1] / 2.0]
+        roi_dim = [roi_size[0], roi_size[1]]
         root.info("ROI: pos {0}, size {1}, center {2}".format(roi_pos, roi_size, roi_center))
         quad_name = "/".join(self.current_quad.mag.split("/")[-3:]).split("#")[0]
         screen_name = "/".join(self.current_screen.screen.split("/")[-3:]).split("#")[0]
@@ -1932,9 +1942,9 @@ class QuadScanGui(QtWidgets.QWidget):
             save_dict["k_min"] = "{0}".format(k0)
             save_dict["k_max"] = "{0}".format(k1)
             val = roi_center
-            save_dict["roi_center"] = "{0} {1}".format(val[1], val[0])
+            save_dict["roi_center"] = "{0} {1}".format(val[0], val[1])
             val = roi_dim
-            save_dict["roi_dim"] = "{0} {1}".format(val[1], val[0])
+            save_dict["roi_dim"] = "{0} {1}".format(val[0], val[1])
             save_dict["beam_energy"] = "{0}".format(self.ui.electron_energy_spinbox.value())
             save_dict["camera_bpp"] = 16
         except KeyError as e:
@@ -2004,10 +2014,10 @@ class QuadScanGui(QtWidgets.QWidget):
                 # self.quad_scan_data_scan._replace(images=images)
         else:
             self.ui.scan_status_label.setText("DONE")
+            self.update_analysis_parameters()
         # if self.ui.update_analysis_radiobutton.isChecked():
-            # self.quad_scan_data_analysis = self.quad_scan_data_scan
-            # self.update_analysis_parameters()
-            # self.update_image_selection()
+        #     self.quad_scan_data_analysis = self.quad_scan_data_scan
+        #     self.update_image_selection()
             # self.update_fit_signal.emit()
             # self.start_fit()
 
@@ -2079,6 +2089,7 @@ class QuadScanGui(QtWidgets.QWidget):
                 self.ui.p_image_index_slider.setMaximum(ind)
                 self.ui.p_image_index_slider.setValue(ind)
                 self.ui.p_image_index_slider.blockSignals(False)
+                self.quad_scan_data_analysis = self.quad_scan_data_scan
                 if self.ui.p_raw_image_radio.isChecked():
 
                     self.update_image_selection(auto_levels=True)
@@ -2096,8 +2107,6 @@ class QuadScanGui(QtWidgets.QWidget):
                                            "Error for returned image name in scan\n{1}\n".format(time_str,
                                                                                                         name_elements))
             return
-
-        self.quad_scan_data_analysis = self.quad_scan_data_scan
 
     def scan_image_processed_callback(self, task):
         root.debug("Scan image processed.")
@@ -2195,8 +2204,8 @@ class QuadScanGui(QtWidgets.QWidget):
         keep_charge_ratio = 0.01 * self.ui.p_keep_charge_ratio_spinbox.value()
         root.info("Start processing. Threshold: {0}, Kernel: {1}".format(th, kern))
         acc_params = self.quad_scan_data_analysis.acc_params         # type: AcceleratorParameters
-        roi_center = [self.ui.p_roi_cent_y_spinbox.value(), self.ui.p_roi_cent_x_spinbox.value()]
-        roi_size = [self.ui.p_roi_size_h_spinbox.value(), self.ui.p_roi_size_w_spinbox.value()]
+        roi_center = [self.ui.p_roi_cent_x_spinbox.value(), self.ui.p_roi_cent_y_spinbox.value()]
+        roi_size = [self.ui.p_roi_size_w_spinbox.value(), self.ui.p_roi_size_h_spinbox.value()]
         if acc_params is not None:
             acc_params = acc_params._replace(roi_center=roi_center)
             acc_params = acc_params._replace(roi_dim=roi_size)

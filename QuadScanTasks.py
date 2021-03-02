@@ -1256,14 +1256,14 @@ def work_func_shared_cv2(mem_ind, im_ind, im_size, threshold, roi_cent, roi_dim,
         image = np.frombuffer(var_dict["image"], "i", shape[1] * shape[2],
                               shape[1] * shape[2] * mem_ind * np.dtype("i").itemsize).reshape((shape[1], shape[2]))
         roi = np.frombuffer(var_dict["roi"], "f", roi_dim[0] * roi_dim[1],
-                            shape[1] * shape[2] * mem_ind * np.dtype("f").itemsize).reshape(roi_dim)
+                            shape[1] * shape[2] * mem_ind * np.dtype("f").itemsize).reshape(roi_dim[1], roi_dim[0])
         t1 = time.time()
         # logger.debug("{0}: Mem copy time {1:.2f} ms".format(mem_ind, (t1 - t0) * 1e3))
         try:
             x = np.array([int(roi_cent[0] - roi_dim[0] / 2.0), int(roi_cent[0] + roi_dim[0] / 2.0)])
             y = np.array([int(roi_cent[1] - roi_dim[1] / 2.0), int(roi_cent[1] + roi_dim[1] / 2.0)])
             # Extract ROI and convert to double:
-            pic_roi = np.float32(image[x[0]:x[1], y[0]:y[1]])
+            pic_roi = np.float32(image[y[0]:y[1], x[0]:x[1]])
         except IndexError:
             pic_roi = np.float32(image)
         n = 2 ** bpp
@@ -1385,17 +1385,19 @@ def work_func_shared_cv2_mask(mem_ind, im_ind, im_size, threshold, roi_cent, roi
         image = np.frombuffer(var_dict["image"], "i", shape[1] * shape[2],
                               shape[1] * shape[2] * mem_ind * np.dtype("i").itemsize).reshape((shape[1], shape[2]))
         roi = np.frombuffer(var_dict["roi"], "f", roi_dim[0] * roi_dim[1],
-                            shape[1] * shape[2] * mem_ind * np.dtype("f").itemsize).reshape(roi_dim)
+                            shape[1] * shape[2] * mem_ind * np.dtype("f").itemsize).reshape(roi_dim[1], roi_dim[0])
         t1 = time.time()
-        # logger.debug("{0}: Mem copy time {1:.2f} ms".format(mem_ind, (t1 - t0) * 1e3))
+        logger.debug("{0}: Mem copy time {1:.2f} ms".format(mem_ind, (t1 - t0) * 1e3))
         try:
             x = np.array([int(roi_cent[0] - roi_dim[0] / 2.0), int(roi_cent[0] + roi_dim[0] / 2.0)])
             y = np.array([int(roi_cent[1] - roi_dim[1] / 2.0), int(roi_cent[1] + roi_dim[1] / 2.0)])
-            # Extract ROI and convert to double:
-            pic_roi = np.float32(image[x[0]:x[1], y[0]:y[1]])
+            # Extract ROI and convert to float:
+            pic_roi = np.float32(image[y[0]:y[1], x[0]:x[1]])
         except IndexError:
             pic_roi = np.float32(image)
         n = 2 ** bpp
+
+        logger.debug("{0}: pic_roi size {1}x{2}".format(mem_ind, pic_roi.shape[1], pic_roi.shape[0]))
 
         # Median filtering:
         try:
@@ -1409,13 +1411,13 @@ def work_func_shared_cv2_mask(mem_ind, im_ind, im_size, threshold, roi_cent, roi
 
         if threshold is None:
             # Background level from first 20 columns, one level for each row (the background structure is banded):
-            if y[0] > 20:
-                pic_bkg = np.float32(image[x[0]:x[1], y[0]-20:y[0]])
+            if x[0] > 20:
+                pic_bkg = np.float32(image[y[0]:y[1], x[0]-20:x[0]])
                 bkg_level = cv2.medianBlur(pic_bkg, kernel).mean(1)
                 if normalize:
                     bkg_level /= n
-            elif y[1] < image.shape[1] - 20:
-                pic_bkg = np.float32(image[x[0]:x[1], y[1]:y[1] + 20])
+            elif x[1] < image.shape[1] - 20:
+                pic_bkg = np.float32(image[y[0]:y[1], x[1]:x[1] + 20])
                 bkg_level = cv2.medianBlur(pic_bkg, kernel).mean(1)
                 if normalize:
                     bkg_level /= n
@@ -1482,7 +1484,7 @@ def work_func_shared_cv2_mask(mem_ind, im_ind, im_size, threshold, roi_cent, roi
             y_cent = np.sum(y_v * line_y) / l_y_n
             sigma_y = np.sqrt(np.sum((y_v - y_cent) ** 2 * line_y) / l_y_n)
         except Exception as e:
-            print(e)
+            logger.error(e)
             sigma_x = None
             sigma_y = None
             x_cent = 0
@@ -1719,7 +1721,7 @@ class ProcessAllImagesTask2(Task):
 
         # Prepare processed images as zero-filled images:
         self.processed_image_list = list()
-        pic_roi = np.zeros((int(acc_params.roi_dim[0]), int(acc_params.roi_dim[1])), dtype=np.float32)
+        pic_roi = np.zeros((int(acc_params.roi_dim[1]), int(acc_params.roi_dim[0])), dtype=np.float32)
         line_x = pic_roi.sum(0)
         line_y = pic_roi.sum(1)
         for quad_image in self.quad_scan_data.images:
@@ -1729,8 +1731,8 @@ class ProcessAllImagesTask2(Task):
                                         pic_roi=pic_roi,
                                         line_x=line_x,
                                         line_y=line_y,
-                                        x_cent=pic_roi.shape[0]/2,
-                                        y_cent=pic_roi.shape[1]/2,
+                                        x_cent=pic_roi.shape[1]/2,
+                                        y_cent=pic_roi.shape[0]/2,
                                         sigma_x=0.0, sigma_y=0.0,
                                         q=0.0, enabled=False, threshold=self.threshold)
             self.processed_image_list.append(proc_image)
@@ -1825,8 +1827,9 @@ class ProcessAllImagesTask2(Task):
 
                 try:
                     if self.enabled_list is None:
-                        if not self.quad_scan_data.proc_images[im_ind].enabled:
-                            enabled = False
+                        # if not self.quad_scan_data.proc_images[im_ind].enabled:
+                        #     enabled = False
+                        pass
                     else:
                         if not self.enabled_list[im_ind]:
                             enabled = False
@@ -1838,9 +1841,9 @@ class ProcessAllImagesTask2(Task):
                 roi_d = [int(acc_params.roi_dim[0]), int(acc_params.roi_dim[1])]
                 pic_roi = np.frombuffer(self.sh_mem_roi_rawarray, "f", roi_d[0] * roi_d[1],
                                         self.image_size[0] * self.image_size[1] *
-                                        ind * np.dtype("f").itemsize).reshape(roi_d).copy()
-                line_x = pic_roi.sum(0)
-                line_y = pic_roi.sum(1)
+                                        ind * np.dtype("f").itemsize).reshape(roi_d[1], roi_d[0]).copy()
+                line_x = pic_roi.sum(1)
+                line_y = pic_roi.sum(0)
                 proc_image = ProcessedImage(k_ind=quad_image.k_ind, k_value=quad_image.k_value,
                                             image_ind=quad_image.image_ind, pic_roi=pic_roi,
                                             line_x=line_x, line_y=line_y, x_cent=x_cent,
@@ -2201,10 +2204,11 @@ class PopulateDummyDeviceList(Task):
                 try:
                     # Extract data for each found screen
                     name = sc_name.split("/")[-1].lower()
-                    position = 10.0
                     liveviewer = sect_dict["liveviewer"]
                     beamviewer = sect_dict["beamviewer"]
                     limaccd = sect_dict["limaccd"]
+                    screen_dev = self.device_handler.get_device(liveviewer)
+                    position = screen_dev.position
                     scr = SectionScreen(name, position, liveviewer, beamviewer, limaccd, sc_name)
                     screen_list.append(scr)
                 # If name and/or position for the screen is not retrievable we cannot use it:
@@ -2233,12 +2237,12 @@ class FitQuadDataTask(Task):
     def __init__(self, processed_image_list, accelerator_params, algo="full", axis="x",
                  name=None, timeout=None, trigger_dict=dict(), callback_list=list()):
         Task.__init__(self, name, timeout=timeout, trigger_dict=trigger_dict, callback_list=callback_list)
-        self.processed_image_list = processed_image_list    # type: list of ProcessedImage
+        self.processed_image_list = processed_image_list    # type: List[ProcessedImage]
         # K value for each image is stored in the image list
         self.accelerator_params = accelerator_params        # type: AcceleratorParameters
         self.algo = algo
         self.axis = axis
-        self.logger.setLevel(logging.INFO)
+        self.logger.setLevel(logging.DEBUG)
 
     def action(self):
         self.logger.info("{0} entering action.".format(self))
@@ -2455,8 +2459,8 @@ def test_f(in_data):
 
 if __name__ == "__main__":
     tests = ["delay", "dev_handler", "exc", "monitor", "load_im", "load_im_dir", "proc_im",
-             "scan", "fit", "populate", "populate_dummy"]
-    test = "populate_dummy"
+             "scan", "fit", "scan_single", "populate", "populate_dummy"]
+    test = "scan_single"
     if test == "delay":
         t1 = DelayTask(2.0, name="task1")
         t2 = DelayTask(1.0, name="task2", trigger_dict={"delay": t1})
@@ -2533,17 +2537,60 @@ if __name__ == "__main__":
         t1.start()
 
     elif test == "fit":
-        path_name = "..\\..\\emittancesinglequad\\saved-images\\2018-04-16_13-40-48_I-MS1-MAG-QB-01_I-MS1-DIA-SCRN-01"
+        path_name = "..\\data\\2021-03-01_16-22-47_127.0.0.1_10000_i-ms1_mag_qb-01dbase=no_127.0.0.1_10001_i-ms1_dia_scrn-01dbase=no"
+        # path_name = "D:\Programmering\workspace\data\Multiquad_2021-03-01_15-43-25_MS1"
         # path_name = "D:\\Programmering\emittancescansinglequad\\saved-images\\2018-04-16_13-40-48_I-MS1-MAG-QB-01_I-MS1-DIA-SCRN-01"
+
         t2 = LoadQuadScanDirTask(path_name, process_exec_type="thread", kernel_size=3, name="quad_dir")
         t2.start()
         quad_scan_data = t2.get_result(True)    # type: QuadScanData
         acc_params = quad_scan_data.acc_params
-        quad_images = quad_scan_data.proc_images
+        t4 = ProcessAllImagesTask2([2000, 2000], process_exec_type="thread", name="proc_all")
+        t4.start()
+        t4.process_images(quad_scan_data,
+                          threshold=50, kernel=3, enabled_list=None,
+                          keep_charge_ratio=0.95)
+        # quad_images = quad_scan_data.proc_images
+        t4.result_done_event.wait()
+        quad_images = t4.get_result(False)
         t3 = FitQuadDataTask(quad_images, acc_params, "full", name="fit_data")
         t3.start()
-        t4 = ProcessAllImagesTask(quad_scan_data, process_exec_type="thread", name="proc_all")
-        t4.start()
+
+    elif test == "scan_single":
+        k0 = 0.5
+        k1 = 3.0
+        n_steps = 5
+        dk = (k1 - k0) / n_steps
+        device_handler = DeviceHandler(name="Handler")
+        scan_param = ScanParam(scan_attr_name="mainfieldcomponent", scan_device_name="127.0.0.1:10000/i-ms1/mag/qb-01#dbase=no",
+                               scan_start_pos=k0, scan_end_pos=k1, scan_step=dk,
+                               scan_pos_tol=np.maximum(dk * 0.01, 0.001), scan_pos_check_interval=0.1,
+                               measure_attr_name_list=["image"],
+                               measure_device_list=["127.0.0.1:10002/lima/liveviewer/i-ms1-dia-scrn-01#dbase=no"],
+                               measure_number=1,
+                               measure_interval=0.33)
+        scan_task = TangoScanTask(scan_param=scan_param, device_handler=device_handler, name="scan",
+                                  timeout=5.0, callback_list=[])
+        scan_task.start()
+        acc_param = AcceleratorParameters(233, 0.2, 5.67, k1, k0, n_steps, 1, [14e-6, 14e-6],
+                                          "i-ms1/mag/qb-01", "i-ms1/dia/scrn-01",
+                                          roi_center=[643.6716714801605, 506.18470716577247],
+                                          roi_dim=[140.48992160881664, 379.0])
+        result = scan_task.get_result(True)
+        q_images = list()
+        for ind, pos in enumerate(result.pos_list):
+            q_images.append(QuadImage(ind, pos, 0, result.measure_list[ind][0][0].value))
+        q_scan_data = QuadScanData(acc_param, q_images, list())
+
+        proc_task = ProcessAllImagesTask2([2000, 2000], process_exec_type="thread", name="proc_all")
+        proc_task.start()
+        proc_task.process_images(q_scan_data,
+                                 threshold=50, kernel=3, enabled_list=None,
+                                 keep_charge_ratio=0.95)
+        proc_task.result_done_event.wait()
+        p_images = proc_task.get_result(False)
+        fit_task = FitQuadDataTask(p_images, acc_param, "full", name="fit_data", axis="x")
+        fit_task.start()
 
     elif test == "populate":
         t1 = PopulateDeviceListTask(["MS1", "MS2"], name="pop", action_exec_type="process")

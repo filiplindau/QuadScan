@@ -23,6 +23,8 @@ class Ui_QuadScanDialog(object):
         sizePolicy.setVerticalStretch(0)
         sizePolicy.setHeightForWidth(self.tabWidget.sizePolicy().hasHeightForWidth())
         self.tabWidget.setSizePolicy(sizePolicy)
+        self.tabWidget.setMinimumSize(QtCore.QSize(300, 0))
+        self.tabWidget.setMaximumSize(QtCore.QSize(300, 16777215))
         self.tabWidget.setObjectName("tabWidget")
         self.quad_tab = QtWidgets.QWidget()
         self.quad_tab.setObjectName("quad_tab")

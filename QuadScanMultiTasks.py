@@ -837,7 +837,7 @@ def callback(task):
 
 
 if __name__ == "__main__":
-    t = LoadMultiQuadScanDirTask("..\\data\\Multiquad_2021-01-18_18-01-55_MS1", process_now=True, threshold=0.01,
+    t = LoadMultiQuadScanDirTask("D:\Programmering\workspace\data\Multiquad_2021-03-01_15-43-25_MS1", process_now=True, threshold=0.01,
                                  name="test_load")
     t.start()
     quad_scan_data_analysis = t.get_result(True)
