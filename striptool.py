@@ -215,17 +215,18 @@ class QTangoStripTool(QtWidgets.QFrame):
         self.setStyleSheet(st)
         self.plot_widget.update_curve_range_signal.connect(self.set_range)
 
-    def add_curve(self, name, curve=None, unit=None, visible=True, **kwargs):
-        legend_item = QTangoStripToolLegendItem(name, unit=unit, color=None, sizes=self.sizes, colors=self.colors)
-        legend_item.clicked.connect(self.set_curve_focus)
-        legend_item.show_check.toggled.connect(self.toggle_curve_show)
-        self.legend_widget.addItem(legend_item)
+    def add_curve(self, name, curve=None, unit=None, visible=True, range=[0, 1], **kwargs):
+        # legend_item = QTangoStripToolLegendItem(name, unit=unit, color=None, sizes=self.sizes, colors=self.colors)
+        # legend_item.clicked.connect(self.set_curve_focus)
+        # legend_item.show_check.toggled.connect(self.toggle_curve_show)
+        # self.legend_widget.addItem(legend_item)
         curve_new = self.plot_widget.addCurve(name, curve, **kwargs)
         curve_new.sigClicked.connect(self.set_curve_focus)
         if curve is None:
             curve_new.sigPointsClicked.connect(self.set_curve_focus)
         plot_color = self.plot_widget.get_curve_color(name).name()
-        legend_item.update_stylesheet(plot_color)
+        self.legend_widget.add_item(name, range=range, unit=unit, color=plot_color)
+        # legend_item.update_stylesheet(plot_color)
         self.set_curve_visible(name, visible)
         self.set_y_link(name, name)
         logger.debug("Added curve {0} with color {1}".format(name, plot_color))
@@ -233,7 +234,8 @@ class QTangoStripTool(QtWidgets.QFrame):
     def remove_curve(self, name):
         logger.info("Removing curve {0}".format(name))
         self.plot_widget.removeCurve(name)
-        self.legend_widget.removeItem(name)
+        # self.legend_widget.removeItem(name)
+        self.legend_widget.park_item(name)
 
     def set_curve_visible(self, name, visible):
         self.legend_widget.items[name].show_check.setChecked(visible)
@@ -597,7 +599,10 @@ class QTangoStripToolLegendItem(QtWidgets.QFrame):
 class QTangoStripToolLegendWidget(QtWidgets.QWidget):
     def __init__(self, position="bottom", sizes=None, colors=None, parent=None):
         super().__init__(parent=parent)
+        self.sizes = sizes
+        self.colors = colors
         self.items = OrderedDict()
+        self.unused_item_list = list()
         self.item_name_list = list()
         self.legend_gridlayout = QtWidgets.QGridLayout()
         self.inner_layout = QtWidgets.QHBoxLayout()
@@ -626,6 +631,71 @@ class QTangoStripToolLegendWidget(QtWidgets.QWidget):
         self.set_position(self.position)        # The widget is removed from the layout here
         it.setParent(None)
         it.deleteLater()
+
+    def add_item(self, name, range, color, unit):
+        if self.unused_item_list:
+            legend_item = self.unused_item_list.pop(0)  # type: QTangoStripToolLegendItem
+            # legend_item = self.items[name]
+            legend_item.set_name(name)
+            legend_item.set_unit(unit)
+            legend_item.set_range(range)
+            legend_item.update_stylesheet(color)
+            legend_item.setVisible(True)
+        else:
+            legend_item = QTangoStripToolLegendItem(name, unit=unit, color=color, sizes=self.sizes,
+                                                    range=range, colors=self.colors)
+            legend_item.clicked.connect(self.parent().set_curve_focus)
+            legend_item.show_check.toggled.connect(self.parent().toggle_curve_show)
+        self.items[legend_item.name] = legend_item
+        logger.info(self.items.keys())
+        self.item_name_list.append(legend_item.name)
+        self.set_position2(self.position)
+        legend_item.setParent(self)
+
+    def park_item(self, item):
+        logger.debug("Parking item {0}".format(item))
+        if isinstance(item, QTangoStripToolLegendItem):
+            name = item.name
+        else:
+            name = item
+        self.item_name_list.remove(name)
+        it = self.items.pop(name)
+        self.unused_item_list.append(it)
+        it.setVisible(False)
+        self.set_position2(self.position)        # The widget is removed from the layout here
+
+    def set_position2(self, position):
+        self.del_lay()
+        self.position = position
+
+        if position in ["bottom", "top"]:
+            self.max_col = 4
+            lay = QtWidgets.QHBoxLayout()
+            spacer = QtWidgets.QSpacerItem(0, 0, QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)
+            lay.addSpacerItem(spacer)
+        else:
+            self.max_col = 1
+            lay = QtWidgets.QVBoxLayout()
+            spacer = QtWidgets.QSpacerItem(0, 0, QtWidgets.QSizePolicy.Minimum, QtWidgets.QSizePolicy.Expanding)
+            lay.addSpacerItem(spacer)
+        n = len(self.items) - 1
+        cm = n % self.max_col + 1
+        rm = np.maximum(n // self.max_col, 1)
+        grid_lay = QtWidgets.QGridLayout()
+        c = 0
+        r = 0
+
+        for name in self.item_name_list:
+            item = self.items[name]
+            logger.debug("Position {4}, Adding legend item at {0}, {1}, rm {2}, cm {3}, max_col {5}".format(r, c, rm, cm, position, self.max_col))
+            grid_lay.addWidget(item, r, c)
+            c += 1
+            if c % cm == 0:
+                c = 0
+                r += 1
+        lay.addLayout(grid_lay)
+        self.inner_layout = lay
+        self.layout().addLayout(lay)
 
     def get_item(self, item_id) -> QTangoStripToolLegendItem:
         if isinstance(item_id, str):
