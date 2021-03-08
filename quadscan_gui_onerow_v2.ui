@@ -39,7 +39,7 @@
       </size>
      </property>
      <property name="currentIndex">
-      <number>2</number>
+      <number>0</number>
      </property>
      <widget class="QWidget" name="quad_tab">
       <attribute name="title">
@@ -448,7 +448,7 @@
              </property>
              <property name="maximumSize">
               <size>
-               <width>60</width>
+               <width>16777215</width>
                <height>16777215</height>
               </size>
              </property>
