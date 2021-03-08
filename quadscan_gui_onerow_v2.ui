@@ -34,12 +34,12 @@
      </property>
      <property name="maximumSize">
       <size>
-       <width>300</width>
+       <width>600</width>
        <height>16777215</height>
       </size>
      </property>
      <property name="currentIndex">
-      <number>0</number>
+      <number>2</number>
      </property>
      <widget class="QWidget" name="quad_tab">
       <attribute name="title">
@@ -1440,6 +1440,12 @@
              <verstretch>0</verstretch>
             </sizepolicy>
            </property>
+           <property name="maximumSize">
+            <size>
+             <width>300</width>
+             <height>16777215</height>
+            </size>
+           </property>
            <property name="text">
             <string>--- No data loaded ---</string>
            </property>
@@ -2443,7 +2449,7 @@
  </resources>
  <connections/>
  <buttongroups>
-  <buttongroup name="buttonGroup"/>
   <buttongroup name="buttonGroup_2"/>
+  <buttongroup name="buttonGroup"/>
  </buttongroups>
 </ui>

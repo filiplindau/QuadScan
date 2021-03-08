@@ -437,7 +437,7 @@ class RepeatTask(Task):
         self.logger.info("{0} repeating task {1} {2} times.".format(self, self.task, self.repetitions))
         current_rep = 0
         result_list = list()
-        while current_rep < self.repetitions  or self.repetitions == -1:
+        while current_rep < self.repetitions or self.repetitions == -1:
             self.logger.debug("{0}: Starting task".format(self))
             self.task.set_name("{0}_{1}".format(self.base_name, current_rep))
             self.task.start()

@@ -1115,7 +1115,7 @@ class QuadScanGui(QtWidgets.QWidget):
 
             image_task = TangoReadAttributeTask("image", new_screen.liveviewer, self.device_handler,
                                                 name="cam_image_read", callback_list=[TaskCallbackSignal(self.read_image)])
-            rep_task = RepeatTask(image_task, -1, 0.3, name="cam_image_repeat")
+            rep_task = RepeatTask(image_task, -1, delay=1.0, name="cam_image_repeat", timeout=2.0)
             rep_task.add_trigger(cam_seq_task)
             self.screen_tasks.append(rep_task)
             rep_task.start()
