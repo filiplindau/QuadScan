@@ -42,7 +42,7 @@ pq.graphicsItems.GradientEditorItem.Gradients['thermalclip'] = {
               (1, (255, 255, 255, 255))], 'mode': 'rgb'}
 
 
-no_database = True
+no_database = False
 dummy_name_dict = {"mag": "127.0.0.1:10000/i-ms1/mag/qb-01#dbase=no",
                    "crq": "127.0.0.1:10000/i-ms1/mag/qb-01#dbase=no",
                    "screen": "127.0.0.1:10001/i-ms1/dia/scrn-01#dbase=no",

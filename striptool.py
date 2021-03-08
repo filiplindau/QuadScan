@@ -763,6 +763,137 @@ class QTangoStripToolLegendWidget(QtWidgets.QWidget):
         self.layout().addLayout(lay)
 
 
+class QTangoStripToolCurve(QtCore.QObject):
+    """
+    Stores a trend curve. Data values, pyqtgraph curve, viewbox, axis, color, symbols, etc.
+    """
+    def __init__(self, name, parent=None):
+        super().__init__(parent)
+        self.name = name
+        self.vb = None                      # type: pg.ViewBox
+        self.curve = None                   # type: pg.PlotDataItem
+        self.axis = None                    # type: pg.AxisItem
+        self.unselected_pen = None          # type: QtGui.QPen
+        self.selected_pen = None            # type: QtGui.QPen
+        self.unselected_symbol_pen = None   # type: QtGui.QPen
+        self.selected_symbol_pen = None     # type: QtGui.QPen
+        self.unselected_symbol = None
+        self.selected_symbol = None
+        self.unselected_symbol_brush = None # type: QtGui.QBrush
+        self.selected_symbol_brush = None   # type: QtGui.QBrush
+        self.symbol_size = 10
+        self.highlight_symbol_size = 20
+
+        self.x_values = None
+        self.y_values = None
+        self.duration = 600.0
+        self.n_values = 10000
+
+        self.current_data_index = 0
+        self.highlighted_index = None
+
+        self.selected_flag = False
+
+    def setup_data(self):
+        """ Pre-allocate data arrays
+        """
+        self.x_values = -np.ones(self.values_size) * np.inf
+        self.y_values = np.zeros(self.values_size)
+        self.current_data_index = 0
+        logger.debug("Setting up data for curve {0}".format(self.name))
+
+    def set_data(self, x_data, y_data, auto_range=True, **kargs):
+        logger.debug("Setting data for curve {0}".format(self.name))
+        self.setup_data()
+        n = x_data.shape[0]
+        if n == 0:
+            return
+        self.x_values[-n:] = x_data
+        self.y_values[-n:] = y_data
+        # vb.enableAutoRange("y")
+        if auto_range:
+            self.vb.enableAutoRange(pg.ViewBox.XYAxes, True)
+        else:
+            self.vb.enableAutoRange(pg.ViewBox.XYAxes, False)
+        self.curve.setData(x_data, y_data, **kargs)
+        if auto_range:
+            self.vb.autoRange()
+
+    def get_curve_range(self, curve_name):
+        axis_viewrange = self.curve.viewRange()
+        return axis_viewrange
+
+    def set_curve_color(self, color, selected="both"):
+        logger.debug("Set {0} curve color to {1}".format(self.name, color))
+        if selected in ["both", "selected"]:
+            color.setAlphaF(self.selected_pen.color().alphaF())
+            self.selected_pen.setColor(color)
+        if selected in ["both", "unselected"]:
+            color.setAlphaF(self.unselected_pen.color().alphaF())
+            self.unselected_pen.setColor(color)
+
+        if self.selected_flag:
+            self.curve.setPen(self.selected_pen)
+        else:
+            self.curve.setPen(self.unselected_pen)
+
+    def set_symbol_color(self, color, selected="both"):
+        logger.debug("Set {0} symbol color to {1}".format(self.name, color))
+        if selected in ["both", "selected"]:
+            a = self.selected_symbol_pen.color().alphaF()
+            if isinstance(color, list):
+                [c.setAlphaF(a) for c in color]
+                if isinstance(self.selected_symbol_pen, list):
+                    [p.setColor(color[ind]) for ind, p in enumerate(self.selected_symbol_pen)]
+            else:
+                color.setAlphaF(a)
+                self.selected_symbol_pen.setColor(color)
+                self.selected_symbol_brush.setColor(color)
+        if selected in ["both", "unselected"]:
+            color.setAlphaF(self.unselected_pen.color().alphaF())
+            self.unselected_symbol_pen.setColor(color)
+            self.unselected_symbol_brush.setColor(color)
+
+        if self.selected_flag:
+            self.curve.setSymbolPen(self.selected_symbol_pen)
+            self.curve.setSymbolBrush(self.selected_symbol_brush)
+        else:
+            self.curve.setSymbolPen(self.unselected_symbol_pen)
+            self.curve.setSymbolBrush(self.unselected_symbol_brush)
+
+    def set_highlight(self, point_index=None):
+        """
+        Highlight single point by changing the symbol
+
+        :param point_index: Data point index or None if no highlight
+        :return:
+        """
+        pdi = self.curve
+        spi = pdi.scatter
+        x = spi.data["size"]
+        try:
+            x[self.highlighted_index] = self.symbol_size
+            if point_index is not None:
+                x[point_index] = self.highlight_symbol_size
+        except IndexError as e:
+            return
+        pdi.opts['symbolSize'] = x
+        pdi.updateItems()
+        self.highlighted_index = point_index
+
+    def auto_range(self):
+        """
+        Auto range viewbox
+
+        :return:
+        """
+        self.vb.autoRange(padding=0.05)
+
+    def set_name(self, name):
+        self.name = name
+        self.curve.name = name
+
+
 class QTangoStripToolPlotWidget(pg.PlotWidget):
     """ Base class for a trend widget.
 
