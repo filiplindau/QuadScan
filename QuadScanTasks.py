@@ -103,9 +103,9 @@ class TangoReadAttributeTask(Task):
                 self.cancel()
                 return
             except pt.DevFailed as e:
-                self.logger.exception("{0}: Tango error reading {1} on {2}: ".format(self,
-                                                                                     self.attribute_name,
-                                                                                     self.device_name))
+                self.logger.exception("{0}: Try {1}, Tango error reading {2} on {3}: {4}".format(self, retries + 1,
+                                                                                                 self.attribute_name,
+                                                                                                 self.device_name, e))
                 attr = None
                 self.result = e
                 if not self.ignore_tango_error:
@@ -113,6 +113,7 @@ class TangoReadAttributeTask(Task):
                     return
 
             retries += 1
+            time.sleep(0.5)
         self.result = attr
 
 
