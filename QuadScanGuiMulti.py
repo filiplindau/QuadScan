@@ -1097,7 +1097,11 @@ class QuadScanGui(QtWidgets.QWidget):
                 t.cancel()
 
             task_list = list()
-            task_list.append(TangoReadAttributeTask("roi", new_screen.liveviewer, self.device_handler,
+            if no_database:
+                cam = new_screen.liveviewer
+            else:
+                cam = new_screen.beamviewer
+            task_list.append(TangoReadAttributeTask("roi", new_screen.beamviewer, self.device_handler,
                                                     name="cam_roi_read", callback_list=[TaskCallbackSignal(self.read_image)]))
             cam_cal_task = BagOfTasksTask([TangoReadAttributeTask("measurementruler", new_screen.beamviewer,
                                                                   self.device_handler, name="cam_cal_ruler"),
@@ -1323,7 +1327,10 @@ class QuadScanGui(QtWidgets.QWidget):
 
     def update_camera_roi(self):
         root.info("Updating ROI for camera image")
-        cam = self.current_screen.liveviewer
+        if no_database:
+            cam = self.current_screen.liveviewer
+        else:
+            cam = self.current_screen.beamviewer
         pos = self.ui.camera_widget.roi.pos()
         size = self.ui.camera_widget.roi.size()
         roi = [int(pos[0]), int(pos[0] + size[0]), int(pos[1]), int(pos[1] + size[1])]

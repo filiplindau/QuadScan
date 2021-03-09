@@ -71,7 +71,7 @@
           </size>
          </property>
          <property name="currentIndex">
-          <number>2</number>
+          <number>1</number>
          </property>
          <widget class="QWidget" name="quad_tab">
           <attribute name="title">
@@ -80,20 +80,6 @@
           <layout class="QHBoxLayout" name="horizontalLayout_5">
            <item>
             <layout class="QGridLayout" name="gridLayout">
-             <item row="15" column="0">
-              <widget class="QLabel" name="label_7">
-               <property name="text">
-                <string>Camera</string>
-               </property>
-              </widget>
-             </item>
-             <item row="11" column="0">
-              <widget class="QLabel" name="quad4_label">
-               <property name="text">
-                <string>Quad 4</string>
-               </property>
-              </widget>
-             </item>
              <item row="2" column="0">
               <widget class="QLabel" name="label_3">
                <property name="text">
@@ -144,6 +130,13 @@
                </item>
               </layout>
              </item>
+             <item row="15" column="0">
+              <widget class="QLabel" name="label_7">
+               <property name="text">
+                <string>Camera</string>
+               </property>
+              </widget>
+             </item>
              <item row="6" column="1">
               <widget class="QDoubleSpinBox" name="electron_energy_spinbox">
                <property name="suffix">
@@ -159,6 +152,13 @@
              </item>
              <item row="1" column="1">
               <widget class="QComboBox" name="quad_combobox"/>
+             </item>
+             <item row="0" column="0">
+              <widget class="QLabel" name="label">
+               <property name="text">
+                <string>Section</string>
+               </property>
+              </widget>
              </item>
              <item row="12" column="1">
               <layout class="QHBoxLayout" name="horizontalLayout_23">
@@ -190,13 +190,6 @@
                </item>
               </layout>
              </item>
-             <item row="0" column="0">
-              <widget class="QLabel" name="label">
-               <property name="text">
-                <string>Section</string>
-               </property>
-              </widget>
-             </item>
              <item row="5" column="0">
               <widget class="QLabel" name="label_5">
                <property name="text">
@@ -207,49 +200,78 @@
              <item row="2" column="1">
               <widget class="QComboBox" name="screen_combobox"/>
              </item>
-             <item row="3" column="0">
-              <spacer name="verticalSpacer">
+             <item row="11" column="0">
+              <widget class="QLabel" name="quad4_label">
+               <property name="text">
+                <string>Quad 4</string>
+               </property>
+              </widget>
+             </item>
+             <item row="4" column="0">
+              <widget class="QLabel" name="label_4">
+               <property name="text">
+                <string>Quad length</string>
+               </property>
+              </widget>
+             </item>
+             <item row="8" column="1">
+              <layout class="QHBoxLayout" name="horizontalLayout_19">
+               <item>
+                <widget class="QSlider" name="quad1_slider">
+                 <property name="enabled">
+                  <bool>false</bool>
+                 </property>
+                 <property name="value">
+                  <number>50</number>
+                 </property>
+                 <property name="orientation">
+                  <enum>Qt::Horizontal</enum>
+                 </property>
+                </widget>
+               </item>
+               <item>
+                <widget class="QDoubleSpinBox" name="quad1_spinbox">
+                 <property name="enabled">
+                  <bool>false</bool>
+                 </property>
+                 <property name="maximumSize">
+                  <size>
+                   <width>16777215</width>
+                   <height>16777215</height>
+                  </size>
+                 </property>
+                 <property name="minimum">
+                  <double>-99.000000000000000</double>
+                 </property>
+                 <property name="singleStep">
+                  <double>0.050000000000000</double>
+                 </property>
+                </widget>
+               </item>
+              </layout>
+             </item>
+             <item row="13" column="0">
+              <widget class="QLabel" name="quad6_label">
+               <property name="text">
+                <string>Quad 6</string>
+               </property>
+              </widget>
+             </item>
+             <item row="7" column="0">
+              <spacer name="verticalSpacer_8">
                <property name="orientation">
                 <enum>Qt::Vertical</enum>
                </property>
                <property name="sizeType">
-                <enum>QSizePolicy::Preferred</enum>
+                <enum>QSizePolicy::Fixed</enum>
                </property>
                <property name="sizeHint" stdset="0">
                 <size>
                  <width>20</width>
-                 <height>20</height>
+                 <height>10</height>
                 </size>
                </property>
               </spacer>
-             </item>
-             <item row="5" column="1">
-              <widget class="QLabel" name="quad_screen_dist_label">
-               <property name="text">
-                <string>-.--</string>
-               </property>
-              </widget>
-             </item>
-             <item row="1" column="0">
-              <widget class="QLabel" name="label_2">
-               <property name="text">
-                <string>Quad</string>
-               </property>
-              </widget>
-             </item>
-             <item row="10" column="0">
-              <widget class="QLabel" name="quad3_label">
-               <property name="text">
-                <string>Quad 3</string>
-               </property>
-              </widget>
-             </item>
-             <item row="12" column="0">
-              <widget class="QLabel" name="quad5_label">
-               <property name="text">
-                <string>Quad 5</string>
-               </property>
-              </widget>
              </item>
              <item row="15" column="1">
               <layout class="QHBoxLayout" name="horizontalLayout_3">
@@ -306,61 +328,12 @@
                </item>
               </layout>
              </item>
-             <item row="7" column="0">
-              <spacer name="verticalSpacer_8">
-               <property name="orientation">
-                <enum>Qt::Vertical</enum>
-               </property>
-               <property name="sizeType">
-                <enum>QSizePolicy::Fixed</enum>
-               </property>
-               <property name="sizeHint" stdset="0">
-                <size>
-                 <width>20</width>
-                 <height>10</height>
-                </size>
-               </property>
-              </spacer>
-             </item>
-             <item row="6" column="0">
-              <widget class="QLabel" name="label_6">
+             <item row="10" column="0">
+              <widget class="QLabel" name="quad3_label">
                <property name="text">
-                <string>Electron energy</string>
+                <string>Quad 3</string>
                </property>
               </widget>
-             </item>
-             <item row="11" column="1">
-              <layout class="QHBoxLayout" name="horizontalLayout_22">
-               <item>
-                <widget class="QSlider" name="quad4_slider">
-                 <property name="enabled">
-                  <bool>false</bool>
-                 </property>
-                 <property name="value">
-                  <number>50</number>
-                 </property>
-                 <property name="orientation">
-                  <enum>Qt::Horizontal</enum>
-                 </property>
-                </widget>
-               </item>
-               <item>
-                <widget class="QDoubleSpinBox" name="quad4_spinbox">
-                 <property name="enabled">
-                  <bool>false</bool>
-                 </property>
-                 <property name="minimum">
-                  <double>-99.000000000000000</double>
-                 </property>
-                 <property name="singleStep">
-                  <double>0.050000000000000</double>
-                 </property>
-                </widget>
-               </item>
-              </layout>
-             </item>
-             <item row="0" column="1">
-              <widget class="QComboBox" name="section_combobox"/>
              </item>
              <item row="4" column="1">
               <widget class="QLabel" name="quad_length_label">
@@ -382,10 +355,10 @@
                </property>
               </spacer>
              </item>
-             <item row="10" column="1">
-              <layout class="QHBoxLayout" name="horizontalLayout_21">
+             <item row="13" column="1">
+              <layout class="QHBoxLayout" name="horizontalLayout_24">
                <item>
-                <widget class="QSlider" name="quad3_slider">
+                <widget class="QSlider" name="quad6_slider">
                  <property name="enabled">
                   <bool>false</bool>
                  </property>
@@ -398,7 +371,7 @@
                 </widget>
                </item>
                <item>
-                <widget class="QDoubleSpinBox" name="quad3_spinbox">
+                <widget class="QDoubleSpinBox" name="quad6_spinbox">
                  <property name="enabled">
                   <bool>false</bool>
                  </property>
@@ -412,10 +385,34 @@
                </item>
               </layout>
              </item>
-             <item row="9" column="0">
-              <widget class="QLabel" name="quad2_label">
+             <item row="0" column="1">
+              <widget class="QComboBox" name="section_combobox"/>
+             </item>
+             <item row="6" column="0">
+              <widget class="QLabel" name="label_6">
                <property name="text">
-                <string>Quad 2</string>
+                <string>Electron energy</string>
+               </property>
+              </widget>
+             </item>
+             <item row="16" column="0">
+              <widget class="QLabel" name="label_8">
+               <property name="text">
+                <string>Screen</string>
+               </property>
+              </widget>
+             </item>
+             <item row="12" column="0">
+              <widget class="QLabel" name="quad5_label">
+               <property name="text">
+                <string>Quad 5</string>
+               </property>
+              </widget>
+             </item>
+             <item row="1" column="0">
+              <widget class="QLabel" name="label_2">
+               <property name="text">
+                <string>Quad</string>
                </property>
               </widget>
              </item>
@@ -449,12 +446,95 @@
                </item>
               </layout>
              </item>
-             <item row="16" column="0">
-              <widget class="QLabel" name="label_8">
+             <item row="3" column="0">
+              <spacer name="verticalSpacer">
+               <property name="orientation">
+                <enum>Qt::Vertical</enum>
+               </property>
+               <property name="sizeType">
+                <enum>QSizePolicy::Preferred</enum>
+               </property>
+               <property name="sizeHint" stdset="0">
+                <size>
+                 <width>20</width>
+                 <height>20</height>
+                </size>
+               </property>
+              </spacer>
+             </item>
+             <item row="5" column="1">
+              <widget class="QLabel" name="quad_screen_dist_label">
                <property name="text">
-                <string>Screen</string>
+                <string>-.--</string>
                </property>
               </widget>
+             </item>
+             <item row="11" column="1">
+              <layout class="QHBoxLayout" name="horizontalLayout_22">
+               <item>
+                <widget class="QSlider" name="quad4_slider">
+                 <property name="enabled">
+                  <bool>false</bool>
+                 </property>
+                 <property name="value">
+                  <number>50</number>
+                 </property>
+                 <property name="orientation">
+                  <enum>Qt::Horizontal</enum>
+                 </property>
+                </widget>
+               </item>
+               <item>
+                <widget class="QDoubleSpinBox" name="quad4_spinbox">
+                 <property name="enabled">
+                  <bool>false</bool>
+                 </property>
+                 <property name="minimum">
+                  <double>-99.000000000000000</double>
+                 </property>
+                 <property name="singleStep">
+                  <double>0.050000000000000</double>
+                 </property>
+                </widget>
+               </item>
+              </layout>
+             </item>
+             <item row="9" column="0">
+              <widget class="QLabel" name="quad2_label">
+               <property name="text">
+                <string>Quad 2</string>
+               </property>
+              </widget>
+             </item>
+             <item row="10" column="1">
+              <layout class="QHBoxLayout" name="horizontalLayout_21">
+               <item>
+                <widget class="QSlider" name="quad3_slider">
+                 <property name="enabled">
+                  <bool>false</bool>
+                 </property>
+                 <property name="value">
+                  <number>50</number>
+                 </property>
+                 <property name="orientation">
+                  <enum>Qt::Horizontal</enum>
+                 </property>
+                </widget>
+               </item>
+               <item>
+                <widget class="QDoubleSpinBox" name="quad3_spinbox">
+                 <property name="enabled">
+                  <bool>false</bool>
+                 </property>
+                 <property name="minimum">
+                  <double>-99.000000000000000</double>
+                 </property>
+                 <property name="singleStep">
+                  <double>0.050000000000000</double>
+                 </property>
+                </widget>
+               </item>
+              </layout>
              </item>
              <item row="8" column="0">
               <widget class="QLabel" name="quad1_label">
@@ -463,85 +543,15 @@
                </property>
               </widget>
              </item>
-             <item row="4" column="0">
-              <widget class="QLabel" name="label_4">
+             <item row="17" column="0">
+              <widget class="QLabel" name="label_42">
                <property name="text">
-                <string>Quad length</string>
+                <string>Camera rate</string>
                </property>
               </widget>
              </item>
-             <item row="8" column="1">
-              <layout class="QHBoxLayout" name="horizontalLayout_19">
-               <item>
-                <widget class="QSlider" name="quad1_slider">
-                 <property name="enabled">
-                  <bool>false</bool>
-                 </property>
-                 <property name="value">
-                  <number>50</number>
-                 </property>
-                 <property name="orientation">
-                  <enum>Qt::Horizontal</enum>
-                 </property>
-                </widget>
-               </item>
-               <item>
-                <widget class="QDoubleSpinBox" name="quad1_spinbox">
-                 <property name="enabled">
-                  <bool>false</bool>
-                 </property>
-                 <property name="maximumSize">
-                  <size>
-                   <width>16777215</width>
-                   <height>16777215</height>
-                  </size>
-                 </property>
-                 <property name="minimum">
-                  <double>-99.000000000000000</double>
-                 </property>
-                 <property name="singleStep">
-                  <double>0.050000000000000</double>
-                 </property>
-                </widget>
-               </item>
-              </layout>
-             </item>
-             <item row="13" column="0">
-              <widget class="QLabel" name="quad6_label">
-               <property name="text">
-                <string>Quad 6</string>
-               </property>
-              </widget>
-             </item>
-             <item row="13" column="1">
-              <layout class="QHBoxLayout" name="horizontalLayout_24">
-               <item>
-                <widget class="QSlider" name="quad6_slider">
-                 <property name="enabled">
-                  <bool>false</bool>
-                 </property>
-                 <property name="value">
-                  <number>50</number>
-                 </property>
-                 <property name="orientation">
-                  <enum>Qt::Horizontal</enum>
-                 </property>
-                </widget>
-               </item>
-               <item>
-                <widget class="QDoubleSpinBox" name="quad6_spinbox">
-                 <property name="enabled">
-                  <bool>false</bool>
-                 </property>
-                 <property name="minimum">
-                  <double>-99.000000000000000</double>
-                 </property>
-                 <property name="singleStep">
-                  <double>0.050000000000000</double>
-                 </property>
-                </widget>
-               </item>
-              </layout>
+             <item row="17" column="1">
+              <widget class="QDoubleSpinBox" name="camera_framerate_spinbox"/>
              </item>
             </layout>
            </item>
@@ -1038,7 +1048,7 @@
                </property>
                <property name="maximumSize">
                 <size>
-                 <width>130</width>
+                 <width>500</width>
                  <height>16777215</height>
                 </size>
                </property>
@@ -1057,7 +1067,7 @@
                </property>
                <property name="maximumSize">
                 <size>
-                 <width>130</width>
+                 <width>500</width>
                  <height>16777215</height>
                 </size>
                </property>
@@ -1097,7 +1107,7 @@
                </property>
                <property name="maximumSize">
                 <size>
-                 <width>130</width>
+                 <width>500</width>
                  <height>16777215</height>
                 </size>
                </property>
@@ -1116,7 +1126,7 @@
                </property>
                <property name="maximumSize">
                 <size>
-                 <width>130</width>
+                 <width>500</width>
                  <height>16777215</height>
                 </size>
                </property>
@@ -1135,7 +1145,7 @@
                </property>
                <property name="maximumSize">
                 <size>
-                 <width>130</width>
+                 <width>500</width>
                  <height>16777215</height>
                 </size>
                </property>
@@ -1222,7 +1232,7 @@
                </property>
                <property name="maximumSize">
                 <size>
-                 <width>130</width>
+                 <width>500</width>
                  <height>16777215</height>
                 </size>
                </property>
@@ -1262,7 +1272,7 @@
                </property>
                <property name="maximumSize">
                 <size>
-                 <width>130</width>
+                 <width>500</width>
                  <height>16777215</height>
                 </size>
                </property>
@@ -1304,7 +1314,7 @@
                </property>
                <property name="maximumSize">
                 <size>
-                 <width>130</width>
+                 <width>500</width>
                  <height>16777215</height>
                 </size>
                </property>
@@ -1408,7 +1418,7 @@
                </property>
                <property name="maximumSize">
                 <size>
-                 <width>130</width>
+                 <width>500</width>
                  <height>16777215</height>
                 </size>
                </property>
@@ -2371,7 +2381,7 @@
               </property>
               <property name="maximumSize">
                <size>
-                <width>400</width>
+                <width>1000</width>
                 <height>16777215</height>
                </size>
               </property>
@@ -2423,7 +2433,7 @@
               </property>
               <property name="maximumSize">
                <size>
-                <width>400</width>
+                <width>1000</width>
                 <height>16777215</height>
                </size>
               </property>
