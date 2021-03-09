@@ -193,7 +193,7 @@ class Ui_QuadScanDialog(object):
         self.horizontalLayout_19.addWidget(self.quad1_slider)
         self.quad1_spinbox = QtWidgets.QDoubleSpinBox(self.quad_tab)
         self.quad1_spinbox.setEnabled(False)
-        self.quad1_spinbox.setMaximumSize(QtCore.QSize(60, 16777215))
+        self.quad1_spinbox.setMaximumSize(QtCore.QSize(16777215, 16777215))
         self.quad1_spinbox.setMinimum(-99.0)
         self.quad1_spinbox.setSingleStep(0.05)
         self.quad1_spinbox.setObjectName("quad1_spinbox")
@@ -1040,7 +1040,7 @@ class Ui_QuadScanDialog(object):
         self.horizontalLayout_16.addLayout(self.gridLayout_4)
 
         self.retranslateUi(QuadScanDialog)
-        self.tabWidget.setCurrentIndex(2)
+        self.tabWidget.setCurrentIndex(0)
         QtCore.QMetaObject.connectSlotsByName(QuadScanDialog)
         QuadScanDialog.setTabOrder(self.section_combobox, self.quad_combobox)
         QuadScanDialog.setTabOrder(self.quad_combobox, self.screen_combobox)

@@ -2451,7 +2451,11 @@ class QuadScanGui(QtWidgets.QWidget):
         elif "e_read" in name:
             e = task.get_result(wait=False)
             root.info("Energy read as: {0}".format(e.value))
-            self.ui.electron_energy_spinbox.setValue(e.value)
+            if e.value > 1e5:
+                energy = e.value * 1e-6
+            else:
+                energy = e.value
+            self.ui.electron_energy_spinbox.setValue(energy)
 
     def read_image(self, task):
         """
@@ -2493,9 +2497,12 @@ class QuadScanGui(QtWidgets.QWidget):
             if result.value != old_rate:
                 # Update label and read image task rate if framerate is changed:
                 self.ui.reprate_label.setText("{0:.1f} Hz".format(result.value))
-                for t in self.screen_tasks:
-                    if t.get_name() == "cam_image_repeat":
-                        t.delay = 1.0 / result.value
+
+                # Updating read frame rate can be a problem if the reported rate is off
+                # (it was 150 Hz at some point). I'm removing this for now.
+                # for t in self.screen_tasks:
+                #     if t.get_name() == "cam_image_repeat":
+                #         t.delay = 1.0 / result.value
         elif "screen_in_read" in name:
             if result.value:
                 self.ui.screen_state_label.setText("{0} IN".format(str(self.ui.screen_combobox.currentText())))
