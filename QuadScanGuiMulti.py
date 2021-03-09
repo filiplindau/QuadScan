@@ -12,7 +12,7 @@ import sys
 import glob
 import numpy as np
 import itertools
-from quadscan_gui_onerow_v2 import Ui_QuadScanDialog
+from quadscan_gui_onerow_v3 import Ui_QuadScanDialog
 from scandata_file_dialog import OpenScanFileDialog
 from collections import OrderedDict
 import threading

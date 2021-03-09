@@ -438,7 +438,7 @@ class RepeatTask(Task):
         current_rep = 0
         result_list = list()
         while current_rep < self.repetitions or self.repetitions == -1:
-            self.logger.info("{0}: Starting task {1}, {2}".format(self, self.base_name, current_rep))
+            self.logger.debug("{0}: Starting task {1}, {2}".format(self, self.base_name, current_rep))
             self.task.set_name("{0}_{1}".format(self.base_name, current_rep))
             self.task.start()
             res = self.task.get_result(wait=True, timeout=self.timeout)
@@ -458,7 +458,7 @@ class RepeatTask(Task):
             if self.repetitions >= 0:
                 # Only store intermediate results in a list if there is not an infinite number of repetitions.
                 result_list.append(res)
-            self.logger.info("{0} sleeping {1} s".format(self, self.delay))
+            self.logger.debug("{0} sleeping {1} s".format(self, self.delay))
             time.sleep(self.delay)
             current_rep += 1
         self.result = result_list
