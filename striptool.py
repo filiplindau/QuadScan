@@ -775,13 +775,16 @@ class QTangoStripToolCurve(QtCore.QObject):
         self.axis = None                    # type: pg.AxisItem
         self.unselected_pen = None          # type: QtGui.QPen
         self.selected_pen = None            # type: QtGui.QPen
-        self.unselected_symbol_pen = None   # type: QtGui.QPen
-        self.selected_symbol_pen = None     # type: QtGui.QPen
-        self.unselected_symbol = None
-        self.selected_symbol = None
-        self.unselected_symbol_brush = None # type: QtGui.QBrush
-        self.selected_symbol_brush = None   # type: QtGui.QBrush
+        self.unselected_symbol_pen = None   # type: List[QtGui.QPen]
+        self.selected_symbol_pen = None     # type: List[QtGui.QPen]
+        self.unselected_symbol = None       # type: List[str]
+        self.selected_symbol = None         # type: List[str]
+        self.unselected_symbol_brush = None # type: List[QtGui.QBrush]
+        self.selected_symbol_brush = None   # type: List[QtGui.QBrush]
+        self.symbol = "o"
+        self.alt_symbol = "s"
         self.symbol_size = 10
+        self.alt_symbol_size = 10
         self.highlight_symbol_size = 20
 
         self.x_values = None
@@ -861,15 +864,15 @@ class QTangoStripToolCurve(QtCore.QObject):
             self.curve.setSymbolPen(self.unselected_symbol_pen)
             self.curve.setSymbolBrush(self.unselected_symbol_brush)
 
-    def set_highlight(self, point_index=None):
+    def set_highlight_index(self, point_index=None):
         """
         Highlight single point by changing the symbol
 
         :param point_index: Data point index or None if no highlight
         :return:
         """
-        pdi = self.curve
-        spi = pdi.scatter
+        pdi = self.curve            # type: pg.PlotDataItem
+        spi = pdi.scatter           # type: pg.ScatterPlotItem
         x = spi.data["size"]
         try:
             x[self.highlighted_index] = self.symbol_size
@@ -880,6 +883,9 @@ class QTangoStripToolCurve(QtCore.QObject):
         pdi.opts['symbolSize'] = x
         pdi.updateItems()
         self.highlighted_index = point_index
+
+    def update_symbols(self):
+        pass
 
     def auto_range(self):
         """
