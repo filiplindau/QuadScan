@@ -399,7 +399,7 @@ class CallableTask(Task):
         self.call_args = call_args
         self.call_kwargs = call_kwargs
 
-        self.logger.setLevel(logging.WARN)
+        self.logger.setLevel(logging.INFO)
 
     def action(self):
         self.logger.info("{0} calling {1}. ".format(self, self.callable))

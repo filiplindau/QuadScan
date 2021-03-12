@@ -2388,12 +2388,13 @@ class DeviceHandler(object):
         self.logger.setLevel(logging.INFO)
 
     def get_device(self, device_name):
-        self.logger.debug("{0} Returning device {1}".format(self, device_name))
+        dn = device_name.lower()
+        self.logger.debug("{0} Returning device {1}".format(self, dn))
         try:
-            dev = self.devices[device_name]
+            dev = self.devices[dn]
         except KeyError:
             # Maybe this should just raise an exception instead of auto-adding:
-            task = self.add_device(device_name)
+            task = self.add_device(dn)
             dev = task.get_result(wait=True, timeout=self.timeout)
             if task.is_cancelled():
                 raise pt.DevFailed(dev)
@@ -2407,25 +2408,26 @@ class DeviceHandler(object):
         :param device_name: Tango name of device
         :return: opened device proxy
         """
-        self.logger.info("{0} Adding device {1} to device handler".format(self, device_name))
-        if device_name in self.devices:
+        dn = device_name.lower()
+        self.logger.info("{0} Adding device {1} to device handler".format(self, dn))
+        if dn in self.devices:
             self.logger.debug("Device already in dict. No need")
             task = Task(name="DEV_DONE")
             task.start()
             task.get_result(wait=True)
-            task.result = self.devices[device_name]
+            task.result = self.devices[dn]
             return task
         if self.tango_host is not None:
-            full_dev_name = "{0}/{1}".format(self.tango_host, device_name)
+            full_dev_name = "{0}/{1}".format(self.tango_host, dn)
         else:
-            full_dev_name = device_name
+            full_dev_name = dn
 
         # Create task that connects to device, then trigger another task that adds it to device dict:
-        task = TangoDeviceConnectTask(full_dev_name, name="CONNECT_{0}".format(device_name))
+        task = TangoDeviceConnectTask(full_dev_name, name="CONNECT_{0}".format(dn))
         task.start()
 
-        task_call = CallableTask(self._dev_connect_done, (device_name, task),
-                                 name="ADD_{0}".format(device_name))
+        task_call = CallableTask(self._dev_connect_done, (dn, task),
+                                 name="ADD_{0}".format(dn), timeout=self.timeout)
         task_call.add_trigger(task)
         task_call.start()
 
@@ -2441,7 +2443,7 @@ class DeviceHandler(object):
 
     def _dev_connect_done(self, device_name, task):
         dev = task.get_result(wait=True, timeout=self.timeout)
-        self.logger.info("{0} {1} Device connection completed. Returned {1}".format(self, device_name, dev))
+        self.logger.info("{0} {1} Device connection completed. Returned {2}".format(self, device_name, dev))
         self.devices[device_name] = dev
         return dev
 

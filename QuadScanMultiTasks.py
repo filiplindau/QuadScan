@@ -55,12 +55,13 @@ logger.setLevel(logging.INFO)
 
 class TangoMultiQuadScanTask(Task):
     def __init__(self, scan_param, device_handler, section_devices, name=None, timeout=None, trigger_dict=dict(), callback_list=list(),
-                 read_callback=None):
+                 read_callback=None, use_tango_database=False):
         # type: (ScanParamMulti) -> None
         Task.__init__(self, name, timeout=timeout, trigger_dict=trigger_dict, callback_list=callback_list)
 
         self.logger.setLevel(logging.INFO)
         self.scan_param = scan_param
+        self.use_tango_database = use_tango_database
         self.acc_params = None
         self.device_handler = device_handler            # Device management
         self.section_devices = section_devices          # Dict cointaining structure for each section.
@@ -201,12 +202,16 @@ class TangoMultiQuadScanTask(Task):
         :return:
         """
         sect_quad_list = self.section_devices.sect_quad_dict[self.scan_param.section]
-        # self.logger.debug("Section {0} devices:\n{1}".format(self.scan_param.section, sect_quad_list))
+        self.logger.info("Section {0} devices:\n{1}".format(self.scan_param.section, sect_quad_list))
         self.magnet_names = [sect_quad.name for sect_quad in sect_quad_list]
-        self.crq_devices = [self.device_handler.get_device(sect_quad.crq) for sect_quad in sect_quad_list]
-        self.beamenergy = self.crq_devices[0].energy
+#        self.crq_devices = [self.device_handler.get_device(sect_quad.crq) for sect_quad in sect_quad_list]
+        self.crq_devices = [sect_quad.crq for sect_quad in sect_quad_list]
+        self.beamenergy = self.device_handler.get_device(self.crq_devices[0]).energy
+        if self.use_tango_database:
+            self.beamenergy = self.beamenergy * 1e-6
         self.logger.info("\n\n++++++++++++++++++++++++++++++++++\n"
                          "Found beam energy {0}\n\n".format(self.beamenergy))
+        self.logger.info("crq devices: {0}".format(self.crq_devices))
 
         sect_screen_list = self.section_devices.sect_screen_dict[self.scan_param.section]
         camera_name = None
@@ -222,12 +227,17 @@ class TangoMultiQuadScanTask(Task):
         self.camera_name = camera_name
         self.logger.info("Found screen {0}".format(self.camera_name))
 
-        self.camera_device = self.device_handler.get_device(sect_screen.liveviewer)
+#        self.camera_device = self.device_handler.get_device(sect_screen.liveviewer)
+        self.camera_device = sect_screen.liveviewer
         beam_device = self.device_handler.get_device(sect_screen.beamviewer)
-        pos = beam_device.position
+        if self.use_tango_database:
+            pos = float(beam_device.get_property("__si")["__si"][0])
+            roi = json.loads(beam_device.roi)
+        else:
+            pos = beam_device.position
+            roi = beam_device.roi
         self.logger.info("Screen ROI: {0}".format(beam_device.roi))
         self.logger.info("Param ROI center: {0}, ROI dim: {1}".format(self.scan_param.roi_center, self.scan_param.roi_dim))
-        roi = beam_device.roi
         rc = self.scan_param.roi_center
         rd = self.scan_param.roi_dim
         roi = [rc[0] - rd[0] / 2, rc[1] - rd[1] / 2, rd[0], rd[1]]
@@ -377,8 +387,8 @@ class TangoMultiQuadScanTask(Task):
                                                          interval=self.scan_param.scan_pos_check_interval,
                                                          name="monitor_pos",
                                                          timeout=self.timeout)
-            step_sequence_task = SequenceTask([write_pos_task, monitor_pos_task], name="step_seq")
-            write_task_list.append(step_sequence_task)
+            mag_step_sequence_task = SequenceTask([write_pos_task, monitor_pos_task], name="step_seq")
+            write_task_list.append(mag_step_sequence_task)
         write_bag_task = BagOfTasksTask(write_task_list, name="write_bag", timeout=self.timeout)
 
         # Should wait for a new image here instead of fixed delay
@@ -391,10 +401,15 @@ class TangoMultiQuadScanTask(Task):
         step_sequence_task = SequenceTask([write_bag_task, delay_task, rep_task], name="step_seq")
         step_sequence_task.start()
         res = step_sequence_task.get_result(wait=True, timeout=self.timeout)
+        
+        self.logger.info("Step sequence result:\n"
+         "Is done: {0}\nIs cancelled: {1}\nResult: {2}".format(step_sequence_task.is_done(), step_sequence_task.is_cancelled(), res))
 
         k_current = [res.get_result(wait=False)[1].value for res in write_task_list]
         # How to deal with multiple images?
         image = res[2][0].value
+        if image.dtype not in [np.uint8, np.float32, np.float64]:
+            image = np.float32(image)
 
         sigma_x, sigma_y, image_p, bkg = self.process_image(image, self.scan_param.charge_ratio)
         line_x = image_p.sum(0)

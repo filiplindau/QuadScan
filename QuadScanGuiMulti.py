@@ -10,6 +10,7 @@ from PyQt5 import QtGui, QtCore, QtWidgets
 import pyqtgraph as pq
 import sys
 import glob
+import json
 import numpy as np
 import itertools
 from quadscan_gui_onerow_v3 import Ui_QuadScanDialog
@@ -1333,7 +1334,7 @@ class QuadScanGui(QtWidgets.QWidget):
             cam = self.current_screen.beamviewer
         pos = self.ui.camera_widget.roi.pos()
         size = self.ui.camera_widget.roi.size()
-        roi = [int(pos[0]), int(pos[0] + size[0]), int(pos[1]), int(pos[1] + size[1])]
+        roi = str([int(pos[0]), int(pos[0] + size[0]), int(pos[1]), int(pos[1] + size[1])])
 
         task = TangoWriteAttributeTask("roi", cam, self.device_handler, roi, "write_cam_roi")
         task.start()
@@ -1811,6 +1812,7 @@ class QuadScanGui(QtWidgets.QWidget):
                                    measure_attr_name_list=["image"],
                                    measure_device_list=[self.current_screen.liveviewer],
                                    measure_number=self.ui.num_images_spinbox.value(),
+#                                   measure_interval=1.0)
                                    measure_interval=1.0 / self.ui.reprate_spinbox.value())
             # callback_list=[self.scan_callback] is called for each completed step.
             # read_callback=self.scan_image_callback is called for every measurement (image taken)
@@ -1851,18 +1853,19 @@ class QuadScanGui(QtWidgets.QWidget):
                                     background_level=self.ui.p_threshold_spinbox.value(),
                                     guess_alpha=0.0, guess_beta=10.0, guess_eps_n=1e-6,
                                     initial_step_ab=0.5,
-                                    n_steps=self.ui.num_k_spinbox.value(), scan_pos_tol=0.01, scan_pos_check_interval=0.2,
+                                    n_steps=self.ui.num_k_spinbox.value(), scan_pos_tol=0.03, scan_pos_check_interval=0.2,
                                     screen_name=self.ui.screen_combobox.currentText(),
                                     roi_center=roi_center, roi_dim=roi_dim,
                                     measure_number=self.ui.num_images_spinbox.value(),
                                     measure_interval=1.0 / self.ui.reprate_spinbox.value(),
+#                                    measure_interval=1.0,
                                     base_path=self.ui.save_path_linedit.text(), save=True)
         cc1 = TaskCallbackSignal()
         cc1.connect(self.multiquad_scan_callback)
         cc2 = TaskCallbackSignal()
         cc2.connect(self.multiquad_scan_image_callback)
         self.scan_task = TangoMultiQuadScanTask(scan_param, self.device_handler, self.section_devices, name="MultiQuadScan",
-                                                callback_list=[cc1], read_callback=cc2, timeout=5.0)
+                                                callback_list=[cc1], read_callback=cc2, timeout=100.0, use_tango_database=(not no_database))
         self.update_ab_signal.connect(self.plot_ab_data)
         self.scan_task.start()
 
@@ -2536,6 +2539,8 @@ class QuadScanGui(QtWidgets.QWidget):
             self.camera_cal = [cal, cal]
         elif "cam_roi_read" in name:
             roi = result.value
+            if isinstance(roi, str):
+                roi = json.loads(roi)
             root.debug("Camera ROI: {0}".format(roi))
             self.ui.camera_widget.roi.setPos([roi[0], roi[2]])
             self.ui.camera_widget.roi.setSize([roi[1] - roi[0], roi[3] - roi[2]])
