@@ -86,6 +86,7 @@ class TangoMultiQuadScanTask(Task):
         self.current_step = None
         self.image_list = None
         self.image_p_list = None
+        self.bkg_level = 0
 
     def action(self):
         self.logger.info("{0} starting multiquad scan of {1} targetting {2} x {3}. ".format(self, self.scan_param.section,
@@ -142,6 +143,17 @@ class TangoMultiQuadScanTask(Task):
         k_next = self.get_quad_magnets()
         self.current_step = 0
         k_initial = k_next
+
+        # Find appropriate bkg level
+        read_task = TangoReadAttributeTask("image", self.camera_device,
+                                           self.device_handler, name="read_image", timeout=self.timeout)
+        read_task.start()
+        image = read_task.get_result(wait=True).value
+        bkg_size = 10
+        x0 = np.maximum(0, self.roi[0] - bkg_size)
+        y0 = np.maximum(0, self.roi[1] - bkg_size)
+        pic_bkg = image[y0:y0 + bkg_size, x0:x0 + bkg_size]
+        self.bkg_level = pic_bkg.max() + pic_bkg.std() * 3
 
         # Loop through the scan
         while self.get_done_event().is_set() is False:
@@ -411,7 +423,7 @@ class TangoMultiQuadScanTask(Task):
         if image.dtype not in [np.uint8, np.float32, np.float64]:
             image = np.float32(image)
 
-        sigma_x, sigma_y, image_p, bkg = self.process_image(image, self.scan_param.charge_ratio)
+        sigma_x, sigma_y, image_p, bkg = self.process_image2(image, self.scan_param.charge_ratio, self.bkg_level)
         line_x = image_p.sum(0)
         line_y = image_p.sum(1)
         proc_image = ProcessedImage(k_ind=self.current_step, k_value=k_current, image_ind=0,
@@ -485,6 +497,134 @@ class TangoMultiQuadScanTask(Task):
                           "Time: {2:.3f} ms".format(image_roi.shape[1], image_roi.shape[0],
                                                     1e3 * (time.time() - t0), sigma_x * 1e3, sigma_y * 1e3))
         return sigma_x, sigma_y, image_p, bkg
+
+    def process_image2(self, image, keep_charge_ratio=0.95, bkg_threshold=None):
+        """
+
+        """
+        t0 = time.time()
+        mask_kern = 5  # Vertical median filter size for mask creation
+        bpp = 16
+        kernel = 3
+        normalize = False
+        try:
+            # logger.debug("Processing image {0} in pool".format(mem_ind))
+            roi = self.roi
+            try:
+                x = np.array([roi[0], roi[1]])
+                y = np.array([roi[2], roi[3]])
+                # Extract ROI and convert to float:
+                # pic_roi = np.float32(image[y[0]:y[1], x[0]:x[1]])
+                pic_roi = np.float32(image[self.roi[1]:self.roi[1] + self.roi[3], self.roi[0]:self.roi[0] + self.roi[2]])
+            except IndexError:
+                pic_roi = np.float32(image)
+            n = 2 ** bpp
+
+            self.logger.info("pic_roi: {0}".format(pic_roi))
+            # Median filtering:
+            try:
+                pic_roi = cv2.medianBlur(pic_roi, kernel)
+            except ValueError as e:
+                self.logger.warning("======================================")
+                self.logger.warning(" Medfilt kernel value error: {0}".format(e))
+
+            if normalize is True:
+                pic_roi = pic_roi / n
+            self.logger.info("pic_roi: {0}".format(pic_roi))
+            if bkg_threshold is None:
+                # Background level from first 10 columns, one level for each row (the background structure is banded):
+                if x[0] > 10:
+                    # pic_bkg = np.float32(image[y[0]:y[1], x[0] - 10:x[0]])
+                    pic_bkg = np.float32(
+                        image[self.roi[1]:self.roi[1] + self.roi[3], self.roi[0] - 10:self.roi[0] + self.roi[2]])
+                    self.logger.info("pic_bkg: {0}".format(pic_bkg))
+                    bkg_level = cv2.medianBlur(pic_bkg, kernel).mean(1)
+                    if normalize:
+                        bkg_level /= n
+                elif x[1] < image.shape[1] - 10:
+                    # pic_bkg = np.float32(image[y[0]:y[1], x[1]:x[1] + 10])
+                    pic_bkg = np.float32(
+                        image[self.roi[1]:self.roi[1] + self.roi[3], self.roi[0]:self.roi[0] + self.roi[2] + 10])
+                    bkg_level = cv2.medianBlur(pic_bkg, kernel).mean(1)
+                    if normalize:
+                        bkg_level /= n
+                else:
+                    bkg_level = pic_roi[:, 0:10].mean(1)
+                self.logger.debug("{0:.1f}".format(bkg_level.max()))
+                bkg_cut = bkg_level.max() + bkg_level.std() * 3
+                self.logger.debug("Bkg level: {0:.1f}, bkg_cut: {1:.1f}".format(bkg_level.max(), bkg_cut))
+            else:
+                bkg_cut = bkg_threshold
+
+            self.logger.info("pic_roi: {0}".format(pic_roi))
+            self.logger.info("bkg_cut: {0}".format(bkg_cut))
+            pic_proc2 = cv2.threshold(pic_roi - bkg_cut, thresh=0, maxval=1, type=cv2.THRESH_TOZERO)[1]
+            # Create mask around the signal spot by heavily median filtering in the vertical direction (mask_kern ~ 25)
+            # mask = cv2.threshold(cv2.boxFilter(pic_roi, -1, ksize=(np.maximum(kernel, 7), mask_kern)),
+            #                      thresh=bkg_cut, maxval=1, type=cv2.THRESH_BINARY)[1]
+            mask = cv2.threshold(cv2.boxFilter(cv2.medianBlur(pic_roi, ksize=5), -1, ksize=(mask_kern, mask_kern)),
+                                 thresh=bkg_cut, maxval=1, type=cv2.THRESH_BINARY)[1]
+            pic_proc3 = cv2.multiply(pic_proc2, mask)
+
+            logger.debug("pic_roi max: {0}, mask sum: {1}, pic_proc3 max: {2}".format(pic_roi.max(), mask.sum(),
+                                                                                      pic_proc3.max()))
+
+            # t4 = time.time()
+            # logger.debug("{0}: Threshold time {1:.2f} ms".format(im_ind, (t4-t3)*1e3))
+
+            # Filter out charge:
+            if normalize:
+                n_bins = np.unique(pic_proc3.flatten()).shape[0]
+            else:
+                n_bins = int(pic_proc3.max())
+            if n_bins < 1:
+                n_bins = 1
+            h = np.histogram(pic_proc3, n_bins)
+            hq = (h[0] * h[1][:-1]).cumsum()
+            hq = hq / np.float(hq.max())
+            # hq = (hq.astype(np.float) / hq.max()).cumsum()
+            th_ind = np.searchsorted(hq, 1 - keep_charge_ratio)
+            d = (h[1][1] - h[1][0]) / 2.0
+            th_q = h[1][th_ind] - d
+            pic_proc3[pic_proc3 < th_q] = 0.0
+            self.logger.debug("Pic_roi max: {0}, threshold index: {1}, threshold: {2}, ch ratio: {3}\n"
+                              "hq: {4}".format(n_bins, th_ind, th_q, keep_charge_ratio, hq[0:20]))
+
+            # Centroid and sigma calculations:
+            line_x = pic_proc3.sum(0)
+            line_y = pic_proc3.sum(1)
+            q = line_x.sum()  # Total signal (charge) in the image
+            l_x_n = np.sum(line_x)
+            l_y_n = np.sum(line_y)
+            # Enable point only if there is data:
+            if l_x_n <= 0.0:
+                enabled = False
+            else:
+                enabled = True
+            try:
+                self.logger.debug("cal {0}".format(self.px_cal))
+                x_v = self.px_cal * np.arange(line_x.shape[0])
+                y_v = self.px_cal * np.arange(line_y.shape[0])
+                x_cent = np.sum(x_v * line_x) / l_x_n
+                sigma_x = np.sqrt(np.sum((x_v - x_cent) ** 2 * line_x) / l_x_n)
+                y_cent = np.sum(y_v * line_y) / l_y_n
+                sigma_y = np.sqrt(np.sum((y_v - y_cent) ** 2 * line_y) / l_y_n)
+            except Exception as e:
+                logger.error(e)
+                sigma_x = None
+                sigma_y = None
+                x_cent = 0
+                y_cent = 0
+
+            # t5 = time.time()
+            # logger.debug("{0}: Sigma time {1:.2f} ms".format(im_ind, (t5-t4)*1e3))
+
+        except Exception as e:
+            self.logger.warning("======================================")
+            self.logger.exception(" Process image function error {0}".format(e))
+            return e
+        # logger.debug("{1}: Process time {0:.2f} ms".format((time.time()-t0) * 1e3, mem_ind))
+        return sigma_x, sigma_y, pic_proc3, bkg_cut
 
     def do_scan(self, section="MS1", n_steps=16, save=True, alpha0=0, beta0=10, eps_n_0=2e-6):
         self.n_steps = n_steps
@@ -852,17 +992,35 @@ def callback(task):
 
 
 if __name__ == "__main__":
-    t = LoadMultiQuadScanDirTask("D:\Programmering\workspace\data\Multiquad_2021-03-01_15-43-25_MS1", process_now=True, threshold=0.01,
-                                 name="test_load")
-    t.start()
-    quad_scan_data_analysis = t.get_result(True)
-    acc_p = quad_scan_data_analysis.acc_params
-    image_processor = ProcessAllImagesTask2(image_size=[2000, 2000], name="gui_image_proc",
-                                            callback_list=[callback])
-    image_processor.start()
-    image_processor.process_images(quad_scan_data_analysis,
-                                   threshold=0.02, kernel=3, keep_charge_ratio=0.95)
-    image_processor.result_done_event.wait()
-    ims = image_processor.get_result(False)
-    fit_task = FitQuadDataTaskMulti(ims, acc_p)
+    # t = LoadMultiQuadScanDirTask("D:\Programmering\workspace\data\Multiquad_2021-03-01_15-43-25_MS1", process_now=True, threshold=0.01,
+    #                              name="test_load")
+    # t.start()
+    # quad_scan_data_analysis = t.get_result(True)
+    # acc_p = quad_scan_data_analysis.acc_params
+    # image_processor = ProcessAllImagesTask2(image_size=[2000, 2000], name="gui_image_proc",
+    #                                         callback_list=[callback])
+    # image_processor.start()
+    # image_processor.process_images(quad_scan_data_analysis,
+    #                                threshold=0.02, kernel=3, keep_charge_ratio=0.95)
+    # image_processor.result_done_event.wait()
+    # ims = image_processor.get_result(False)
+    # fit_task = FitQuadDataTaskMulti(ims, acc_p)
+    roi_center = [728, 626]
+    roi_dim = [114, 125]
+    roi = np.array([roi_center[0]-roi_dim[0]/2, roi_center[0]+roi_dim[0]/2, roi_center[1]-roi_dim[1]/2, roi_center[1]+roi_dim[1]/2]).astype(int)
+    scan_param = ScanParamMulti("MS1", 200e-6, 200e-6,
+                                charge_ratio=0.95,
+                                background_level=10,
+                                guess_alpha=0.0, guess_beta=10.0, guess_eps_n=1e-6,
+                                initial_step_ab=0.5,
+                                n_steps=10, scan_pos_tol=0.03, scan_pos_check_interval=0.2,
+                                screen_name="lima/liveviewer/ms1",
+                                roi_center=roi_center, roi_dim=roi_dim,
+                                measure_number=1,
+                                measure_interval=1.0,
+                                base_path="../data", save=True)
+
+    t = TangoMultiQuadScanTask(scan_param, None, None)
+    t.px_cal = 1.49e-5
+    t.roi = roi
 

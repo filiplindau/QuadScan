@@ -125,7 +125,7 @@ class TangoWriteAttributeTask(Task):
         self.attribute_name = attribute_name
         self.device_handler = device_handler
         self.value = value
-        self.logger.setLevel(logging.INFO)
+        self.logger.setLevel(logging.WARNING)
 
     def action(self):
         self.logger.info("{0} writing {1} to {2} on {3}. ".format(self,
@@ -2034,9 +2034,14 @@ class TangoScanTask(Task):
                     return
             if self.is_cancelled() is True:
                 return
-            pos_list.append(step_result[1].value)
-            timestamp_list.append(step_result[1].time)
-            meas_list.append(step_result[2])
+            try:
+                pos_list.append(step_result[1].value)
+                timestamp_list.append(step_result[1].time)
+                meas_list.append(step_result[2])
+            except TypeError:
+                pos_list.append(None)
+                timestamp_list.append(None)
+                meas_list.append(None)
             self.last_step_result = step_result
             self.result = step_result
             # Step done, notify callbacks:

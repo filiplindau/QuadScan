@@ -1334,7 +1334,10 @@ class QuadScanGui(QtWidgets.QWidget):
             cam = self.current_screen.beamviewer
         pos = self.ui.camera_widget.roi.pos()
         size = self.ui.camera_widget.roi.size()
-        roi = str([int(pos[0]), int(pos[0] + size[0]), int(pos[1]), int(pos[1] + size[1])])
+        if no_database:
+            roi = [int(pos[0]), int(pos[0] + size[0]), int(pos[1]), int(pos[1] + size[1])]
+        else:
+            roi = str([int(pos[0]), int(pos[0] + size[0]), int(pos[1]), int(pos[1] + size[1])])
 
         task = TangoWriteAttributeTask("roi", cam, self.device_handler, roi, "write_cam_roi")
         task.start()
