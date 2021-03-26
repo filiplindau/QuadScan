@@ -215,7 +215,7 @@ class TangoMultiQuadScanTask(Task):
         """
         sect_quad_list = self.section_devices.sect_quad_dict[self.scan_param.section]
         self.logger.info("Section {0} devices:\n{1}".format(self.scan_param.section, sect_quad_list))
-        self.magnet_names = [sect_quad.name for sect_quad in sect_quad_list]
+        self.magnet_names = [sect_quad.mag for sect_quad in sect_quad_list]
 #        self.crq_devices = [self.device_handler.get_device(sect_quad.crq) for sect_quad in sect_quad_list]
         self.crq_devices = [sect_quad.crq for sect_quad in sect_quad_list]
         self.beamenergy = self.device_handler.get_device(self.crq_devices[0]).energy
@@ -333,7 +333,7 @@ class TangoMultiQuadScanTask(Task):
                 save_dict["quad_{0}_pos".format(ind)] = "{0:.3f}".format(self.mq_lookup.quad_list[ind].position)
             save_dict["screen"] = self.camera_name
             save_dict["screen_pos"] = "{0:.3f}".format(self.mq_lookup.screen.position)
-            save_dict["pixel_dim"] = "{0} {1}".format(self.px_cal, self.px_cal)
+            save_dict["pixel_dim"] = "{0:.4e} {1:.4e}".format(self.px_cal, self.px_cal)
             save_dict["num_k_values"] = "{0}".format(self.scan_param.n_steps)
             save_dict["num_shots"] = "1"
             save_dict["k_min"] = "{0}".format(-self.mq_lookup.max_k)
@@ -520,7 +520,7 @@ class TangoMultiQuadScanTask(Task):
                 pic_roi = np.float32(image)
             n = 2 ** bpp
 
-            self.logger.info("pic_roi: {0}".format(pic_roi))
+            self.logger.debug("pic_roi: {0}".format(pic_roi))
             # Median filtering:
             try:
                 pic_roi = cv2.medianBlur(pic_roi, kernel)
@@ -530,14 +530,14 @@ class TangoMultiQuadScanTask(Task):
 
             if normalize is True:
                 pic_roi = pic_roi / n
-            self.logger.info("pic_roi: {0}".format(pic_roi))
+            self.logger.debug("pic_roi: {0}".format(pic_roi))
             if bkg_threshold is None:
                 # Background level from first 10 columns, one level for each row (the background structure is banded):
                 if x[0] > 10:
                     # pic_bkg = np.float32(image[y[0]:y[1], x[0] - 10:x[0]])
                     pic_bkg = np.float32(
                         image[self.roi[1]:self.roi[1] + self.roi[3], self.roi[0] - 10:self.roi[0] + self.roi[2]])
-                    self.logger.info("pic_bkg: {0}".format(pic_bkg))
+                    self.logger.debug("pic_bkg: {0}".format(pic_bkg))
                     bkg_level = cv2.medianBlur(pic_bkg, kernel).mean(1)
                     if normalize:
                         bkg_level /= n
@@ -556,8 +556,8 @@ class TangoMultiQuadScanTask(Task):
             else:
                 bkg_cut = bkg_threshold
 
-            self.logger.info("pic_roi: {0}".format(pic_roi))
-            self.logger.info("bkg_cut: {0}".format(bkg_cut))
+            self.logger.debug("pic_roi: {0}".format(pic_roi))
+            self.logger.debug("bkg_cut: {0}".format(bkg_cut))
             pic_proc2 = cv2.threshold(pic_roi - bkg_cut, thresh=0, maxval=1, type=cv2.THRESH_TOZERO)[1]
             # Create mask around the signal spot by heavily median filtering in the vertical direction (mask_kern ~ 25)
             # mask = cv2.threshold(cv2.boxFilter(pic_roi, -1, ksize=(np.maximum(kernel, 7), mask_kern)),
@@ -721,7 +721,7 @@ class LoadMultiQuadScanDirTask(Task):
                 if line == "" or line[0:5] == "*****":
                     break
                 try:
-                    k, value = line.split(":")
+                    k, value = line.split(":", 1)
                     key = k.strip()
                     data_dict[key] = value.strip()
                     logger.debug("Found line {0}: {1}".format(key, value))

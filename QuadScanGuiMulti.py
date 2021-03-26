@@ -13,7 +13,7 @@ import glob
 import json
 import numpy as np
 import itertools
-from quadscan_gui_onerow_v3 import Ui_QuadScanDialog
+from quadscan_gui_onerow_v4 import Ui_QuadScanDialog
 from scandata_file_dialog import OpenScanFileDialog
 from collections import OrderedDict
 import threading
@@ -43,7 +43,7 @@ pq.graphicsItems.GradientEditorItem.Gradients['thermalclip'] = {
               (1, (255, 255, 255, 255))], 'mode': 'rgb'}
 
 
-no_database = False
+use_database = True
 dummy_name_dict = {"mag": "127.0.0.1:10000/i-ms1/mag/qb-01#dbase=no",
                    "crq": "127.0.0.1:10000/i-ms1/mag/qb-01#dbase=no",
                    "screen": "127.0.0.1:10001/i-ms1/dia/scrn-01#dbase=no",
@@ -161,10 +161,12 @@ class QuadScanGui(QtWidgets.QWidget):
     update_proc_image_signal = QtCore.Signal(object)
     update_ab_signal = QtCore.Signal()
 
-    def __init__(self, parent=None):
+    def __init__(self, use_database=True, parent=None):
         root.debug("Init")
         QtWidgets.QWidget.__init__(self, parent)
         self.settings = QtCore.QSettings('Maxlab', 'QuadScan')
+
+        self.use_database = use_database
 
         self.current_state = "unknown"
         self.last_load_dir = "."
@@ -205,7 +207,7 @@ class QuadScanGui(QtWidgets.QWidget):
         self.fit_result = FitResult(poly=None, alpha=None, beta=None, eps=None, eps_n=None,
                                     gamma_e=None, fit_data=None, residual=None)
         self.section_devices = SectionDevices(sect_quad_dict=None, sect_screen_dict=None)
-        if no_database:
+        if not self.use_database:
             self.device_handler = DeviceHandler(name="Handler")
         else:
             self.device_handler = DeviceHandler("g-v-csdb-0:10000", name="Handler")
@@ -240,7 +242,7 @@ class QuadScanGui(QtWidgets.QWidget):
                                                      callback_list=[TaskCallbackSignal(self.update_image_processing)])
         self.image_processor.start()
 
-        if no_database:
+        if not self.use_database:
             t1 = PopulateDummyDeviceList(sections=self.section_list, dummy_name_dict=dummy_name_dict,
                                          device_handler=self.device_handler, name="pop_sections")
         else:
@@ -416,6 +418,18 @@ class QuadScanGui(QtWidgets.QWidget):
         else:
             self.ui.multi_quadscan_radiobutton.setChecked(True)
 
+        val = self.settings.value("alphax_guess", "0", type=float)
+        self.ui.alphax_guess_spinbox.setValue(val)
+        val = self.settings.value("alphay_guess", "0", type=float)
+        self.ui.alphay_guess_spinbox.setValue(val)
+        val = self.settings.value("betax_guess", "10", type=float)
+        self.ui.betax_guess_spinbox.setValue(val)
+        val = self.settings.value("betay_guess", "10", type=float)
+        self.ui.betay_guess_spinbox.setValue(val)
+        val = self.settings.value("epsx_guess", "1", type=float)
+        self.ui.epsx_guess_spinbox.setValue(val)
+        val = self.settings.value("epsy_guess", "1", type=float)
+        self.ui.epsy_guess_spinbox.setValue(val)
 
         # Signal connections
         self.ui.set_start_k_button.clicked.connect(self.set_start_k)
@@ -559,6 +573,13 @@ class QuadScanGui(QtWidgets.QWidget):
         self.settings.setValue("median_kernel", self.ui.p_median_kernel_spinbox.value())
         self.settings.setValue("filtered_image_show", self.ui.p_filtered_image_radio.isChecked())
         self.settings.setValue("use_x_axis", self.ui.p_x_radio.isChecked())
+
+        self.settings.setValue("alphax_guess", self.ui.alphax_guess_spinbox.value())
+        self.settings.setValue("alphay_guess", self.ui.alphay_guess_spinbox.value())
+        self.settings.setValue("betax_guess", self.ui.betax_guess_spinbox.value())
+        self.settings.setValue("betay_guess", self.ui.betay_guess_spinbox.value())
+        self.settings.setValue("epsx_guess", self.ui.epsx_guess_spinbox.value())
+        self.settings.setValue("epsy_guess", self.ui.epsy_guess_spinbox.value())
 
         if "Full matrix" in str(self.ui.fit_algo_combobox.currentText()):
             algo = "full matrix"
@@ -1098,7 +1119,7 @@ class QuadScanGui(QtWidgets.QWidget):
                 t.cancel()
 
             task_list = list()
-            if no_database:
+            if not self.use_database:
                 cam = new_screen.liveviewer
             else:
                 cam = new_screen.beamviewer
@@ -1243,8 +1264,18 @@ class QuadScanGui(QtWidgets.QWidget):
         :return:
         """
         root.info("Populate section finished.")
-        self.section_devices = task.get_result(wait=False)
-        self.update_section()
+        if task.is_cancelled():
+            root.info("Populate sections failed: {0}. Testing with no database.".format(task.get_result(wait=False)))
+            self.device_handler = DeviceHandler(name="Handler")
+            self.use_database = False
+            t1 = PopulateDummyDeviceList(sections=self.section_list, dummy_name_dict=dummy_name_dict,
+                                         device_handler=self.device_handler, name="pop_sections")
+            t1.start()
+            t1.add_callback(self.populate_sections)
+        else:
+            self.section_devices = task.get_result(wait=False)
+
+            self.update_section()
 
     def update_scan_devices(self):
         root.info("Updating scan devices")
@@ -1328,13 +1359,13 @@ class QuadScanGui(QtWidgets.QWidget):
 
     def update_camera_roi(self):
         root.info("Updating ROI for camera image")
-        if no_database:
+        if not self.use_database:
             cam = self.current_screen.liveviewer
         else:
             cam = self.current_screen.beamviewer
         pos = self.ui.camera_widget.roi.pos()
         size = self.ui.camera_widget.roi.size()
-        if no_database:
+        if not self.use_database:
             roi = [int(pos[0]), int(pos[0] + size[0]), int(pos[1]), int(pos[1] + size[1])]
         else:
             roi = str([int(pos[0]), int(pos[0] + size[0]), int(pos[1]), int(pos[1] + size[1])])
@@ -1854,7 +1885,9 @@ class QuadScanGui(QtWidgets.QWidget):
         scan_param = ScanParamMulti(self.current_section, sigma_x, sigma_y,
                                     charge_ratio=self.ui.p_keep_charge_ratio_spinbox.value(),
                                     background_level=self.ui.p_threshold_spinbox.value(),
-                                    guess_alpha=0.0, guess_beta=10.0, guess_eps_n=1e-6,
+                                    guess_alpha=self.ui.alphax_guess_spinbox.value(),
+                                    guess_beta=self.ui.betax_guess_spinbox.value(),
+                                    guess_eps_n=self.ui.epsx_guess_spinbox.value() * 1e-6,
                                     initial_step_ab=0.5,
                                     n_steps=self.ui.num_k_spinbox.value(), scan_pos_tol=0.03, scan_pos_check_interval=0.2,
                                     screen_name=self.ui.screen_combobox.currentText(),
@@ -1868,7 +1901,7 @@ class QuadScanGui(QtWidgets.QWidget):
         cc2 = TaskCallbackSignal()
         cc2.connect(self.multiquad_scan_image_callback)
         self.scan_task = TangoMultiQuadScanTask(scan_param, self.device_handler, self.section_devices, name="MultiQuadScan",
-                                                callback_list=[cc1], read_callback=cc2, timeout=100.0, use_tango_database=(not no_database))
+                                                callback_list=[cc1], read_callback=cc2, timeout=100.0, use_tango_database=(self.use_database))
         self.update_ab_signal.connect(self.plot_ab_data)
         self.scan_task.start()
 
@@ -2569,7 +2602,7 @@ class QuadScanGui(QtWidgets.QWidget):
 
 if __name__ == "__main__":
     app = QtWidgets.QApplication(sys.argv)
-    myapp = QuadScanGui()
+    myapp = QuadScanGui(use_database)
     root.info("QuadScanGui object created")
     myapp.show()
     root.info("App show")

@@ -2080,7 +2080,12 @@ class PopulateDeviceListTask(Task):
 
     def action(self):
         self.logger.info("{0} Populating matching sections by checking tango database.".format(self))
-        db = pt.Database()
+        try:
+            db = pt.Database()
+        except pt.DevFailed as e:
+            self.result = e
+            self.cancel()
+            return
         self.logger.debug("{0} Database retrieved".format(self))
 
         sections = self.sections
