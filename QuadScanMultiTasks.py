@@ -138,7 +138,8 @@ class TangoMultiQuadScanTask(Task):
             self.generate_daq_info()
 
         self.mq_lookup.start_scan(target_sigma_x, target_sigma_y, None, section,
-                                  n_steps, guess_alpha, guess_beta, guess_eps_n, dab)
+                                  n_steps, guess_alpha, guess_beta, guess_eps_n, dab,
+                                  a_min=-4, a_max=4, b_min=-4, b_max=4)
 
         k_next = self.get_quad_magnets()
         self.current_step = 0
@@ -414,8 +415,8 @@ class TangoMultiQuadScanTask(Task):
         step_sequence_task.start()
         res = step_sequence_task.get_result(wait=True, timeout=self.timeout)
         
-        self.logger.info("Step sequence result:\n"
-         "Is done: {0}\nIs cancelled: {1}\nResult: {2}".format(step_sequence_task.is_done(), step_sequence_task.is_cancelled(), res))
+        self.logger.debug("Step sequence result:\n"
+         "Is done: {0}\nIs cancelled: {1}\n".format(step_sequence_task.is_done(), step_sequence_task.is_cancelled()))
 
         k_current = [res.get_result(wait=False)[1].value for res in write_task_list]
         # How to deal with multiple images?
@@ -992,35 +993,54 @@ def callback(task):
 
 
 if __name__ == "__main__":
-    # t = LoadMultiQuadScanDirTask("D:\Programmering\workspace\data\Multiquad_2021-03-01_15-43-25_MS1", process_now=True, threshold=0.01,
-    #                              name="test_load")
-    # t.start()
-    # quad_scan_data_analysis = t.get_result(True)
-    # acc_p = quad_scan_data_analysis.acc_params
-    # image_processor = ProcessAllImagesTask2(image_size=[2000, 2000], name="gui_image_proc",
-    #                                         callback_list=[callback])
-    # image_processor.start()
-    # image_processor.process_images(quad_scan_data_analysis,
-    #                                threshold=0.02, kernel=3, keep_charge_ratio=0.95)
-    # image_processor.result_done_event.wait()
-    # ims = image_processor.get_result(False)
-    # fit_task = FitQuadDataTaskMulti(ims, acc_p)
-    roi_center = [728, 626]
-    roi_dim = [114, 125]
-    roi = np.array([roi_center[0]-roi_dim[0]/2, roi_center[0]+roi_dim[0]/2, roi_center[1]-roi_dim[1]/2, roi_center[1]+roi_dim[1]/2]).astype(int)
-    scan_param = ScanParamMulti("MS1", 200e-6, 200e-6,
-                                charge_ratio=0.95,
-                                background_level=10,
-                                guess_alpha=0.0, guess_beta=10.0, guess_eps_n=1e-6,
-                                initial_step_ab=0.5,
-                                n_steps=10, scan_pos_tol=0.03, scan_pos_check_interval=0.2,
-                                screen_name="lima/liveviewer/ms1",
-                                roi_center=roi_center, roi_dim=roi_dim,
-                                measure_number=1,
-                                measure_interval=1.0,
-                                base_path="../data", save=True)
-
-    t = TangoMultiQuadScanTask(scan_param, None, None)
-    t.px_cal = 1.49e-5
-    t.roi = roi
+    t = LoadMultiQuadScanDirTask("D:\Programmering\workspace\data\Multiquad_2021-04-07_15-37-39_MS1", process_now=True, threshold=0.01,
+                                 name="test_load")
+    t.start()
+    quad_scan_data_analysis = t.get_result(True)
+    acc_p = quad_scan_data_analysis.acc_params
+    image_processor = ProcessAllImagesTask2(image_size=[2000, 2000], name="gui_image_proc",
+                                            callback_list=[callback])
+    image_processor.start()
+    image_processor.process_images(quad_scan_data_analysis,
+                                   threshold=None, kernel=3, keep_charge_ratio=1)
+    image_processor.result_done_event.wait()
+    ims = image_processor.get_result(False)
+    fit_task = FitQuadDataTaskMulti(ims, acc_p)
+    a_list = list()
+    b_list = list()
+    s_list = list()
+    s_t_list = list()
+    gamma_e = acc_p.electron_energy / 0.511
+    eps = 1e-6 / gamma_e
+    beta = 10.0
+    alpha = -4.0
+    for pic in ims:
+        k_data = pic.k_value
+        M = fit_task.calc_response_matrix(k_data, acc_p.quad_list,
+                                          acc_p.screen_pos, "x")
+        a = M[0, 0]
+        b = M[0, 1]
+        a_list.append(a)
+        b_list.append(b)
+        s_list.append(pic.sigma_x)
+        s_t_list.append(np.sqrt(a**2 * eps * beta - 2 * a * b * eps * alpha + b**2 * eps * (1 + alpha**2) / beta))
+    image_processor.stop_processes(True)
+    # roi_center = [728, 626]
+    # roi_dim = [114, 125]
+    # roi = np.array([roi_center[0]-roi_dim[0]/2, roi_center[0]+roi_dim[0]/2, roi_center[1]-roi_dim[1]/2, roi_center[1]+roi_dim[1]/2]).astype(int)
+    # scan_param = ScanParamMulti("MS1", 200e-6, 200e-6,
+    #                             charge_ratio=0.95,
+    #                             background_level=10,
+    #                             guess_alpha=0.0, guess_beta=10.0, guess_eps_n=1e-6,
+    #                             initial_step_ab=0.5,
+    #                             n_steps=10, scan_pos_tol=0.03, scan_pos_check_interval=0.2,
+    #                             screen_name="lima/liveviewer/ms1",
+    #                             roi_center=roi_center, roi_dim=roi_dim,
+    #                             measure_number=1,
+    #                             measure_interval=1.0,
+    #                             base_path="../data", save=True)
+    #
+    # t = TangoMultiQuadScanTask(scan_param, None, None)
+    # t.px_cal = 1.49e-5
+    # t.roi = roi
 

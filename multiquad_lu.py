@@ -19,7 +19,7 @@ import re
 import pickle
 from scipy.signal import medfilt2d
 from scipy.ndimage import median_filter
-from scipy.optimize import minimize, leastsq # Bounds, least_squares, BFGS, NonlinearConstraint
+from scipy.optimize import minimize, leastsq, fmin_slsqp # Bounds, least_squares, BFGS, NonlinearConstraint
 from scipy.sparse import csr_matrix
 #from scipy.optimize import lsq_linear
 # from QuadScanTasks import TangoReadAttributeTask, TangoMonitorAttributeTask, TangoWriteAttributeTask, work_func_local2
@@ -636,7 +636,8 @@ class MultiQuadLookup(object):
             self.save_inv_lookup(section, self.k_m_lu, self.ab_lu, self.a_v_lu, self.b_v_lu)
 
     def start_scan(self, current_sigma_x, current_sigma_y, current_charge=None, section="MS1", n_steps=16,
-                   guess_alpha=0.0, guess_beta=40.0, guess_eps_n=2e-6, dab=0.2):
+                   guess_alpha=0.0, guess_beta=40.0, guess_eps_n=2e-6, dab=0.2, electron_energy=None,
+                   a_min=None, a_max=None, b_min=None, b_max=None):
         """
         Start a new multi-quad scan using current beam size as target beam size. Initial guess should be provided
         if known.
@@ -651,11 +652,14 @@ class MultiQuadLookup(object):
         :param guess_beta: Staring guess of beam twiss parameter beta. Used for first two steps.
         :param guess_eps_n: Staring guess of beam twiss parameter normalized emittance. Used for first two steps.
         :param dab: step in ab space for the initial 3 shots
+        :param electron_energy: Electron energy in eV, None if default value for section is to be used
         :return:
         """
         self.logger.info("Start scan: sigma {0:.3f} x {1:.3f} mm".format(current_sigma_x*1e3, current_sigma_y*1e3))
         self.reset_data()
         self.set_section(section, load_file=True)
+        if electron_energy is not None:
+            self.gamma_energy = electron_energy / 511e3
         self.target_sigma_x = current_sigma_x
         self.target_sigma_y = current_sigma_y
         self.target_charge = current_charge
@@ -666,18 +670,30 @@ class MultiQuadLookup(object):
         self.dab = dab
 
         # a_min, a_max, b_min, b_max = self.get_ab_range(self.max_k)
-        a_min = self.A_lu[:, 0].min()
-        a_max = self.A_lu[:, 0].max()
-        b_min = self.A_lu[:, 1].min()
-        b_max = self.A_lu[:, 1].max()
+        if a_min is None:
+            a_min = self.A_lu[:, 0].min()
+            a_y_min = self.A_lu[:, 2].min()
+        else:
+            a_y_min = a_min
+        if a_max is None:
+            a_max = self.A_lu[:, 0].max()
+            a_y_max = self.A_lu[:, 2].max()
+        else:
+            a_y_max = a_max
+        if b_min is None:
+            b_min = self.A_lu[:, 1].min()
+            b_y_min = self.A_lu[:, 3].min()
+        else:
+            b_y_min = b_min
+        if b_max is None:
+            b_max = self.A_lu[:, 1].max()
+            b_y_max = self.A_lu[:, 3].max()
+        else:
+            b_y_max = b_max
         self.a_range = (a_min, a_max)
         self.b_range = (b_min, b_max)
-        a_min = self.A_lu[:, 2].min()
-        a_max = self.A_lu[:, 2].max()
-        b_min = self.A_lu[:, 3].min()
-        b_max = self.A_lu[:, 3].max()
-        self.a_y_range = (a_min, a_max)
-        self.b_y_range = (b_min, b_max)
+        self.a_y_range = (a_y_min, a_y_max)
+        self.b_y_range = (b_y_min, b_y_max)
 
         self.logger.info("Scan starting for section {0}. Target sigma: {1:.3f} mm".format(section, 1e3 * current_sigma_x))
 
@@ -899,13 +915,16 @@ class MultiQuadLookup(object):
             alpha0 = self.guess_alpha
             beta0 = self.guess_beta
             c = np.sqrt(np.abs((sigma[-1]**2 / eps0 - b[-1]**2 / beta0) / (a[-1]**2 * beta0 - 2 * a[-1] * b[-1] * alpha0 +
-                                                                    b[-1]**2 * alpha0**2 / beta0)))
+                                                                           b[-1]**2 * alpha0**2 / beta0)))
             # alpha = c * alpha0
             # beta = c * beta0
             # eps = c * eps0
-            eps = sigma[-1]**2 / (beta0 * a[-1]**2 - 2 * alpha0 * a[-1] * b[-1] + (1 + alpha0) / beta0 * b[-1]**2)
+            eps = sigma[-1]**2 / (beta0 * a[-1]**2 - 2 * alpha0 * a[-1] * b[-1] + (1 + alpha0**2) / beta0 * b[-1]**2)
             alpha = alpha0
             beta = beta0
+            if eps < 0:
+                self.logger.warning("Negative eps: {0:.3f}\nM={1}".format(eps*1e6, M))
+                eps = eps0
         elif M.shape[0] == 2:
             theta = np.arctan(b[-1] / a[-1])
             if axis == "x":
@@ -915,16 +934,36 @@ class MultiQuadLookup(object):
                 alpha = self.alpha_y_list[-1]
                 beta = self.beta_y_list[-1]
             # eps = sigma[-1]**2 / (a[-1]**2 * beta - 2 * a[-1] * b[-1] * alpha + b[-1]**2 * (1 + alpha**2) / beta)
-            u1 = sigma[-2]**2 * a[-1]**2 - sigma[-1]**2 * a[-2]**2
-            u2 = -2 * alpha * (a[-1] * b[-1] * sigma[-2]**2 - a[-2] * b[-2] * sigma[-1]**2)
-            u3 = (1 + alpha**2) * (b[-1]**2 * sigma[-2]**2 + b[-2]**2 * sigma[-1]**2)
-            beta_p = (-u2 + np.sqrt(u2**2 - 4 * u1 * u3)) / (2 * u1)
-            beta_n = (-u2 - np.sqrt(u2 ** 2 - 4 * u1 * u3)) / (2 * u1)
-            if np.abs(beta_n - beta) < np.abs(beta_p - beta):
-                beta = beta_n
-            else:
-                beta = beta_p
-            eps = sigma[-2]**2 / (beta * a[-2]**2 - 2 * alpha * a[-2] * b[-2] + (1 + alpha) / beta * b[-2]**2)
+            # u1 = sigma[-2]**2 * a[-1]**2 - sigma[-1]**2 * a[-2]**2
+            # u2 = -2 * alpha * (a[-1] * b[-1] * sigma[-2]**2 - a[-2] * b[-2] * sigma[-1]**2)
+            # u3 = (1 + alpha**2) * (b[-1]**2 * sigma[-2]**2 + b[-2]**2 * sigma[-1]**2)
+            # beta_p = (-u2 + np.sqrt(u2**2 - 4 * u1 * u3)) / (2 * u1)
+            # beta_n = (-u2 - np.sqrt(u2 ** 2 - 4 * u1 * u3)) / (2 * u1)
+            # if np.abs(beta_n - beta) < np.abs(beta_p - beta):
+            #     beta = beta_n
+            # else:
+            #     beta = beta_p
+            # eps = sigma[-2]**2 / (beta * a[-2]**2 - 2 * alpha * a[-2] * b[-2] + (1 + alpha) / beta * b[-2]**2)
+
+            # p0 = a[-1]**2 * sigma[-2]**2 - a[-2]**2 * sigma[-1]**2
+            # p1 = 2 * alpha * (a[-2] * b[-2] * sigma[-1]**2 - a[-1] * b[-1] * sigma[-2]**2)
+            # p2 = -(1 + alpha**2) * b[-2]**2 * sigma[-1]**2
+            # p3 = (1 + alpha**2) * b[-1]**2 * sigma[-2]**2
+            #
+            # r = np.roots([p0, p1, p2, p3])
+            # beta = np.real(r[np.abs(r - beta).argmin()])
+
+            u0 = a[-2] ** 2 * sigma[-1] ** 2 - a[-1] ** 2 * sigma[-2] ** 2
+            u1 = -2 * alpha * (a[-2] * b[-2] * sigma[-1] ** 2 - a[-1] * b[-1] * sigma[-2] ** 2)
+            u2 = (1 + alpha ** 2) * (b[-2] ** 2 * sigma[-1] ** 2 - b[-1] ** 2 * sigma[-2] ** 2)
+            r = np.roots([u0, u1, u2])
+            beta = np.real(r[np.abs(r - beta).argmin()])
+
+            eps = sigma[-2] ** 2 / (beta * a[-2] ** 2 - 2 * alpha * a[-2] * b[-2] + (1 + alpha**2) / beta * b[-2] ** 2)
+
+            if eps < 0:
+                self.logger.warning("Negative eps: {0:.3f}\nM={1}".format(eps, M))
+                self.logger.warning("σ: {0:.3f},α: {1:.3f}, β: {2:.3f}, a: {3:.3f}, b: {4:.3f}".format(sigma[-2], alpha, beta, a[-2], b[-2]))
         else:
             if charge is None:
                 weights = np.ones_like(sigma)
@@ -957,22 +996,37 @@ class MultiQuadLookup(object):
                 ldata = np.linalg.lstsq(Mw, sw, -1)
                 x = ldata[0]
                 eps2 = x[2] * x[0] - x[1] ** 2
-                if eps2 < 0:
-                    eps2 = eps0 ** 2
-                eps = np.sqrt(eps2)
-                alpha = x[1] / eps
-                beta = x[0] / eps
-                if beta < 0:
-                    beta = beta0
-                    alpha = alpha0
-                self.logger.info("Least squares: {0}".format(ldata))
-                self.residuals.append(ldata[1])
             except np.linalg.LinAlgError as e:
                 logger.info("\nMw: {0}\n\nsw: {1}\n\nsigma: {2}".format(Mw, sw, sigma))
-                eps = eps0
-                alpha = alpha0
+                eps2 = -1
+
+            if eps2 < 0:
+                def fun(x, M, s):
+                    y = np.dot(M, x)
+                    return np.sum((y - s) ** 2)
+
+                def ieq_fun(x, M, s):
+                    return x[0] * x[2] - x[1] ** 2
+
+                x0 = beta0 * eps0
+                x1 = alpha0 * eps0
+                x2 = (eps0 ** 2 + x1 ** 2) / x0
+                xi = np.array([x0, x1, x2])
+
+                ieqcons = [ieq_fun]
+                bnds = ((0, np.inf), (-np.inf, np.inf), (0, np.inf))
+
+                ldata = fmin_slsqp(fun, xi, ieqcons=ieqcons, bounds=bnds, args=(Mw, sw), full_output=True, acc=1e-12)
+                x = ldata[0]
+                eps2 = x[2] * x[0] - x[1] ** 2
+            eps = np.sqrt(eps2)
+            alpha = x[1] / eps
+            beta = x[0] / eps
+            if beta < 0:
                 beta = beta0
-                self.residuals.append(None)
+                alpha = alpha0
+            self.logger.info("Least squares: {0}".format(ldata))
+            self.residuals.append(ldata[1])
 
             self.logger.debug("Found twiss parameters:"
                               "\n alpha_{3} = {0:.3f}\n beta_{3}  = {1:.3f}\n "
@@ -1416,7 +1470,7 @@ class MultiQuadLookup(object):
         return M
 
     def calc_ellipse(self, alpha, beta, eps, sigma):
-        self.logger.debug("Twiss indata: alpha={0:.3f}, beta={1:.3f}, eps={2:.3g}, sigma={3:.3g}".format(alpha, beta, eps, sigma))
+        self.logger.info("Twiss indata: alpha={0:.3f}, beta={1:.3f}, eps={2:.3g}, sigma={3:.3g}".format(alpha, beta, eps, sigma))
         my = sigma**2.0 / eps
         gamma = (1.0 + alpha**2) / beta
         try:
@@ -1428,8 +1482,12 @@ class MultiQuadLookup(object):
         m22 = gamma
         l1 = ((m11 + m22) + np.sqrt((m11 - m22) ** 2 + 4.0 * m12 ** 2)) / 2
         l2 = ((m11 + m22) - np.sqrt((m11 - m22) ** 2 + 4.0 * m12 ** 2)) / 2
+
+        self.logger.info("SQRT: my={0:.3f}, l1={1:.3f}, l2={2:.3f}".format(my, l1, l2))
+
         r_minor = np.sqrt(my / l1)
         r_major = np.sqrt(my / l2)
+
         if alpha != 0:
             theta = np.arctan((l1 - gamma) / alpha)
         else:
@@ -1455,7 +1513,7 @@ class MultiQuadLookup(object):
         :param max_k: Magnet maximum k-value k = (-max_k, max_k)
         :return: Minimum a, maxmium a, minimum b, maximum b
         """
-        return self.a_v_lu[0], self.a_v_lu[-1], self.b_v_lu[0], self.b_v_lu[-1]
+        # return self.a_v_lu[0], self.a_v_lu[-1], self.b_v_lu[0], self.b_v_lu[-1]
         if axis == "x":
             return self.a_range[0], self.a_range[1], self.b_range[0], self.b_range[1]
         else:
@@ -1514,7 +1572,7 @@ class MultiQuadLookup(object):
         ind_q3 = np.atleast_1d(np.logical_and(p1 < 0, p2 < 0))
         psi[ind_q3] = 2 * np.pi - psi[ind_q3]
         ind_q4 = np.atleast_1d(np.logical_and(p1 > 0, p2 < 0))
-        self.logger.info("p1: {0}, p2: {1}, ind_q3: {2}, ind_q4: {3}, psi: {4}".format(p1, p2, ind_q3, ind_q4, psi))
+        self.logger.debug("p1: {0}, p2: {1}, ind_q3: {2}, ind_q4: {3}, psi: {4}".format(p1, p2, ind_q3, ind_q4, psi))
         psi[ind_q4] = 2 * np.pi - psi[ind_q4]
         if psi.shape[0] == 1:
             psi = psi[0]

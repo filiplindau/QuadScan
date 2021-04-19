@@ -1085,7 +1085,7 @@ class QuadScanGui(QtWidgets.QWidget):
                                                             new_quad.name,
                                                             new_screen.name))
         try:
-            load_quad = new_quad.name != self.current_quad.name
+            load_quad = new_quad.mag != self.current_quad.mag
         except AttributeError:
             load_quad = True
 
@@ -1111,7 +1111,7 @@ class QuadScanGui(QtWidgets.QWidget):
             e_task.start()
 
         try:
-            load_screen = new_screen.name != self.current_screen.name
+            load_screen = new_screen.screen != self.current_screen.screen
         except AttributeError:
             load_screen = True
         if load_screen:
@@ -1140,8 +1140,9 @@ class QuadScanGui(QtWidgets.QWidget):
             self.screen_tasks = list()
 
             image_task = TangoReadAttributeTask("image", new_screen.liveviewer, self.device_handler,
-                                                name="cam_image_read", callback_list=[TaskCallbackSignal(self.read_image)])
-            rep_task = RepeatTask(image_task, -1, delay=1.0, name="cam_image_repeat", timeout=2.0)
+                                                name="cam_image_read_{0}".format(new_screen.screen),
+                                                callback_list=[TaskCallbackSignal(self.read_image)])
+            rep_task = RepeatTask(image_task, -1, delay=0.2, name="cam_image_repeat", timeout=2.0)
             rep_task.add_trigger(cam_seq_task)
             self.screen_tasks.append(rep_task)
             rep_task.start()
@@ -2529,8 +2530,8 @@ class QuadScanGui(QtWidgets.QWidget):
                     root.debug("{0}: cancel state: {1}".format(t.get_name(), t.is_cancelled()))
                     if t.is_cancelled():
                         root.info("{0} cancelled.".format(t.name))
-                        t.cancelled = False
-                        t.start()
+                        # t.cancelled = False
+                        # t.start()
             else:
                 self.update_camera_signal.emit(result.value)
         elif "cam_state_read" in name:

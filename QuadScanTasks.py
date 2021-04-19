@@ -199,7 +199,7 @@ class TangoMonitorAttributeTask(Task):
                 raise AttributeError("Target value = 0 with relative tolerance type not possible.")
         else:
             self.tol_div = 1.0
-        self.logger.setLevel(logging.INFO)
+        self.logger.setLevel(logging.WARNING)
 
     def action(self):
         self.logger.info("{0} monitor reading {1} from {2}. ".format(self, self.attribute_name, self.device_name))

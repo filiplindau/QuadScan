@@ -453,7 +453,7 @@ class RepeatTask(Task):
                 self.cancel()
                 return
             if self.is_cancelled() is True:
-                self.logger.info("Repeat cancelled. Exiting.")
+                self.logger.info("Repeat {0} cancelled. Exiting.".format(self.task.get_name()))
                 return
             if self.repetitions >= 0:
                 # Only store intermediate results in a list if there is not an infinite number of repetitions.
@@ -510,6 +510,7 @@ class BagOfTasksTask(Task):
     def __init__(self, task_list, name=None, timeout=None, trigger_dict=dict(), callback_list=list()):
         Task.__init__(self, name, timeout=timeout, trigger_dict=trigger_dict, callback_list=callback_list)
         self.task_list = task_list
+        self.logger.setLevel(logging.WARNING)
 
     def action(self):
         self.logger.info("{0} running {1} tasks.".format(self, len(self.task_list)))
