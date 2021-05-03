@@ -767,20 +767,27 @@ class QTangoStripToolCurve(QtCore.QObject):
     """
     Stores a trend curve. Data values, pyqtgraph curve, viewbox, axis, color, symbols, etc.
     """
+    sigClicked = QtCore.pyqtSignal(object)
+
     def __init__(self, name, parent=None):
         super().__init__(parent)
         self.name = name
-        self.vb = None                      # type: pg.ViewBox
-        self.curve = None                   # type: pg.PlotDataItem
-        self.axis = None                    # type: pg.AxisItem
-        self.unselected_pen = None          # type: QtGui.QPen
-        self.selected_pen = None            # type: QtGui.QPen
-        self.unselected_symbol_pen = None   # type: List[QtGui.QPen]
-        self.selected_symbol_pen = None     # type: List[QtGui.QPen]
-        self.unselected_symbol = None       # type: List[str]
-        self.selected_symbol = None         # type: List[str]
-        self.unselected_symbol_brush = None # type: List[QtGui.QBrush]
-        self.selected_symbol_brush = None   # type: List[QtGui.QBrush]
+        self.vb = pg.ViewBox()                      # type: pg.ViewBox
+        self.vb.setZValue(-100)
+        self.curve = pg.PlotDataItem()                   # type: pg.PlotDataItem
+        self.vb.addItem(self.curve)
+        self.axis_y = pg.AxisItem("right")                    # type: pg.AxisItem
+        self.axis_y.linkToView(self.vb)
+        self.axis_x = pg.AxisItem("bottom")                    # type: pg.AxisItem
+        self.axis_x.linkToView(self.vb)
+        self.unselected_pen = pg.mkPen("#4aa224", width=1)          # type: QtGui.QPen
+        self.selected_pen = pg.mkPen("#4f6097", width=2)            # type: QtGui.QPen
+        self.unselected_symbol_pen = pg.mkPen("#4aa224")   # type: List[QtGui.QPen]
+        self.selected_symbol_pen = pg.mkPen("#4f6097")     # type: List[QtGui.QPen]
+        self.unselected_symbol = "x"       # type: List[str]
+        self.selected_symbol = "v"         # type: List[str]
+        self.unselected_symbol_brush = pg.mkBrush("#4aa224") # type: List[QtGui.QBrush]
+        self.selected_symbol_brush = pg.mkBrush("#4f6097")   # type: List[QtGui.QBrush]
         self.symbol = "o"
         self.alt_symbol = "s"
         self.symbol_size = 10
@@ -791,21 +798,26 @@ class QTangoStripToolCurve(QtCore.QObject):
         self.y_values = None
         self.duration = 600.0
         self.n_values = 10000
+        self.symbol_array = None
 
         self.current_data_index = 0
         self.highlighted_index = None
 
         self.selected_flag = False
+        self.curve.setPen(self.unselected_pen)
+        self.curve.setSymbolPen(self.unselected_symbol_pen)
+        self.curve.setSymbolBrush(self.unselected_symbol_brush)
+        self.curve.sigClicked.connect(self.curve_clicked)
 
     def setup_data(self):
         """ Pre-allocate data arrays
         """
-        self.x_values = -np.ones(self.values_size) * np.inf
-        self.y_values = np.zeros(self.values_size)
+        self.x_values = -np.ones(self.n_values) * np.inf
+        self.y_values = np.zeros(self.n_values)
         self.current_data_index = 0
         logger.debug("Setting up data for curve {0}".format(self.name))
 
-    def set_data(self, x_data, y_data, auto_range=True, **kargs):
+    def set_data(self, x_data, y_data, auto_range=True, alt_symbol_array=None, **kargs):
         logger.debug("Setting data for curve {0}".format(self.name))
         self.setup_data()
         n = x_data.shape[0]
@@ -813,27 +825,52 @@ class QTangoStripToolCurve(QtCore.QObject):
             return
         self.x_values[-n:] = x_data
         self.y_values[-n:] = y_data
+        if alt_symbol_array is not None:
+            self.symbol_array = np.full(n, self.symbol)
+            self.symbol_array[alt_symbol_array] = self.alt_symbol
+            self.curve.setData(x_data, y_data, symbol=self.symbol_array, **kargs)
+        else:
+            self.curve.setData(x_data, y_data, **kargs)
         # vb.enableAutoRange("y")
         if auto_range:
             self.vb.enableAutoRange(pg.ViewBox.XYAxes, True)
+            self.vb.autoRange()
         else:
             self.vb.enableAutoRange(pg.ViewBox.XYAxes, False)
-        self.curve.setData(x_data, y_data, **kargs)
-        if auto_range:
-            self.vb.autoRange()
 
     def get_curve_range(self, curve_name):
         axis_viewrange = self.curve.viewRange()
         return axis_viewrange
 
-    def set_curve_color(self, color, selected="both"):
-        logger.debug("Set {0} curve color to {1}".format(self.name, color))
+    def set_curve_selected(self, select=True):
+        if select:
+            self.curve.setPen(self.selected_pen)
+            self.curve.setSymbolPen(self.selected_symbol_pen)
+            self.curve.setSymbolBrush(self.selected_symbol_brush)
+            self.curve.setZValue(0)
+        else:
+            self.curve.setPen(self.unselected_pen)
+            self.curve.setSymbolPen(self.unselected_symbol_pen)
+            self.curve.setSymbolBrush(self.unselected_symbol_brush)
+            self.curve.setZValue(-100)
+
+    def set_color(self, color, width=None, selected="both"):
+        self.set_curve_color(color, width, selected)
+        self.set_symbol_color(color, selected)
+
+    def set_curve_color(self, color, width=None, selected="both"):
+        logger.info("Set {0} curve color to {1}".format(self.name, color.name()))
         if selected in ["both", "selected"]:
             color.setAlphaF(self.selected_pen.color().alphaF())
             self.selected_pen.setColor(color)
+            if width is not None:
+                self.selected_pen.setWidth(width)
+                # self.selected_pen.setWidth(10)
         if selected in ["both", "unselected"]:
             color.setAlphaF(self.unselected_pen.color().alphaF())
             self.unselected_pen.setColor(color)
+            if width is not None:
+                self.unselected_pen.setWidth(width)
 
         if self.selected_flag:
             self.curve.setPen(self.selected_pen)
@@ -898,6 +935,9 @@ class QTangoStripToolCurve(QtCore.QObject):
     def set_name(self, name):
         self.name = name
         self.curve.name = name
+
+    def curve_clicked(self, curve, ev=None):
+        self.sigClicked.emit(self)
 
 
 class QTangoStripToolPlotWidget(pg.PlotWidget):
@@ -1598,6 +1638,555 @@ class QTangoStripToolPlotWidget(pg.PlotWidget):
         self.points_clicked_signal.emit(curve.name(), points)
 
 
+class QTangoStripToolPlotWidget2(pg.PlotWidget):
+    """ Base class for a trend widget.
+
+        The widget stores trend curves that are trended. The duration is set with setDuration (seconds).
+        Curves are added with addCurve. New points are added with addPoint.
+
+        If curves are named with setCurveName they can be shown with showLegend.
+
+    """
+    update_curve_range_signal = QtCore.pyqtSignal(str, float, float)
+    points_clicked_signal = QtCore.pyqtSignal(str, list)
+
+    def __init__(self, name=None, sizes=None, colors=None, chronological=True, parent=None):
+        pg.PlotWidget.__init__(self, useOpenGL=True)
+
+        self.name = name
+
+        self.unselected_pen_width = 1.5
+        self.selected_pen_width = 3.0
+        self.selected_pen_factor = 3
+        self.unselected_pen_alpha = 0.5
+        self.selected_pen_alpha = 0.8
+        self.symbol_size = 10
+        self.highlight_symbol_size = 20
+
+        self.attrColors = QTangoColors()
+        self.sizes = QTangoSizes()
+
+        self.values_size = 10000
+        self.duration = 600.0
+        # self.x_values = list()
+        # self.y_values = list()
+        self.x_values_dict = dict()
+        self.y_values_dict = dict()
+
+        self.legend = None
+        self.curve_focus = None                    # Index of currently selected curve (showing the y-axis)
+        self.current_data_index = list()        # List of where the data is added for trend curves.
+        self.next_curve_id_index = 0            # Next id when adding curve
+        self.curve_group_list = list()          # Dict of curve groups. Each entry is a list of curve indices that are in the group
+        self.curve_dict = dict()             # Dict of viewboxes for curves. These set view area.
+        self.current_data_index_dict = dict()
+
+        self.trend_menu = None
+
+        self.chronological = chronological
+
+        self.setupLayout(name)
+        self.setupTrendMenu()
+
+    def setupLayout(self, name=None):
+        self.setXRange(-self.duration, 0)
+        self.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
+        pi = self.getPlotItem()
+        ax_left = pi.getAxis('left')
+        ax_left.setPen(self.attrColors.secondaryColor0)
+        pi.hideAxis('left')
+        ax_bottom = pi.getAxis('bottom')
+        ax_bottom.setPen(self.attrColors.secondaryColor0)
+
+        ax_right = pi.getAxis('right')
+        ax_right.setPen(self.attrColors.secondaryColor0)
+        # 		ax_right.setWidth(0)
+        # 		ax_right.setTicks([])
+        # 		ax_right.showLabel(False)
+        pi.showAxis('right')
+        pi.sigYRangeChanged.connect(self.update_views)
+        # pi.sigXRangeChanged.connect(self.updateViews)
+        pi.vb.sigResized.connect(self.update_views)
+        # pi.vb.sigRangeChanged.connect(self.updateViews)
+        pi.autoBtn.clicked.connect(self.auto_range_all)
+
+        color_warn = QtGui.QColor(self.attrColors.warnColor)
+        color_warn.setAlphaF(0.75)
+        color_good = QtGui.QColor(self.attrColors.secondaryColor0)
+        color_good.setAlphaF(0.33)
+
+        # self.legend = self.getPlotItem().addLegend()
+
+    def setupData(self, curve_name):
+        """ Pre-allocate data arrays
+        """
+        self.x_values_dict[curve_name] = -np.ones(self.values_size) * np.inf
+        self.y_values_dict[curve_name] = np.zeros(self.values_size)
+        self.current_data_index_dict[curve_name] = 0
+        logger.debug("Setting up data for curve {0}".format(curve_name))
+        # self.curve_item_dict[curve_name].setData(self.x_values_dict[curve_name], self.y_values_dict[curve_name], antialias=True)
+
+    def setupTrendMenu(self):
+        pi = self.getPlotItem()
+        self.trend_menu = QtWidgets.QMenu()
+        self.trend_menu.setTitle("Trend options")
+        duration_action = QtWidgets.QWidgetAction(self)
+        duration_widget = QtWidgets.QWidget()
+        duration_layout = QtWidgets.QHBoxLayout()
+        duration_label = QtWidgets.QLabel("Duration / s")
+        duration_spinbox = QtWidgets.QDoubleSpinBox()
+        duration_spinbox.setMaximum(3e7)
+        duration_spinbox.setValue(self.duration)
+        duration_spinbox.setMinimumWidth(40)
+        duration_spinbox.editingFinished.connect(self.set_duration_context)
+
+        duration_layout.addWidget(duration_label)
+        duration_layout.addWidget(duration_spinbox)
+        duration_widget.setLayout(duration_layout)
+        duration_action.setDefaultWidget(duration_widget)
+        self.trend_menu.addAction(duration_action)
+        pi.ctrlMenu = [self.trend_menu, pi.ctrlMenu]
+
+    def setWarningLimits(self, limits):
+        if type(limits) == pt.AttributeInfoListEx:
+            warn_high = limits[0].alarms.max_warning
+            warn_low = limits[0].alarms.min_warning
+        else:
+            warn_low = limits[0]
+            warn_high = limits[1]
+        self.warningRegionUpper.setRegion([warn_high, 1e6])
+        self.warningRegionLower.setRegion([-1e6, warn_low])
+        self.goodRegion.setRegion([warn_low, warn_high])
+
+    def configure_attribute(self, attr_info):
+        # QTangoAttributeBase.configureAttribute(self, attr_info)
+        try:
+            min_warning = float(self.attrInfo.alarms.min_warning)
+        except ValueError:
+            min_warning = -np.inf
+        try:
+            max_warning = float(self.attrInfo.alarms.max_warning)
+        except ValueError:
+            max_warning = np.inf
+        self.setWarningLimits((min_warning, max_warning))
+        self.setUnit(self.attrInfo.unit)
+
+    def set_duration(self, duration):
+        """ Set the duration of the trend graph in x axis units
+        (e.g. samples, seconds...)
+        """
+        self.duration = duration
+        self.setXRange(-self.duration, 0)
+
+    def set_duration_context(self):
+        """ Set the duration of the trend graph in x axis units
+        (e.g. samples, seconds...) from the context menu
+        """
+        w = self.sender()
+        duration = w.value()
+        self.duration = duration
+        self.setXRange(-self.duration, 0)
+
+    def add_curve(self, name=None, curve=None, width=1, **kwargs):
+        curve_index = self.next_curve_id_index
+        self.next_curve_id_index += 1
+        if name is None:
+            name = str(curve_index)
+        logger.info("Adding curve {0}, name {1}, width {2}".format(curve_index, name, width))
+
+        if curve is None:
+            curve_new = QTangoStripToolCurve(name=name)
+            if "color" in kwargs:
+                curve_color = pg.mkColor(kwargs["color"])
+            else:
+                curve_color = pg.mkColor(
+                    self.attrColors.legend_color_list[curve_index % len(self.attrColors.legend_color_list)])
+            logger.info("Curve color: {0}".format(curve_color.name()))
+            curve_new.set_curve_color(curve_color)
+            curve_color.setAlphaF(self.unselected_pen_alpha)
+            curve_new.curve.curve.setClickable(True)
+            curve_new.curve.sigPointsClicked.connect(self.points_clicked)
+        else:
+            curve_new = curve
+
+        curve_new.curve.curve.setClickable(True)
+        curve_new.curve.sigPointsClicked.connect(self.points_clicked)
+
+        pi_main = self.getPlotItem()
+        pi_main.scene().addItem(curve_new.vb)
+        curve_new.vb.setXLink(pi_main)
+
+        self.curve_dict[name] = curve_new
+        self.curve_group_list.append([name])
+        self.setupData(name)
+
+        curve_new.sigClicked.connect(self.setCurveFocus)
+        # self.setCurveFocus(name)
+
+        logger.debug("Calling updateViews")
+        self.update_views()
+        return curve_new
+
+    def remove_curve(self, name):
+        logger.info("Removing curve {0}".format(name))
+        c = self.curve_dict.pop(name)
+        vb = c.vb
+        ax = c.axis
+        curve = c.curve
+        # self.curve_name_list.pop(ind)
+        pi = self.getPlotItem()
+        pi.removeItem(vb)
+        pi.removeItem(ax)
+        pi.removeItem(curve)
+        curve.setParent(None)
+        ax.setParent(None)
+        vb.setParent(None)
+        curve.deleteLater()
+        ax.deleteLater()
+        vb.deleteLater()
+        for gr_ind, group_name_list in enumerate(self.curve_group_list):
+            if name in group_name_list:
+                group_name_list.remove(name)
+                if len(group_name_list) == 0:
+                    self.curve_group_list.pop(gr_ind)
+
+    def update_views(self, updated_curve_name=None):
+        t0 = time.time()
+        pi = self.getPlotItem()
+        # logger.info("Curve index {0} selected".format(self.curve_focus))
+        if updated_curve_name is None:
+            updated_curve_name = ""
+        for group_name_list in self.curve_group_list:
+            # logger.info("Curve group: {0}".format(group_name_list))
+            for name in group_name_list:
+                # Update x-axis of all curves
+                vb = self.curve_dict[name].vb
+                vb.setGeometry(pi.vb.sceneBoundingRect())
+                vb.linkedViewChanged(pi.vb, vb.XAxis)
+                # Update y-axis of curve focus group and specified curve group
+                if name == self.curve_focus:
+                    for name2 in group_name_list:
+                        vb2 = self.curve_dict[name2].vb
+                        vb2.linkedViewChanged(pi.vb, vb2.YAxis)
+                        vr = vb2.viewRange()
+                        self.update_curve_range_signal.emit(name2, vr[1][0], vr[1][1])
+                elif name == updated_curve_name:
+                    for name2 in group_name_list:
+                        vb2 = self.curve_dict[name2].vb
+                        vb2.linkedViewChanged(vb, vb2.YAxis)
+                        vr = vb2.viewRange()
+                        self.update_curve_range_signal.emit(name2, vr[1][0], vr[1][1])
+        # dt = time.time() - t0
+        # logger.info("Updating view. {0:.1f} ms".format(dt * 1e3))
+
+    def setCurveFocus(self, curve):
+        logger.info("Curve: {0}".format(curve))
+        if isinstance(curve, str):
+            curve = self.curve_dict[curve]
+        try:
+            curve_old = self.curve_dict[self.curve_focus]
+            curve_old.set_curve_selected(False)
+        except KeyError:
+            pass        # There was no previously selected curve, ignore
+        curve.set_curve_selected(True)
+        self.curve_focus = curve.name
+        pi = self.getPlotItem()
+        axis_viewrange = curve.vb.viewRange()
+        logger.debug("Setting view range {0}".format(axis_viewrange[1]))
+        pi.vb.setRange(yRange=axis_viewrange[1], padding=0)
+        pi_ax = pi.getAxis("right")
+        if curve.selected_pen is not None:
+            pi_ax.setPen(curve.selected_pen.color())
+        else:
+            pi_ax.setPen(curve.selected_brush.color())
+        pi.showGrid(True, True, 0.4)
+        self.update_views()
+
+    def get_curve_range(self, curve_name):
+        axis_viewrange = self.curve_dict[curve_name].vb.viewRange()
+        return axis_viewrange
+
+    def set_curve_color(self, curve_name, color):
+        logger.debug("Set curve {0} color to {1}".format(curve_name, color))
+        if curve_name == self.get_curve_focus_name():
+            color.setAlphaF(self.selected_pen_alpha)
+        else:
+            color.setAlphaF(self.unselected_pen_alpha)
+        ci: pg.PlotDataItem = self.curve_dict[curve_name].curve
+        pen = ci.opts.get("pen")
+        if pen is not None:
+            pen.setColor(color)
+            ci.setPen(pen)
+        try:
+            sym_brush = ci.opts["symbolBrush"]
+            sym_brush.setColor(color)
+            ci.opts["symbolBrush"] = sym_brush
+            ci.opts["symbolPen"].setColor(color)
+        except KeyError:
+            logger.debug("No symbol brush")
+        ci.updateItems()
+        self.update_views()
+
+    def get_curve_color(self, curve_name) -> QtGui.QColor:
+        logger.debug("Name: {0}".format(curve_name))
+        logger.debug("Opts: {0}".format(self.curve_dict[curve_name].curve.opts))
+        pen = self.curve_dict[curve_name].curve.opts["pen"]
+        if pen is not None:
+            curve_color = pen.color()
+        else:
+            curve_color = self.curve_dict[curve_name].curve.opts["symbolBrush"].color()
+        logger.debug("Curve color: {0}".format(curve_color))
+        return curve_color
+
+    def get_curve_focus_name(self):
+        return self.curve_focus
+
+    def get_curve(self, curve_name):
+        curve = self.curve_dict[curve_name]
+        return curve
+
+    def showLegend(self, show_legend=True):
+        if show_legend is True:
+            if self.legend is None:
+                self.legend = self.addLegend(offset=(5, 5))
+                for it in self.curve_dict.values():
+                    self.legend.addItem(it, it.opts.get('name', None))
+        else:
+            if self.legend is not None:
+                self.legend.scene().removeItem(self.legend)
+                self.legend = None
+
+    def setCurveName(self, old_name, new_name):
+        curve = self.curve_dict.pop(old_name)
+        curve.set_name(new_name)
+        self.curve_dict[new_name] = curve
+
+    def set_curve_visible(self, name, visible):
+        if visible:
+            self.curve_dict[name].show()
+        else:
+            self.curve_dict[name].hide()
+        self.update_views()
+
+    def addPoint(self, data, curve_name, auto_range=True):
+        t0 = time.time()
+        if type(data) == pt.DeviceAttribute:
+            x_new = data.time.totime()
+            y_new = data.value
+        else:
+            x_new = data[0]
+            y_new = data[1]
+        # Check x_new against last x to see if it is increasing.
+        # Sometimes there is a bug with wrong time values that are very much lower
+        # than the old value (probably 0)
+        current_data_index = self.current_data_index_dict[curve_name]
+        if current_data_index == 0:
+            x_old = 0.0
+        else:
+            x_old = self.x_values_dict[curve_name][current_data_index]
+        if (self.chronological is False) or (x_new > x_old):
+            # Rescaling if the number of samples is too high
+            if current_data_index + 1 >= self.values_size:
+                current_data_index = int(self.values_size * 0.75)
+                self.x_values_dict[curve_name][0:current_data_index] = self.x_values_dict[curve_name][self.values_size -
+                                                                                                      current_data_index:
+                                                                                                      self.values_size]
+                self.y_values_dict[curve_name][0:current_data_index] = self.y_values_dict[curve_name][self.values_size -
+                                                                                                      current_data_index:
+                                                                                                      self.values_size]
+            elif current_data_index == 0:
+                self.x_values_dict[curve_name][0] = x_new
+                self.y_values_dict[curve_name][0] = y_new
+            current_data_index += 1
+            self.x_values_dict[curve_name][current_data_index] = x_new
+            start_index = np.argmax((self.x_values_dict[curve_name] - x_new) > -self.duration)
+            self.y_values_dict[curve_name][self.current_data_index_dict[curve_name]] = y_new
+            self.curve_item_dict[curve_name].setData(self.x_values_dict[curve_name][start_index:current_data_index] - x_new,
+                                                     self.y_values_dict[curve_name][start_index:current_data_index],
+                                                     antialias=False)
+            if auto_range:
+                vb = self.curve_vb_dict[curve_name]
+                vb.enableAutoRange("y")
+                vb.autoRange()
+                if self.curve_focus == curve_name:
+                    pi = self.getPlotItem()
+                    axis_viewrange = self.curve_vb_dict[curve_name].viewRange()
+                    # logger.debug("Setting view range {0}".format(axis_viewrange))
+                    pi.vb.setRange(yRange=axis_viewrange[1], padding=0)
+                    pi.vb.setRange(xRange=axis_viewrange[0])
+            self.current_data_index_dict[curve_name] = current_data_index
+            t1 = time.time()
+            # self.update()
+            t2 = time.time()
+            # logger.info("Add point timing: setup {0:.1f} ms, update {1:.1f} ms".format((t1-t0)*1e3, (t2-t1)*1e3))
+
+    # def setData(self, x_data, y_data, curve_index=0, auto_range=True):
+    def setData(self, x_data, y_data, curve_name, auto_range=True, alt_symbol_array=None, **kargs):
+        logger.debug("Setting data for curve {0}".format(curve_name))
+        self.curve_dict[curve_name].set_data(x_data, y_data, auto_range, alt_symbol_array, **kargs)
+
+        if self.curve_focus == curve_name:
+            pi = self.getPlotItem()
+            axis_viewrange = self.curve_dict[curve_name].vb.viewRange()
+            logger.debug("Setting view range {0}".format(axis_viewrange))
+            pi.vb.setRange(yRange=axis_viewrange[1], padding=0)
+            pi.vb.setRange(xRange=axis_viewrange[0])
+        self.update_views(curve_name)
+
+    def set_highlight(self, curve_name, point_index):
+
+        self.curve_dict[curve_name].set_highlight_index(point_index)
+
+    def autoScale(self, curve_name=None):
+        if curve_name is not None:
+            for gr in self.curve_group_list:
+                if curve_name in gr:
+                    for cn in gr:
+                        vb = self.curve_dict[cn].vb
+                        child_range = vb.childrenBounds(frac=[1.0, 1.0])
+                        vb.setRange(yRange=child_range[1])
+            self.update_views()
+        else:
+            for vb in self.curve_dict.values():
+                child_range = vb.childrenBounds(frac=[1.0, 1.0])
+                vb.setRange(yRange=child_range[1])
+
+    def scaleAll(self, sc, center=None):
+        for name, c in self.curve_dict.items():
+            vb = c.vb
+            if center is None:
+                vr = vb.targetRect()
+                center = vr.center().y()
+            top = center + sc * (vr.top() - center)
+            bottom = center + sc * (vr.bottom() - center)
+            logger.debug("Curve {0}: vr {1}, center {2}, top {3}, bottom {4}".format(name, vr, center, top, bottom))
+            self.setYRange(top, bottom, padding=0)
+
+    def auto_range_all(self):
+        logger.debug("Auto ranging all curves.")
+        pi = self.getPlotItem()
+        x_min = np.inf
+        x_max = -np.inf
+        for name, c in self.curve_dict.items():
+            vb = c.vb
+            vb.autoRange(padding=0.05)
+            vr = vb.viewRange()
+            x_min = np.minimum(x_min, vr[0][0])
+            x_max = np.maximum(x_max, vr[0][1])
+            self.update_curve_range_signal.emit(name, vr[1][0], vr[1][1])
+            if name == self.curve_focus:
+                pi.vb.setRange(yRange=vr[1], padding=0.1)
+        pi.vb.setRange(xRange=[x_min, x_max], padding=0.05)
+
+    def auto_range_group(self, curve_group):
+        y_range = [np.inf, -np.inf]
+        for cn in curve_group:
+            vb = self.curve_dict[cn].vb
+            child_range = vb.childrenBounds(frac=[1.0, 1.0])
+            try:
+                y_range[0] = np.minimum(child_range[1][0], y_range[0])
+                y_range[1] = np.maximum(child_range[1][1], y_range[1])
+            except TypeError:
+                pass
+
+        if y_range[0] == np.inf:
+            y_range[0] = 0
+        if y_range[1] == -np.inf:
+            y_range[1] = 1
+        for cn in curve_group:
+            logger.debug("Curve {0} setting range {1}".format(cn, y_range))
+            vb = self.curve_dict[cn].vb
+            vb.setRange(yRange=y_range)
+            self.update_curve_range_signal.emit(cn, y_range[0], y_range[1])
+
+    def set_y_link(self, curve_1, curve_2):
+        """
+        Link y-axis of two curves.
+
+        :param curve_1: name of first curve
+        :param curve_2: name of second curve
+        :param enable: set or clear link
+        :return:
+        """
+        logger.debug("Curve group list: {0}".format(self.curve_group_list))
+        old_group = list()
+        for gr_ind, gr_list in enumerate(self.curve_group_list):
+            if curve_1 in gr_list:
+                gr_list.remove(curve_1)
+                old_group = gr_list
+                if len(gr_list) == 0:
+                    self.curve_group_list.pop(gr_ind)
+        found = False
+        new_group = list()
+        for gr_list in self.curve_group_list:
+            if curve_2 in gr_list:
+                gr_list.append(curve_1)
+                found = True
+                new_group = gr_list
+                break
+        if not found:
+            self.curve_group_list.append([curve_1])
+            new_group = [curve_1]
+        self.auto_range_group(gr_list)
+        return old_group, new_group
+
+    def get_link_group(self, curve_name):
+        """
+        Return a list of curve names of the group that contains curve_name
+
+        :param curve_name:
+        :return:
+        """
+        for gr_list in self.curve_group_list:
+            if curve_name in gr_list:
+                return gr_list
+        return None
+
+    def stack_vertically(self):
+        """
+        Stack curves vertically to separate them
+        :return:
+        """
+        dr = 1.0 / len(self.curve_group_list)
+        r_gap = 0.05
+        for ind, curve_group in enumerate(self.curve_group_list[::-1]):
+            vr = [dr * ind + r_gap / 2, dr * (ind + 1) - r_gap / 2]
+            y_range = [np.inf, -np.inf]
+            for cn in curve_group:
+                vb = self.curve_dict[cn].vb
+                child_range = vb.childrenBounds(frac=[1.0, 1.0])
+                try:
+                    y_range[0] = np.minimum(child_range[1][0], y_range[0])
+                    y_range[1] = np.maximum(child_range[1][1], y_range[1])
+                except TypeError:
+                    pass
+            if y_range[0] == np.inf:
+                y_range[0] = 0
+            if y_range[1] == -np.inf:
+                y_range[1] = 1
+            k = (y_range[1] - y_range[0]) / (vr[1] - vr[0])
+            m = y_range[0] - k * vr[0]
+            y_min = m
+            y_max = k + m
+            for cn in curve_group:
+                logger.debug("Curve {0} setting range {1}-{2}".format(cn, y_min, y_max))
+                vb = self.curve_dict[cn].vb
+                vb.setRange(yRange=[y_min, y_max])
+                self.update_curve_range_signal.emit(cn, y_min, y_max)
+
+    def points_clicked(self, curve, points):
+        points = list(points)
+        ind = [p.index() for p in points]
+        pos = [curve.mapToScene(p.pos().toQPoint()) for p in points]
+        mouse_pos = self.mapFromGlobal(QtGui.QCursor.pos())
+        logger.debug("Points on {0}: {1}, {2}, mouse {3}".format(curve.name(), ind, pos, mouse_pos))
+        for p in points:
+            pos = curve.mapToScene(p.pos().toQPoint())
+            dist = (pos.x() - mouse_pos.x())**2 + (pos.y() - mouse_pos.y())**2
+            p.dist = dist
+        self.points_clicked_signal.emit(curve.name(), points)
+
+
 class TestStream(QtWidgets.QWidget):
     update_sig = QtCore.pyqtSignal(np.ndarray, np.ndarray)
 
@@ -1735,19 +2324,19 @@ class TestStream(QtWidgets.QWidget):
 if __name__ == "__main__":
     pg.setConfigOptions(useOpenGL=True)
 
-    app = QtWidgets.QApplication(sys.argv)
+    # app = QtWidgets.QApplication(sys.argv)
 
-    test = "data"
+    test = "curve"
 
     if test == "data":
         w = QtWidgets.QWidget()
         w.setLayout(QtWidgets.QHBoxLayout())
-        strip_tool = QTangoStripTool(legend_pos="bottom")
+        st = QTangoStripTool(legend_pos="bottom")
         strip_tool2 = QTangoStripTool(legend_pos="right")
         # strip_tool.show()
         logger.debug("Strip tool created")
         splitter = QtWidgets.QSplitter(QtCore.Qt.Vertical)
-        splitter.addWidget(strip_tool)
+        splitter.addWidget(st)
         splitter.addWidget(strip_tool2)
         w.layout().addWidget(splitter)
         w.show()
@@ -1756,11 +2345,11 @@ if __name__ == "__main__":
             x_data = np.linspace(-600, 0, 50)
             y_data = np.sin(2*np.pi*x_data/240.0 * (c + 1)) + 10 * c
             name = "Curve {0}".format(c + 1)
-            strip_tool.add_curve(name, symbol="t", width=None)
-            strip_tool.set_data(x_data, y_data, name)
+            st.add_curve(name, symbol="t", width=None)
+            st.set_data(x_data, y_data, name)
             # strip_tool.curve_vb_list[c].setRange(yRange=[c-1, c+1])
         # strip_tool.set_legend_position("bottom")
-        strip_tool.set_y_link("Curve 1", "Curve 2")
+        st.set_y_link("Curve 1", "Curve 2")
         for c in range(5):
             x_data = np.linspace(-10, 10, 1000)
             y_data = x_data**(c % 3) + np.random.random(x_data.shape)
@@ -1772,12 +2361,54 @@ if __name__ == "__main__":
         strip_tool2.set_y_link("Curve 3", "Curve 1")
         strip_tool2.remove_curve("Curve 4")
         strip_tool2.plot_widget.stack_vertically()
-        strip_tool.plot_widget.set_highlight("Curve 1", 10)
-        strip_tool.plot_widget.set_highlight("Curve 1", 15)
+        st.plot_widget.set_highlight("Curve 1", 10)
+        st.plot_widget.set_highlight("Curve 1", 15)
         # strip_tool.plot_widget.set_highlight("Curve 1", None)
 
     elif test == "trend":
         test_stream = TestStream()
         test_stream.show()
 
-    sys.exit(app.exec_())
+    elif test == "curve":
+        colors = QTangoColors()
+        w = QtWidgets.QWidget()
+        w.setLayout(QtWidgets.QHBoxLayout())
+        st = QTangoStripToolPlotWidget2()
+        w.layout().addWidget(st)
+        # strip_tool.show()
+        logger.debug("Strip tool created")
+        w.show()
+
+        # plt = pg.PlotDataItem()
+        # plt.setData(np.linspace(0, 20, 1000), np.sin(np.linspace(0, 20, 1000)))
+        # vb = pg.ViewBox()
+        # vb.setZValue(-100)
+        # vb.addItem(plt)
+        # ax = pg.AxisItem("right")
+        # ax.linkToView(vb)
+        # ax1 = pg.AxisItem("bottom")
+        # ax1.linkToView(vb)
+        # vb.enableAutoRange("y")
+        # pi_main = st.getPlotItem()
+        # pi_main.scene().addItem(vb)
+        # vb.setXLink(pi_main)
+        # vb.setYLink(pi_main)
+        # st.addItem(plt)
+
+        for c in range(3):
+            x_data = np.linspace(-600, 0, 50)
+            y_data = np.sin(2*np.pi*x_data/240.0 * (c + 1)) + 10 * c
+            name = "c{0}".format(c + 1)
+            crv = QTangoStripToolCurve(name)
+            crv.set_color(pg.mkColor(colors.legend_color_list[c]), 3, selected="selected")
+            crv.set_color(pg.mkColor(colors.legend_color_list[c]), 1.5, selected="unselected")
+            logger.info("{0}, {1}, {2}".format(crv.selected_pen.color().name(), crv.selected_pen.width(), colors.legend_color_list[c]))
+            st.add_curve(name, crv)
+            symarray = np.full(x_data.shape[0], True)
+            st.setData(x_data, y_data, name, alt_symbol_array=symarray)
+            # strip_tool.curve_vb_list[c].setRange(yRange=[c-1, c+1])
+        # strip_tool.set_legend_position("bottom")
+        st.set_y_link("c1", "c2")
+        st.setCurveFocus("c1")
+
+    # sys.exit(app.exec_())
