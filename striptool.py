@@ -171,6 +171,197 @@ def to_precision2(x, p=-1, w=-1, neg_compensation=False, return_prefix_string=Tr
     return s
 
 
+# class QTangoStripTool(QtWidgets.QFrame):
+#     points_clicked_signal = QtCore.pyqtSignal(str, list)
+#
+#     def __init__(self, name=None, legend_pos="top", sizes=None, colors=None, chronological=True, parent=None):
+#         super().__init__(parent)
+#         logger.info("CREATING STRIPTOOL")
+#         self.setObjectName(self.__class__.__name__)
+#         self.colors = QTangoColors()    # type: QTangoColors
+#         self.sizes = QTangoSizes()
+#         self.attr_colors = self.colors
+#
+#         self.setContentsMargins(0, 0, 0, 0)
+#         self.setLayout(QtWidgets.QHBoxLayout())
+#         self.inner_layout = QtWidgets.QVBoxLayout()
+#
+#         self.legend_widget = QTangoStripToolLegendWidget(legend_pos, sizes, colors, parent=self)
+#         self.plot_widget = QTangoStripToolPlotWidget(None, sizes, colors, chronological, parent=self)
+#         self.plot_widget.points_clicked_signal.connect(self.points_clicked_signal)
+#         self.name = None
+#         if isinstance(name, str):
+#             self.name = name
+#             self.add_curve(name)
+#             self.legend_widget.items.get(name).clicked.emit()
+#         logger.debug("Plot widget created")
+#         logger.debug("Legend widget created")
+#
+#         self.set_legend_position(legend_pos)
+#
+#         s = str(self.styleSheet())
+#         use_background_color = True
+#         bkg_color = "#000000"
+#         color = "#a07e30"
+#         st = """QTangoStripTool {{
+#                       border-width: 0px;
+#                       border-color: {0};
+#                       border-style: solid;
+#                       border-radius: 0px;
+#                       margin: 1px;
+#                       color: {0};
+#                       background-color: {1};
+#                       }}""".format(color, bkg_color)
+#         self.setStyleSheet(st)
+#         self.plot_widget.update_curve_range_signal.connect(self.set_range)
+#
+#     def add_curve(self, name, curve=None, unit=None, visible=True, range=[0, 1], **kwargs):
+#         # legend_item = QTangoStripToolLegendItem(name, unit=unit, color=None, sizes=self.sizes, colors=self.colors)
+#         # legend_item.clicked.connect(self.set_curve_focus)
+#         # legend_item.show_check.toggled.connect(self.toggle_curve_show)
+#         # self.legend_widget.addItem(legend_item)
+#         curve_new = self.plot_widget.addCurve(name, curve, **kwargs)
+#         curve_new.sigClicked.connect(self.set_curve_focus)
+#         if curve is None:
+#             curve_new.sigPointsClicked.connect(self.set_curve_focus)
+#         plot_color = self.plot_widget.get_curve_color(name).name()
+#         self.legend_widget.add_item(name, range=range, unit=unit, color=plot_color)
+#         # legend_item.update_stylesheet(plot_color)
+#         self.set_curve_visible(name, visible)
+#         self.set_y_link(name, name)
+#         logger.debug("Added curve {0} with color {1}".format(name, plot_color))
+#
+#     def remove_curve(self, name):
+#         logger.info("Removing curve {0}".format(name))
+#         self.plot_widget.removeCurve(name)
+#         # self.legend_widget.removeItem(name)
+#         self.legend_widget.park_item(name)
+#
+#     def set_curve_visible(self, name, visible):
+#         self.legend_widget.items[name].show_check.setChecked(visible)
+#
+#     def add_point(self, data, curve_name, auto_range=True):
+#         self.plot_widget.addPoint(data, curve_name, auto_range)
+#         if auto_range:
+#             legend_item = self.legend_widget.get_item(curve_name)
+#             axis_range = self.plot_widget.get_curve_range(curve_name)
+#             legend_item.set_range(axis_range[1])
+#         # logger.info("Striptool add point: {0:.1f} ms, autorange: {1:.1f} ms".format((t1-t0)*1e3, (t2-t1)*1e3))
+#
+#     def set_data(self, x_data, y_data, curve_name, **kargs):
+#
+#         self.plot_widget.setData(x_data, y_data, curve_name=curve_name, **kargs)
+#         if "auto_range" in kargs:
+#             auto_range = kargs["auto_range"]
+#         else:
+#             auto_range = True
+#         if auto_range:
+#             legend_item = self.legend_widget.get_item(curve_name)
+#             axis_range = self.plot_widget.get_curve_range(curve_name)
+#             legend_item.set_range(axis_range[1])
+#
+#     def set_curve_focus(self):
+#         s = self.sender()
+#         if isinstance(s, QTangoStripToolLegendItem):
+#             logger.debug("{0}: Signal from {1}".format(self.__class__, s.name))
+#             ind = self.legend_widget.get_item_index(s)
+#             logger.debug("Legend item index {0}".format(ind))
+#             self.plot_widget.setCurveFocus(s.name)
+#             self.legend_widget.set_focus_item(s.name)
+#         else:
+#             ind = self.plot_widget.get_curve_focus_name()
+#             self.plot_widget.get_curve_color(ind)
+#             self.legend_widget.set_focus_item(ind)
+#
+#     def toggle_curve_show(self, state):
+#         name = self.sender().parent().name
+#         logger.debug("Checkbox {0} new state {1}".format(name, state))
+#         if state:
+#             self.plot_widget.set_curve_visible(name, True)
+#         else:
+#             self.plot_widget.set_curve_visible(name, False)
+#
+#     def set_legend_position(self, position):
+#         try:
+#             for w in range(2):
+#                 self.inner_widget.layout().takeAt(0)
+#         except AttributeError:
+#             pass
+#         self.legend_widget.set_position(position)
+#         if position == "top":
+#             lay = QtWidgets.QVBoxLayout()
+#             lay.addWidget(self.legend_widget)
+#             lay.addWidget(self.plot_widget)
+#         elif position == "bottom":
+#             lay = QtWidgets.QVBoxLayout()
+#             lay.addWidget(self.plot_widget)
+#             lay.addWidget(self.legend_widget)
+#         elif position == "right":
+#             lay = QtWidgets.QHBoxLayout()
+#             lay.addWidget(self.plot_widget)
+#             lay.addWidget(self.legend_widget)
+#             w = self.width()
+#             self.legend_widget.setMaximumWidth(200)
+#             self.legend_widget.setMinimumWidth(200)
+#         else:
+#             lay = QtWidgets.QHBoxLayout()
+#             lay.addWidget(self.legend_widget)
+#             lay.addWidget(self.plot_widget)
+#             self.legend_widget.setMaximumWidth(200)
+#             self.legend_widget.setMinimumWidth(200)
+#
+#         lay.setContentsMargins(0, 0, 0, 0)
+#         self.layout().takeAt(0)
+#         self.layout().addLayout(lay)
+#         # old_lay = self.layout()
+#         # if old_lay is not None:
+#         #     old_lay.deleteLater()
+#         self.inner_layout = lay
+#         # self.legend_widget.set_position(position)
+#
+#     def set_range(self, name, r_min, r_max):
+#         logger.debug("Setting range for curve {0}: {1:.2f} - {2:.2f}".format(name, r_min, r_max))
+#         self.legend_widget.items[name].set_range([r_min, r_max])
+#
+#     def set_y_link(self, curve_name_1, curve_name_2):
+#         logger.debug("c1: {0}, c2: {1}".format(curve_name_1, curve_name_2))
+#         old_group, new_group = self.plot_widget.set_y_link(curve_name_1, curve_name_2)
+#         logger.debug("Old group: {0}, new group {1}".format(old_group, new_group))
+#         color_list = list()
+#         for curve_name in old_group:
+#             color_list.append(self.plot_widget.get_curve_color(curve_name))
+#         for curve_name in old_group:
+#             li = self.legend_widget.get_item(curve_name)
+#             li.set_group_list(color_list)
+#         color_list = list()
+#         for curve_name in new_group:
+#             color_list.append(self.plot_widget.get_curve_color(curve_name))
+#         for curve_name in new_group:
+#             li = self.legend_widget.get_item(curve_name)
+#             li.set_group_list(color_list)
+#
+#     def set_curve_color(self, curve_name, color):
+#         self.plot_widget.set_curve_color(curve_name, color)
+#         gr_list = self.plot_widget.get_link_group(curve_name)
+#         color_list = list()
+#         for curve_name in gr_list:
+#             color_list.append(self.plot_widget.get_curve_color(curve_name))
+#         for curve_name in gr_list:
+#             li = self.legend_widget.get_item(curve_name)
+#             li.set_group_list(color_list)
+#
+#     def stack_vertically(self):
+#         self.plot_widget.stack_vertically()
+#
+#     def paintEvent(self, a0):
+#         super(QTangoStripTool, self).paintEvent(a0)
+#         opt = QtWidgets.QStyleOption()
+#         opt.initFrom(self)
+#         p = QtGui.QPainter(self)
+#         s = self.style()
+#         s.drawPrimitive(QtWidgets.QStyle.PE_Widget, opt, p, self)
+
+
 class QTangoStripTool(QtWidgets.QFrame):
     points_clicked_signal = QtCore.pyqtSignal(str, list)
 
@@ -187,7 +378,7 @@ class QTangoStripTool(QtWidgets.QFrame):
         self.inner_layout = QtWidgets.QVBoxLayout()
 
         self.legend_widget = QTangoStripToolLegendWidget(legend_pos, sizes, colors, parent=self)
-        self.plot_widget = QTangoStripToolPlotWidget(None, sizes, colors, chronological, parent=self)
+        self.plot_widget = QTangoStripToolPlotWidget2(None, sizes, colors, chronological, parent=self)
         self.plot_widget.points_clicked_signal.connect(self.points_clicked_signal)
         self.name = None
         if isinstance(name, str):
@@ -216,11 +407,7 @@ class QTangoStripTool(QtWidgets.QFrame):
         self.plot_widget.update_curve_range_signal.connect(self.set_range)
 
     def add_curve(self, name, curve=None, unit=None, visible=True, range=[0, 1], **kwargs):
-        # legend_item = QTangoStripToolLegendItem(name, unit=unit, color=None, sizes=self.sizes, colors=self.colors)
-        # legend_item.clicked.connect(self.set_curve_focus)
-        # legend_item.show_check.toggled.connect(self.toggle_curve_show)
-        # self.legend_widget.addItem(legend_item)
-        curve_new = self.plot_widget.addCurve(name, curve, **kwargs)
+        curve_new = self.plot_widget.add_curve(name, curve, **kwargs)
         curve_new.sigClicked.connect(self.set_curve_focus)
         if curve is None:
             curve_new.sigPointsClicked.connect(self.set_curve_focus)
@@ -230,10 +417,11 @@ class QTangoStripTool(QtWidgets.QFrame):
         self.set_curve_visible(name, visible)
         self.set_y_link(name, name)
         logger.debug("Added curve {0} with color {1}".format(name, plot_color))
+        logger.info("STRIPTOOL kwargs: {0}".format(kwargs))
 
     def remove_curve(self, name):
         logger.info("Removing curve {0}".format(name))
-        self.plot_widget.removeCurve(name)
+        self.plot_widget.remove_curve(name)
         # self.legend_widget.removeItem(name)
         self.legend_widget.park_item(name)
 
@@ -768,8 +956,9 @@ class QTangoStripToolCurve(QtCore.QObject):
     Stores a trend curve. Data values, pyqtgraph curve, viewbox, axis, color, symbols, etc.
     """
     sigClicked = QtCore.pyqtSignal(object)
+    sigPointsClicked = QtCore.pyqtSignal(object, object)
 
-    def __init__(self, name, parent=None):
+    def __init__(self, name, parent=None, width=2, **kwargs):
         super().__init__(parent)
         self.name = name
         self.vb = pg.ViewBox()                      # type: pg.ViewBox
@@ -803,11 +992,44 @@ class QTangoStripToolCurve(QtCore.QObject):
         self.current_data_index = 0
         self.highlighted_index = None
 
+        if "symbol" in kwargs:
+            self.symbol = kwargs["symbol"]
+        if "alt_symbol" in kwargs:
+            self.alt_symbol = kwargs["alt_symbol"]
+        if "symbol_size" in kwargs:
+            self.symbol_size = kwargs["symbol_size"]
+        if "alt_symbol_size" in kwargs:
+            self.alt_symbol_size = kwargs["alt_symbol_size"]
+        if "highlight_symbol_size" in kwargs:
+            self.highlight_symbol_size = kwargs["highlight_symbol_size"]
+
+        if "color" in kwargs:
+            color = pg.mkColor(kwargs["color"])
+            if width is None:
+                self.selected_pen = None
+                self.unselected_pen = None
+            else:
+                self.selected_pen = pg.mkPen(color, width=width)
+                self.unselected_pen = pg.mkPen(color, width=width / 2)
+            self.selected_symbol_pen = pg.mkPen(color)
+            self.unselected_symbol_pen = pg.mkPen(color)
+            self.selected_symbol_brush = pg.mkBrush(color)
+            color.setAlphaF(0.5 * color.alphaF())
+            self.unselected_symbol_brush = pg.mkBrush(color)
+        if "symbol_pen" in kwargs:
+            self.selected_symbol_pen = kwargs["symbol_pen"]
+            self.unselected_symbol_pen = kwargs["symbol_pen"]
+        if "symbol_brush" in kwargs:
+            self.selected_symbol_brush = kwargs["symbol_brush"]
+            self.unselected_symbol_brush = kwargs["symbol_brush"]
+
         self.selected_flag = False
         self.curve.setPen(self.unselected_pen)
         self.curve.setSymbolPen(self.unselected_symbol_pen)
         self.curve.setSymbolBrush(self.unselected_symbol_brush)
         self.curve.sigClicked.connect(self.curve_clicked)
+        self.curve.sigPointsClicked.connect(self.curve_points_clicked)
+        logger.info("Curve {0}: width {1}, pen {2}".format(self.name, width, self.selected_pen))
 
     def setup_data(self):
         """ Pre-allocate data arrays
@@ -828,6 +1050,7 @@ class QTangoStripToolCurve(QtCore.QObject):
         if alt_symbol_array is not None:
             self.symbol_array = np.full(n, self.symbol)
             self.symbol_array[alt_symbol_array] = self.alt_symbol
+            logger.debug("Alt symbol array: {0}\n symbol array: {1}".format(alt_symbol_array, self.symbol_array))
             self.curve.setData(x_data, y_data, symbol=self.symbol_array, **kargs)
         else:
             self.curve.setData(x_data, y_data, **kargs)
@@ -855,22 +1078,35 @@ class QTangoStripToolCurve(QtCore.QObject):
             self.curve.setZValue(-100)
 
     def set_color(self, color, width=None, selected="both"):
-        self.set_curve_color(color, width, selected)
+        self.set_curve_color(color, selected, width=width)
         self.set_symbol_color(color, selected)
 
-    def set_curve_color(self, color, width=None, selected="both"):
-        logger.info("Set {0} curve color to {1}".format(self.name, color.name()))
+    def set_curve_color(self, color, selected="both", **kwargs):
+        logger.debug("Set {0} curve color to {1}".format(self.name, color.name()))
         if selected in ["both", "selected"]:
-            color.setAlphaF(self.selected_pen.color().alphaF())
-            self.selected_pen.setColor(color)
-            if width is not None:
-                self.selected_pen.setWidth(width)
-                # self.selected_pen.setWidth(10)
+            if self.selected_pen is not None:
+                # color.setAlphaF(self.selected_pen.color().alphaF())
+                width = self.selected_pen.widthF()
+            else:
+                width = None
+            if "width" in kwargs:
+                width = kwargs["width"]
+            if width is None:
+                self.selected_pen = None
+            else:
+                self.selected_pen = pg.mkPen(color, width=width)
         if selected in ["both", "unselected"]:
-            color.setAlphaF(self.unselected_pen.color().alphaF())
-            self.unselected_pen.setColor(color)
-            if width is not None:
-                self.unselected_pen.setWidth(width)
+            if self.unselected_pen is not None:
+                # color.setAlphaF(self.unselected_pen.color().alphaF())
+                width = self.unselected_pen.widthF()
+            else:
+                width = None
+            if "width" in kwargs:
+                width = kwargs["width"]
+            if width is None:
+                self.unselected_pen = None
+            else:
+                self.unselected_pen = pg.mkPen(color, width=width)
 
         if self.selected_flag:
             self.curve.setPen(self.selected_pen)
@@ -880,18 +1116,20 @@ class QTangoStripToolCurve(QtCore.QObject):
     def set_symbol_color(self, color, selected="both"):
         logger.debug("Set {0} symbol color to {1}".format(self.name, color))
         if selected in ["both", "selected"]:
-            a = self.selected_symbol_pen.color().alphaF()
+            # a = self.selected_symbol_pen.color().alphaF()
             if isinstance(color, list):
-                [c.setAlphaF(a) for c in color]
+                # [c.setAlphaF(a) for c in color]
                 if isinstance(self.selected_symbol_pen, list):
                     [p.setColor(color[ind]) for ind, p in enumerate(self.selected_symbol_pen)]
             else:
-                color.setAlphaF(a)
+                # color.setAlphaF(a)
                 self.selected_symbol_pen.setColor(color)
+                color.setAlphaF(color.alphaF())
                 self.selected_symbol_brush.setColor(color)
         if selected in ["both", "unselected"]:
-            color.setAlphaF(self.unselected_pen.color().alphaF())
+            # color.setAlphaF(self.unselected_pen.color().alphaF())
             self.unselected_symbol_pen.setColor(color)
+            color.setAlphaF(color.alphaF() * 0.5)
             self.unselected_symbol_brush.setColor(color)
 
         if self.selected_flag:
@@ -938,6 +1176,15 @@ class QTangoStripToolCurve(QtCore.QObject):
 
     def curve_clicked(self, curve, ev=None):
         self.sigClicked.emit(self)
+
+    def curve_points_clicked(self, curve, points, ev=None):
+        self.sigPointsClicked.emit(self, points)
+
+    def set_visible(self, visible=True):
+        if visible:
+            self.curve.show()
+        else:
+            self.curve.hide()
 
 
 class QTangoStripToolPlotWidget(pg.PlotWidget):
@@ -1795,7 +2042,7 @@ class QTangoStripToolPlotWidget2(pg.PlotWidget):
         logger.info("Adding curve {0}, name {1}, width {2}".format(curve_index, name, width))
 
         if curve is None:
-            curve_new = QTangoStripToolCurve(name=name)
+            curve_new = QTangoStripToolCurve(name=name, width=width, **kwargs)
             if "color" in kwargs:
                 curve_color = pg.mkColor(kwargs["color"])
             else:
@@ -1804,8 +2051,6 @@ class QTangoStripToolPlotWidget2(pg.PlotWidget):
             logger.info("Curve color: {0}".format(curve_color.name()))
             curve_new.set_curve_color(curve_color)
             curve_color.setAlphaF(self.unselected_pen_alpha)
-            curve_new.curve.curve.setClickable(True)
-            curve_new.curve.sigPointsClicked.connect(self.points_clicked)
         else:
             curve_new = curve
 
@@ -1831,18 +2076,18 @@ class QTangoStripToolPlotWidget2(pg.PlotWidget):
         logger.info("Removing curve {0}".format(name))
         c = self.curve_dict.pop(name)
         vb = c.vb
-        ax = c.axis
+        # ax = c.axis
         curve = c.curve
         # self.curve_name_list.pop(ind)
         pi = self.getPlotItem()
         pi.removeItem(vb)
-        pi.removeItem(ax)
+        # pi.removeItem(ax)
         pi.removeItem(curve)
         curve.setParent(None)
-        ax.setParent(None)
+        # ax.setParent(None)
         vb.setParent(None)
         curve.deleteLater()
-        ax.deleteLater()
+        # ax.deleteLater()
         vb.deleteLater()
         for gr_ind, group_name_list in enumerate(self.curve_group_list):
             if name in group_name_list:
@@ -1882,7 +2127,7 @@ class QTangoStripToolPlotWidget2(pg.PlotWidget):
     def setCurveFocus(self, curve):
         logger.info("Curve: {0}".format(curve))
         if isinstance(curve, str):
-            curve = self.curve_dict[curve]
+            curve = self.curve_dict[curve]          # type: QTangoStripToolCurve
         try:
             curve_old = self.curve_dict[self.curve_focus]
             curve_old.set_curve_selected(False)
@@ -1898,7 +2143,7 @@ class QTangoStripToolPlotWidget2(pg.PlotWidget):
         if curve.selected_pen is not None:
             pi_ax.setPen(curve.selected_pen.color())
         else:
-            pi_ax.setPen(curve.selected_brush.color())
+            pi_ax.setPen(curve.selected_symbol_brush.color())
         pi.showGrid(True, True, 0.4)
         self.update_views()
 
@@ -1906,35 +2151,38 @@ class QTangoStripToolPlotWidget2(pg.PlotWidget):
         axis_viewrange = self.curve_dict[curve_name].vb.viewRange()
         return axis_viewrange
 
-    def set_curve_color(self, curve_name, color):
+    def set_curve_color(self, curve_name, color, selected="both"):
         logger.debug("Set curve {0} color to {1}".format(curve_name, color))
-        if curve_name == self.get_curve_focus_name():
-            color.setAlphaF(self.selected_pen_alpha)
-        else:
-            color.setAlphaF(self.unselected_pen_alpha)
-        ci: pg.PlotDataItem = self.curve_dict[curve_name].curve
-        pen = ci.opts.get("pen")
-        if pen is not None:
-            pen.setColor(color)
-            ci.setPen(pen)
-        try:
-            sym_brush = ci.opts["symbolBrush"]
-            sym_brush.setColor(color)
-            ci.opts["symbolBrush"] = sym_brush
-            ci.opts["symbolPen"].setColor(color)
-        except KeyError:
-            logger.debug("No symbol brush")
-        ci.updateItems()
+        self.curve_dict[curve_name].set_color(color, selected=selected)
+        # if curve_name == self.get_curve_focus_name():
+        #     # color.setAlphaF(self.selected_pen_alpha)
+        #     self.curve_dict[curve_name].set_color(color, selected=selected)
+        # else:
+        #     # color.setAlphaF(self.unselected_pen_alpha)
+        #     self.curve_dict[curve_name].set_color(color, selected="unselected")
+        # ci: pg.PlotDataItem = self.curve_dict[curve_name].curve
+        # pen = ci.opts.get("pen")
+        # if pen is not None:
+        #     pen.setColor(color)
+        #     ci.setPen(pen)
+        # try:
+        #     sym_brush = ci.opts["symbolBrush"]
+        #     sym_brush.setColor(color)
+        #     ci.opts["symbolBrush"] = sym_brush
+        #     ci.opts["symbolPen"].setColor(color)
+        # except KeyError:
+        #     logger.debug("No symbol brush")
+        # ci.updateItems()
         self.update_views()
 
     def get_curve_color(self, curve_name) -> QtGui.QColor:
         logger.debug("Name: {0}".format(curve_name))
         logger.debug("Opts: {0}".format(self.curve_dict[curve_name].curve.opts))
-        pen = self.curve_dict[curve_name].curve.opts["pen"]
+        pen = self.curve_dict[curve_name].selected_pen
         if pen is not None:
             curve_color = pen.color()
         else:
-            curve_color = self.curve_dict[curve_name].curve.opts["symbolBrush"].color()
+            curve_color = self.curve_dict[curve_name].selected_symbol_brush.color()
         logger.debug("Curve color: {0}".format(curve_color))
         return curve_color
 
@@ -1962,10 +2210,11 @@ class QTangoStripToolPlotWidget2(pg.PlotWidget):
         self.curve_dict[new_name] = curve
 
     def set_curve_visible(self, name, visible):
-        if visible:
-            self.curve_dict[name].show()
-        else:
-            self.curve_dict[name].hide()
+        self.curve_dict[name].set_visible(visible)
+        # if visible:
+        #     self.curve_dict[name].show()
+        # else:
+        #     self.curve_dict[name].hide()
         self.update_views()
 
     def addPoint(self, data, curve_name, auto_range=True):
@@ -2179,7 +2428,7 @@ class QTangoStripToolPlotWidget2(pg.PlotWidget):
         ind = [p.index() for p in points]
         pos = [curve.mapToScene(p.pos().toQPoint()) for p in points]
         mouse_pos = self.mapFromGlobal(QtGui.QCursor.pos())
-        logger.debug("Points on {0}: {1}, {2}, mouse {3}".format(curve.name(), ind, pos, mouse_pos))
+        logger.info("Points on {0}: {1}, {2}, mouse {3}".format(curve.name(), ind, pos, mouse_pos))
         for p in points:
             pos = curve.mapToScene(p.pos().toQPoint())
             dist = (pos.x() - mouse_pos.x())**2 + (pos.y() - mouse_pos.y())**2
@@ -2373,7 +2622,8 @@ if __name__ == "__main__":
         colors = QTangoColors()
         w = QtWidgets.QWidget()
         w.setLayout(QtWidgets.QHBoxLayout())
-        st = QTangoStripToolPlotWidget2()
+        # st = QTangoStripToolPlotWidget2()
+        st = QTangoStripTool(legend_pos="right")
         w.layout().addWidget(st)
         # strip_tool.show()
         logger.debug("Strip tool created")
@@ -2399,16 +2649,17 @@ if __name__ == "__main__":
             x_data = np.linspace(-600, 0, 50)
             y_data = np.sin(2*np.pi*x_data/240.0 * (c + 1)) + 10 * c
             name = "c{0}".format(c + 1)
-            crv = QTangoStripToolCurve(name)
-            crv.set_color(pg.mkColor(colors.legend_color_list[c]), 3, selected="selected")
-            crv.set_color(pg.mkColor(colors.legend_color_list[c]), 1.5, selected="unselected")
-            logger.info("{0}, {1}, {2}".format(crv.selected_pen.color().name(), crv.selected_pen.width(), colors.legend_color_list[c]))
+            crv = QTangoStripToolCurve(name, color=colors.legend_color_list[c], width=None)
+            # crv.set_color(pg.mkColor(colors.legend_color_list[c]), None, selected="selected")
+            # crv.set_color(pg.mkColor(colors.legend_color_list[c]), None, selected="unselected")
+            # logger.info("{0}, {1}, {2}".format(crv.selected_pen.color().name(), crv.selected_pen.width(), colors.legend_color_list[c]))
             st.add_curve(name, crv)
             symarray = np.full(x_data.shape[0], True)
-            st.setData(x_data, y_data, name, alt_symbol_array=symarray)
+            symarray[0:10] = False
+            st.set_data(x_data, y_data, name, alt_symbol_array=symarray)
             # strip_tool.curve_vb_list[c].setRange(yRange=[c-1, c+1])
         # strip_tool.set_legend_position("bottom")
         st.set_y_link("c1", "c2")
-        st.setCurveFocus("c1")
+        # st.setCurveFocus("c1")
 
     # sys.exit(app.exec_())

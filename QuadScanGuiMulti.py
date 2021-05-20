@@ -879,11 +879,11 @@ class QuadScanGui(QtWidgets.QWidget):
     def prepare_plots(self, scan_type="single"):
         root.info("Preparing plots for {0}".format(scan_type))
         with self.gui_lock:
-            old_names = list(self.ui.charge_widget.plot_widget.curve_item_dict.keys())
+            old_names = list(self.ui.charge_widget.plot_widget.curve_dict.keys())
             root.info("Old names: {0}".format(old_names))
             for c in old_names:
                 self.ui.charge_widget.remove_curve(c)
-            old_names = list(self.ui.fit_widget.plot_widget.curve_item_dict.keys())
+            old_names = list(self.ui.fit_widget.plot_widget.curve_dict.keys())
             root.info("Old names: {0}".format(old_names))
             for c in old_names:
                 self.ui.fit_widget.remove_curve(c)
@@ -897,8 +897,7 @@ class QuadScanGui(QtWidgets.QWidget):
                                                 symbolPen=pq.mkPen(col_charge, width=0), width=None)
                 col = pq.mkColor(30, 100, 200)
                 self.ui.charge_widget.add_curve("fit_x", pen=pq.mkPen(col, width=2), width=2)
-                self.ui.charge_widget.add_curve("sigma_x", symbol="s", symbolPen=pq.mkPen(col_sigma_x, width=0),
-                                                symbolBrush=pq.mkBrush(col_sigma_x), width=None, visible=True, color=col_sigma_x)
+                self.ui.charge_widget.add_curve("sigma_x", symbol="v", alt_symbol="x", width=None, visible=True, color=col_sigma_x)
                 self.ui.charge_widget.add_curve("sigma_y", symbol="h", symbolPen=pq.mkPen(col_sigma_y, width=0),
                                                 symbolBrush=pq.mkBrush(col_sigma_y), width=None, visible=True, color=col_sigma_y)
                 self.ui.charge_widget.set_y_link("sigma_y", "sigma_x")
@@ -912,54 +911,73 @@ class QuadScanGui(QtWidgets.QWidget):
                 self.ui.fit_widget.set_legend_position("right")
 
             elif scan_type == "multi_disk":
-                self.ui.charge_widget.add_curve("sigma_x", symbol="s", symbolPen=pq.mkPen(col_sigma_x, width=0), symbolBrush=pq.mkBrush(col_sigma_x),
-                                                pen=pq.mkPen(col_sigma_x, width=0), width=1, visible=True)
-                self.ui.charge_widget.add_curve("sigma_y", symbol="h", symbolPen=pq.mkPen(col_sigma_y, width=0), symbolBrush=pq.mkBrush(col_sigma_y),
-                                                pen=pq.mkPen(col_sigma_y, width=0), width=1, visible=True)
+                # self.ui.charge_widget.add_curve("sigma_x", symbol="s", symbolPen=pq.mkPen(col_sigma_x, width=0), symbolBrush=pq.mkBrush(col_sigma_x),
+                #                                 pen=pq.mkPen(col_sigma_x, width=0), width=1, visible=True)
+                # self.ui.charge_widget.add_curve("sigma_y", symbol="h", symbolPen=pq.mkPen(col_sigma_y, width=0), symbolBrush=pq.mkBrush(col_sigma_y),
+                #                                 pen=pq.mkPen(col_sigma_y, width=0), width=1, visible=True)
+                # self.ui.charge_widget.set_y_link("sigma_y", "sigma_x")
+                # self.ui.charge_widget.add_curve("charge", symbol="o", symbolBrush=pq.mkBrush(col_charge),
+                #                                 symbolPen=pq.mkPen(col_charge, width=0), pen=pq.mkPen(col_charge, width=0))
+
+                # self.ui.charge_widget.add_curve("sigma_x", symbol="s", color=col_sigma_x, symbolPen=pq.mkPen(col_sigma_x, width=0), symbolBrush=pq.mkBrush(col_sigma_x),
+                #                                 pen=pq.mkPen(col_sigma_x, width=0), width=1, visible=True)
+                self.ui.charge_widget.add_curve("sigma_x", symbol="s", alt_symbol="x", width=None, color=col_sigma_x)
+                self.ui.charge_widget.add_curve("sigma_y", symbol="t", alt_symbol="x", width=None, color=col_sigma_y)
                 self.ui.charge_widget.set_y_link("sigma_y", "sigma_x")
-                self.ui.charge_widget.add_curve("charge", symbol="o", symbolBrush=pq.mkBrush(col_charge),
-                                                symbolPen=pq.mkPen(col_charge, width=0), pen=pq.mkPen(col_charge, width=0))
+                self.ui.charge_widget.add_curve("charge", symbol="o", alt_symbol="x", width=None, color=col_charge)
 
                 self.ui.charge_widget.set_legend_position("right")
 
-                self.ui.fit_widget.add_curve("fit_x", pen=pq.mkPen(col_fit_x, width=2), width=2, visible=True)
-                self.ui.fit_widget.add_curve("ab_x", symbol="t", symbolPen=pq.mkPen(col_sigma_x, width=0), symbolBrush=pq.mkBrush(col_sigma_x),
-                                             color=col_sigma_x, width=None, visible=True)
+                self.ui.fit_widget.add_curve("fit_x", color=col_fit_x, width=2)
+                self.ui.fit_widget.add_curve("ab_x", symbol="t", alt_symbol="x", color=col_sigma_x, width=None)
                 self.ui.fit_widget.set_y_link("ab_x", "fit_x")
-                self.ui.fit_widget.add_curve("fit_y", pen=pq.mkPen(col_fit_y, width=2), width=2, visible=True)
-                self.ui.fit_widget.add_curve("ab_y", symbol="s", symbolPen=pq.mkPen(col_sigma_y, width=0), symbolBrush=pq.mkBrush(col_sigma_y),
-                                             color=col_sigma_y, width=None, visible=True)
+                self.ui.fit_widget.add_curve("fit_y", color=col_fit_y, width=2)
+                self.ui.fit_widget.add_curve("ab_y", symbol="s", alt_symbol="x", color=col_sigma_y, width=None)
                 self.ui.fit_widget.set_y_link("ab_y", "fit_x")
                 self.ui.fit_widget.set_y_link("fit_y", "fit_x")
                 self.ui.fit_widget.set_legend_position("right")
 
+                logger.info(
+                    "s_x pen: {0}".format(self.ui.charge_widget.plot_widget.get_curve("sigma_x").unselected_pen))
+
             elif scan_type == "multi_scan":
-                self.ui.charge_widget.add_curve("charge", symbol="o", symbolBrush=pq.mkBrush(col_charge),
-                                                symbolPen=pq.mkPen(col_charge, width=0), pen=pq.mkPen(col_charge, width=0))
-                col = pq.mkColor(100, 180, 50)
-                self.ui.charge_widget.add_curve("eps_x", symbol="t1", symbolBrush=pq.mkBrush(col),
-                                                symbolPen=pq.mkPen(col, width=0), pen=pq.mkPen(col, width=0))
-                col = pq.mkColor(30, 100, 200)
-                self.ui.charge_widget.add_curve("beta_x", symbol="t2", symbolBrush=pq.mkBrush(col),
-                                                symbolPen=pq.mkPen(col, width=0), pen=pq.mkPen(col, width=0))
-                col = pq.mkColor(30, 170, 120)
-                self.ui.charge_widget.add_curve("alpha_x", symbol="t3", symbolBrush=pq.mkBrush(col),
-                                                symbolPen=pq.mkPen(col, width=0), pen=pq.mkPen(col, width=0))
-                self.ui.charge_widget.add_curve("sigma_x", symbol="s", symbolPen=pq.mkPen(col_sigma_x, width=0), symbolBrush=pq.mkBrush(col_sigma_x),
-                                                pen=pq.mkPen(col_sigma_x, width=0), width=1, visible=True)
-                self.ui.charge_widget.add_curve("sigma_y", symbol="h", symbolPen=pq.mkPen(col_sigma_y, width=0), symbolBrush=pq.mkBrush(col_sigma_y),
-                                                pen=pq.mkPen(col_sigma_y, width=0), width=1, visible=True)
+                # self.ui.charge_widget.add_curve("charge", symbol="o", symbolBrush=pq.mkBrush(col_charge),
+                #                                 symbolPen=pq.mkPen(col_charge, width=0), pen=pq.mkPen(col_charge, width=0))
+                # col = pq.mkColor(100, 180, 50)
+                # self.ui.charge_widget.add_curve("eps_x", symbol="t1", symbolBrush=pq.mkBrush(col),
+                #                                 symbolPen=pq.mkPen(col, width=0), pen=pq.mkPen(col, width=0))
+                # col = pq.mkColor(30, 100, 200)
+                # self.ui.charge_widget.add_curve("beta_x", symbol="t2", symbolBrush=pq.mkBrush(col),
+                #                                 symbolPen=pq.mkPen(col, width=0), pen=pq.mkPen(col, width=0))
+                # col = pq.mkColor(30, 170, 120)
+                # self.ui.charge_widget.add_curve("alpha_x", symbol="t3", symbolBrush=pq.mkBrush(col),
+                #                                 symbolPen=pq.mkPen(col, width=0), pen=pq.mkPen(col, width=0))
+                # self.ui.charge_widget.add_curve("sigma_x", symbol="s", symbolPen=pq.mkPen(col_sigma_x, width=0), symbolBrush=pq.mkBrush(col_sigma_x),
+                #                                 pen=pq.mkPen(col_sigma_x, width=0), width=1, visible=True)
+                # self.ui.charge_widget.add_curve("sigma_y", symbol="h", symbolPen=pq.mkPen(col_sigma_y, width=0), symbolBrush=pq.mkBrush(col_sigma_y),
+                #                                 pen=pq.mkPen(col_sigma_y, width=0), width=1, visible=True)
+                # self.ui.charge_widget.set_y_link("sigma_y", "sigma_x")
+                self.ui.charge_widget.add_curve("sigma_x", symbol="s", alt_symbol="x", width=None, color=col_sigma_x)
+                self.ui.charge_widget.add_curve("sigma_y", symbol="t", alt_symbol="x", width=None, color=col_sigma_y)
                 self.ui.charge_widget.set_y_link("sigma_y", "sigma_x")
+                self.ui.charge_widget.add_curve("charge", symbol="o", alt_symbol="x", width=None, color=col_charge)
 
                 self.ui.charge_widget.set_legend_position("right")
 
-                self.ui.fit_widget.add_curve("fit_x", pen=pq.mkPen(col_fit_x, width=2), width=2, visible=True)
-                self.ui.fit_widget.add_curve("ab_x", symbol="t", symbolPen=pq.mkPen(col_sigma_x, width=0), symbolBrush=pq.mkBrush(col_sigma_x),
-                                             color=col_sigma_x, width=None, visible=True)
+                # self.ui.fit_widget.add_curve("fit_x", pen=pq.mkPen(col_fit_x, width=2), width=2, visible=True)
+                # self.ui.fit_widget.add_curve("ab_x", symbol="t", symbolPen=pq.mkPen(col_sigma_x, width=0), symbolBrush=pq.mkBrush(col_sigma_x),
+                #                              color=col_sigma_x, width=None, visible=True)
+                # self.ui.fit_widget.set_y_link("ab_x", "fit_x")
+                # self.ui.fit_widget.add_curve("fit_y", pen=pq.mkPen(col_fit_y, width=2), width=2, visible=True)
+                # self.ui.fit_widget.add_curve("ab_y", symbol="s", symbolPen=pq.mkPen(col_sigma_y, width=0), symbolBrush=pq.mkBrush(col_sigma_y),
+                #                              color=col_sigma_y, width=None, visible=True)
+                # self.ui.fit_widget.set_y_link("ab_y", "fit_x")
+                # self.ui.fit_widget.set_y_link("fit_y", "fit_x")
+                self.ui.fit_widget.add_curve("fit_x", color=col_fit_x, width=2)
+                self.ui.fit_widget.add_curve("ab_x", symbol="t", alt_symbol="x", color=col_sigma_x, width=None)
                 self.ui.fit_widget.set_y_link("ab_x", "fit_x")
-                self.ui.fit_widget.add_curve("fit_y", pen=pq.mkPen(col_fit_y, width=2), width=2, visible=True)
-                self.ui.fit_widget.add_curve("ab_y", symbol="s", symbolPen=pq.mkPen(col_sigma_y, width=0), symbolBrush=pq.mkBrush(col_sigma_y),
-                                             color=col_sigma_y, width=None, visible=True)
+                self.ui.fit_widget.add_curve("fit_y", color=col_fit_y, width=2)
+                self.ui.fit_widget.add_curve("ab_y", symbol="s", alt_symbol="x", color=col_sigma_y, width=None)
                 self.ui.fit_widget.set_y_link("ab_y", "fit_x")
                 self.ui.fit_widget.set_y_link("fit_y", "fit_x")
                 self.ui.fit_widget.set_legend_position("right")
@@ -1266,16 +1284,21 @@ class QuadScanGui(QtWidgets.QWidget):
         """
         root.info("Populate section finished.")
         if task.is_cancelled():
-            root.info("Populate sections failed: {0}. Testing with no database.".format(task.get_result(wait=False)))
-            self.device_handler = DeviceHandler(name="Handler")
-            self.use_database = False
-            t1 = PopulateDummyDeviceList(sections=self.section_list, dummy_name_dict=dummy_name_dict,
-                                         device_handler=self.device_handler, name="pop_sections")
-            t1.start()
-            t1.add_callback(self.populate_sections)
+            if isinstance(task, PopulateDeviceListTask):
+                root.info("Populate sections failed: {0}. Testing with no database.".format(task.get_result(wait=False)))
+                self.device_handler = DeviceHandler(name="Handler")
+                self.use_database = False
+                t1 = PopulateDummyDeviceList(sections=self.section_list, dummy_name_dict=dummy_name_dict,
+                                             device_handler=self.device_handler, name="pop_sections")
+                t1.start()
+                t1.add_callback(self.populate_sections)
+            else:
+                root.info("Dummy devices not running. Skip acquire.")
+                self.append_status_message("No tango database, cannot scan.")
+                self.ui.tabWidget.setTabEnabled(0, False)
+                self.ui.tabWidget.setTabEnabled(1, False)
         else:
             self.section_devices = task.get_result(wait=False)
-
             self.update_section()
 
     def update_scan_devices(self):
@@ -1456,9 +1479,9 @@ class QuadScanGui(QtWidgets.QWidget):
 
     def set_highlight(self):
         im_ind = self.ui.p_image_index_slider.value()
-        for c_name in self.ui.charge_widget.plot_widget.curve_item_dict:
+        for c_name in self.ui.charge_widget.plot_widget.curve_dict:
             self.ui.charge_widget.plot_widget.set_highlight(c_name, im_ind)
-        for c_name in self.ui.fit_widget.plot_widget.curve_item_dict:
+        for c_name in self.ui.fit_widget.plot_widget.curve_dict:
             self.ui.fit_widget.plot_widget.set_highlight(c_name, im_ind)
 
     def update_fit_callback(self, task=None):
@@ -1680,7 +1703,7 @@ class QuadScanGui(QtWidgets.QWidget):
             ay_list.append(My[0, 0])
             by_list.append(My[0, 1])
         q = np.array([proc_im.q for proc_im in self.quad_scan_data_analysis.proc_images])
-        en_data = np.array([proc_im.enabled for proc_im in self.quad_scan_data_analysis.proc_images])
+        en_data = np.array([not proc_im.enabled for proc_im in self.quad_scan_data_analysis.proc_images])
 
         if isinstance(self.fit_result, list):
             root.info("Alpha: {0}, beta: {1}, eps: {2}, sigma: {3}".format(self.fit_result[0].alpha, self.fit_result[0].beta,
@@ -1714,17 +1737,18 @@ class QuadScanGui(QtWidgets.QWidget):
                 q_symbol_list.append("s")
                 q_brush_list.append(qo_brush)
         self.ui.charge_widget.set_data(x_data=xd, y_data=sigma_x, curve_name="sigma_x",
-                                       symbol=sigma_symbol_list, auto_range=True)
+                                       alt_symbol_array=np.array(en_data), auto_range=True)
         self.ui.charge_widget.set_data(x_data=xd, y_data=sigma_y, curve_name="sigma_y",
-                                       symbol=sigma_symbol_list, auto_range=True)
+                                       alt_symbol_array=np.array(en_data), auto_range=True)
         self.ui.charge_widget.set_data(x_data=xd, y_data=q, curve_name="charge",
-                                       symbol=sigma_symbol_list, auto_range=True)
+                                       alt_symbol_array=np.array(en_data), auto_range=True)
         self.ui.charge_widget.stack_vertically()
         self.ui.fit_widget.set_data(x_data=np.array(a_list), y_data=np.array(b_list), curve_name="ab_x",
-                                    symbol=sigma_symbol_list, width=None)
+                                    alt_symbol_array=np.array(en_data), width=None)
         self.ui.fit_widget.set_data(x_data=np.array(ay_list), y_data=np.array(by_list), curve_name="ab_y",
-                                    symbol=sigma_symbol_list, width=None)#, symbolBrush=sigma_brush_list)
+                                    alt_symbol_array=np.array(en_data), width=None)
         self.set_highlight()
+        logger.info("s_x pen: {0}".format(self.ui.charge_widget.plot_widget.get_curve("sigma_x").unselected_pen))
 
     def plot_ab_data(self):
         root.info("Plotting ab data")
@@ -1745,10 +1769,10 @@ class QuadScanGui(QtWidgets.QWidget):
 
         root.info("eps {0}".format(mq.eps_n_list))
         xd = np.arange(len(mq.eps_n_list))
-        self.ui.charge_widget.set_data(x_data=xd, y_data=mq.eps_n_list, curve_name="eps_x")
+        # self.ui.charge_widget.set_data(x_data=xd, y_data=mq.eps_n_list, curve_name="eps_x")
         self.ui.charge_widget.set_data(x_data=xd, y_data=mq.charge_list, curve_name="charge")
-        self.ui.charge_widget.set_data(x_data=xd, y_data=mq.beta_list, curve_name="beta_x")
-        self.ui.charge_widget.set_data(x_data=xd, y_data=mq.alpha_list, curve_name="alpha_x")
+        # self.ui.charge_widget.set_data(x_data=xd, y_data=mq.beta_list, curve_name="beta_x")
+        # self.ui.charge_widget.set_data(x_data=xd, y_data=mq.alpha_list, curve_name="alpha_x")
         self.ui.charge_widget.set_data(x_data=xd, y_data=mq.x_list, curve_name="sigma_x")
         self.ui.charge_widget.set_data(x_data=xd, y_data=mq.y_list, curve_name="sigma_y")
         self.ui.charge_widget.stack_vertically()
@@ -2329,13 +2353,14 @@ class QuadScanGui(QtWidgets.QWidget):
             root.info("Toggling point {0}".format(ind))
         else:
             en_data[ind] = enabled
-            root.info("Point {0} {1}".format(ind, enabled))
+        root.info("Point {0} {1}".format(ind, en_data[ind]))
 
         proc_im = self.quad_scan_data_analysis.proc_images[ind]
         proc_im = proc_im._replace(enabled=en_data[ind])
         proc_image_list = self.quad_scan_data_analysis.proc_images
         proc_image_list[ind] = proc_im
         self.quad_scan_data_analysis = self.quad_scan_data_analysis._replace(proc_images=proc_image_list)
+        self.user_enable_list = en_data
 
         self.start_fit()
 
