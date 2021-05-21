@@ -11,12 +11,13 @@ Both single quad and multi quad (4 quads) scans can be done. The available secti
 and possibly SP02 at a later stage.
 
 ### Prerequisites
-
-PyTango, numpy, scipy, pyqt5, PIL, cv2, pyqtgraph
+python3
+numpy, scipy, pyqt5, PIL, cv2, pyqtgraph >=0.11
+PyTango for taking scans
 
 
 ### Example usage
 
 Start with: 
 
-```python QuadScanGuiMulti.py```
+```python3 QuadScanGuiMulti.py```

@@ -7,10 +7,10 @@ Created 2020-02-05
 
 """
 
+from PyQt5 import QtWidgets, QtCore
 import numpy as np
 import pyqtgraph as pq
 import sys
-from PyQt5 import QtWidgets, QtCore
 from ab_ellipse_tester_ui import Ui_Dialog
 import logging
 

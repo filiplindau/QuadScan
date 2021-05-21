@@ -5,7 +5,10 @@ Created on Dec 18, 2017
 @author: Filip
 """
 from PyQt5 import QtWidgets, QtCore, QtGui, Qt
-import PyTango as pt
+try:
+    import PyTango as pt
+except ImportError:
+    pt = None
 import pyqtgraph as pg
 from pyqtgraph.graphicsItems.LegendItem import ItemSample
 import numpy as np
@@ -2425,6 +2428,7 @@ class QTangoStripToolPlotWidget2(pg.PlotWidget):
 
     def points_clicked(self, curve, points):
         points = list(points)
+        logger.info("\nCurve: {0}\nPoints: {1}".format(curve, points))
         ind = [p.index() for p in points]
         pos = [curve.mapToScene(p.pos().toQPoint()) for p in points]
         mouse_pos = self.mapFromGlobal(QtGui.QCursor.pos())

@@ -44,6 +44,12 @@ pq.graphicsItems.GradientEditorItem.Gradients['thermalclip'] = {
 
 
 use_database = True
+try:
+    import PyTango
+except ImportError:
+    # This indicates no pytango
+    use_database = None
+
 dummy_name_dict = {"mag": "127.0.0.1:10000/i-ms1/mag/qb-01#dbase=no",
                    "crq": "127.0.0.1:10000/i-ms1/mag/qb-01#dbase=no",
                    "screen": "127.0.0.1:10001/i-ms1/dia/scrn-01#dbase=no",
@@ -242,13 +248,19 @@ class QuadScanGui(QtWidgets.QWidget):
                                                      callback_list=[TaskCallbackSignal(self.update_image_processing)])
         self.image_processor.start()
 
-        if not self.use_database:
+        if self.use_database is False:
             t1 = PopulateDummyDeviceList(sections=self.section_list, dummy_name_dict=dummy_name_dict,
                                          device_handler=self.device_handler, name="pop_sections")
-        else:
+            t1.start()
+            t1.add_callback(self.populate_sections)
+        elif self.use_database is True:
             t1 = PopulateDeviceListTask(sections=self.section_list, name="pop_sections")
-        t1.start()
-        t1.add_callback(self.populate_sections)
+            t1.start()
+            t1.add_callback(self.populate_sections)
+        else:
+            # PyTango not available, disable tango tabs
+            self.ui.tabWidget.setTabEnabled(0, False)
+            self.ui.tabWidget.setTabEnabled(1, False)
 
         root.info("Exit gui init")
         root.info("Window size: {0}".format(self.geometry()))
@@ -296,37 +308,6 @@ class QuadScanGui(QtWidgets.QWidget):
         self.ui.process_image_widget.roi.setSize((64, 64))
         self.ui.process_image_widget.roi.blockSignals(False)
 
-        # self.line_x_plot = self.ui.lineout_widget.plot()
-        # self.line_x_plot.setPen((200, 25, 10))
-        # self.line_y_plot = self.ui.lineout_widget.plot()
-        # self.line_y_plot.setPen((10, 200, 25))
-        # self.ui.lineout_widget.setLabel("bottom", "Line coord", "px")
-        # self.ui.lineout_widget.showGrid(True)
-
-        # self.sigma_x_plot = self.ui.fit_widget.plot()
-        # self.sigma_x_plot = MyScatterPlotItem()
-        # self.ui.fit_widget.getPlotItem().addItem(self.sigma_x_plot)
-        # self.sigma_x_plot.setPen((10, 200, 25))
-        # self.fit_x_plot = self.ui.fit_widget.plot()
-        # self.fit_x_plot.setPen(pq.mkPen(color=(180, 180, 250), width=2))
-        # self.ui.fit_widget.setLabel("bottom", "K", " 1/m²")
-        # self.ui.fit_widget.setLabel("left", "sigma", "m")
-        # self.ui.fit_widget.getPlotItem().showGrid(alpha=0.3)
-
-        # self.charge_plot = self.ui.charge_widget.plot()
-        # self.charge_plot = MyScatterPlotItem()
-        # self.ui.charge_widget.getPlotItem().addItem(self.charge_plot)
-        # self.ui.charge_widget.add_curve("charge")
-        # self.ui.charge_widget.add_curve("eps", self.charge_plot)
-        # self.ui.charge_widget.set_legend_position("right")
-        # self.charge_plot.setPen(None)
-        # self.charge_plot.setBrush((100, 180, 50))
-        # self.charge_plot.setSymbol("t1")
-        # self.ui.charge_widget.setLabel("bottom", "K", " 1/m²")
-        # self.ui.charge_widget.setLabel("left", "charge", "a.u.")
-        # self.ui.charge_widget.getPlotItem().showGrid(alpha=0.3)
-        # self.ui.charge_widget.disableAutoRange()
-
         # Combobox init
         self.ui.fit_algo_combobox.addItem("Full matrix repr")
         self.ui.fit_algo_combobox.addItem("Thin lens approx")
@@ -371,7 +352,7 @@ class QuadScanGui(QtWidgets.QWidget):
         val = self.settings.value("median_kernel", "3", type=int)
         self.ui.p_median_kernel_spinbox.setValue(val)
 
-        val = self.settings.value("fit_algo", "thin_lens", type=str)
+        val = self.settings.value("fit_algo", "full_matrix", type=str)
         if val == "thin_lens":
             ind = self.ui.fit_algo_combobox.findText("Thin lens approx")
         else:
@@ -1284,19 +1265,21 @@ class QuadScanGui(QtWidgets.QWidget):
         """
         root.info("Populate section finished.")
         if task.is_cancelled():
-            if isinstance(task, PopulateDeviceListTask):
-                root.info("Populate sections failed: {0}. Testing with no database.".format(task.get_result(wait=False)))
-                self.device_handler = DeviceHandler(name="Handler")
-                self.use_database = False
-                t1 = PopulateDummyDeviceList(sections=self.section_list, dummy_name_dict=dummy_name_dict,
-                                             device_handler=self.device_handler, name="pop_sections")
-                t1.start()
-                t1.add_callback(self.populate_sections)
-            else:
-                root.info("Dummy devices not running. Skip acquire.")
-                self.append_status_message("No tango database, cannot scan.")
-                self.ui.tabWidget.setTabEnabled(0, False)
-                self.ui.tabWidget.setTabEnabled(1, False)
+            self.ui.tabWidget.setTabEnabled(0, False)
+            self.ui.tabWidget.setTabEnabled(1, False)
+            # if isinstance(task, PopulateDeviceListTask):
+            #     root.info("Populate sections failed: {0}. Testing with no database.".format(task.get_result(wait=False)))
+            #     self.device_handler = DeviceHandler(name="Handler")
+            #     self.use_database = False
+            #     t1 = PopulateDummyDeviceList(sections=self.section_list, dummy_name_dict=dummy_name_dict,
+            #                                  device_handler=self.device_handler, name="pop_sections")
+            #     t1.start()
+            #     t1.add_callback(self.populate_sections)
+            # else:
+            #     root.info("Dummy devices not running. Skip acquire.")
+            #     self.append_status_message("No tango database, cannot scan.")
+            #     self.ui.tabWidget.setTabEnabled(0, False)
+            #     self.ui.tabWidget.setTabEnabled(1, False)
         else:
             self.section_devices = task.get_result(wait=False)
             self.update_section()
@@ -2319,6 +2302,11 @@ class QuadScanGui(QtWidgets.QWidget):
                                    self.quad_scan_data_analysis.acc_params,
                                    algo=algo, axis=axis, name="fit_single",
                                    callback_list=[TaskCallbackSignal(self.update_fit_result)])
+            task2 = FitQuadDataTask(self.quad_scan_data_analysis.proc_images,
+                                   self.quad_scan_data_analysis.acc_params,
+                                   algo=algo, axis="y", name="fit_single",
+                                   callback_list=[TaskCallbackSignal(self.update_fit_result)])
+            task2.start()
         else:
             task = FitQuadDataTaskMulti(self.quad_scan_data_analysis.proc_images,
                                         self.quad_scan_data_analysis.acc_params,
