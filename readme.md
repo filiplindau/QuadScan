@@ -1,16 +1,22 @@
 # QuadScan
+### Introduction
+QuadScan application for measuring twiss parameters in the maxiv linac. It uses Tango connected 
+devices for quad magnets and screen camera. It can also analyze saved scans of both single
+quad (done by this program or Jason's matlab program) and multi quad scans (done by this program)
 
-QuadScan application for measuring emittance in the maxiv linac. It uses Tango connected 
-devices for quad magnet and screen camera.
+Computations are done with numpy and scipy. Image processing is done with openCV (cv2). 
+PIL is used for some image file handling.
 
-All asynchronous communication is done with twisted.
-
-The computation is done with numpy and scipy.
+Both single quad and multi quad (4 quads) scans can be done. The available sections are MS1, MS2, MS3, 
+and possibly SP02 at a later stage.
 
 ### Prerequisites
 
-PyTango, twisted, numpy, scipy, pyqt4.
+PyTango, numpy, scipy, pyqt5, PIL, cv2, pyqtgraph
 
 
 ### Example usage
 
+Start with: 
+
+```python QuadScanGuiMulti.py```

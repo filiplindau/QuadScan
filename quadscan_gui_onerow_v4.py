@@ -770,15 +770,6 @@ class Ui_QuadScanDialog(object):
         self.load_disk_button.setMaximumSize(QtCore.QSize(200, 16777215))
         self.load_disk_button.setObjectName("load_disk_button")
         self.horizontalLayout_14.addWidget(self.load_disk_button)
-        self.load_scan_button = QtWidgets.QPushButton(self.tab)
-        sizePolicy = QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Preferred, QtWidgets.QSizePolicy.Fixed)
-        sizePolicy.setHorizontalStretch(0)
-        sizePolicy.setVerticalStretch(0)
-        sizePolicy.setHeightForWidth(self.load_scan_button.sizePolicy().hasHeightForWidth())
-        self.load_scan_button.setSizePolicy(sizePolicy)
-        self.load_scan_button.setMaximumSize(QtCore.QSize(200, 16777215))
-        self.load_scan_button.setObjectName("load_scan_button")
-        self.horizontalLayout_14.addWidget(self.load_scan_button)
         spacerItem15 = QtWidgets.QSpacerItem(40, 20, QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)
         self.horizontalLayout_14.addItem(spacerItem15)
         self.gridLayout_3.addLayout(self.horizontalLayout_14, 0, 1, 1, 1)
@@ -1241,7 +1232,7 @@ class Ui_QuadScanDialog(object):
         self.horizontalLayout_16.addWidget(self.widget_9)
 
         self.retranslateUi(QuadScanDialog)
-        self.tabWidget.setCurrentIndex(1)
+        self.tabWidget.setCurrentIndex(2)
         self.tabWidget_2.setCurrentIndex(1)
         QtCore.QMetaObject.connectSlotsByName(QuadScanDialog)
         QuadScanDialog.setTabOrder(self.quad_combobox, self.screen_combobox)
@@ -1309,7 +1300,6 @@ class Ui_QuadScanDialog(object):
         QuadScanDialog.setTabOrder(self.set_end_k_button, self.status_textedit)
         QuadScanDialog.setTabOrder(self.status_textedit, self.p_filtered_image_radio)
         QuadScanDialog.setTabOrder(self.p_filtered_image_radio, self.load_disk_button)
-        QuadScanDialog.setTabOrder(self.load_disk_button, self.load_scan_button)
 
     def retranslateUi(self, QuadScanDialog):
         _translate = QtCore.QCoreApplication.translate
@@ -1396,7 +1386,6 @@ class Ui_QuadScanDialog(object):
         self.p_keep_charge_ratio_spinbox.setSuffix(_translate("QuadScanDialog", " %"))
         self.label_10.setText(_translate("QuadScanDialog", "Load data from"))
         self.load_disk_button.setText(_translate("QuadScanDialog", "DISK"))
-        self.load_scan_button.setText(_translate("QuadScanDialog", "Scan"))
         self.data_source_label.setText(_translate("QuadScanDialog", "--- No data loaded ---"))
         self.tabWidget.setTabText(self.tabWidget.indexOf(self.tab), _translate("QuadScanDialog", "Analysis"))
         self.screen_state_label.setText(_translate("QuadScanDialog", "IN"))

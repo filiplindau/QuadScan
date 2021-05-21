@@ -71,7 +71,7 @@
           </size>
          </property>
          <property name="currentIndex">
-          <number>1</number>
+          <number>2</number>
          </property>
          <widget class="QWidget" name="quad_tab">
           <attribute name="title">
@@ -1709,25 +1709,6 @@
                 </widget>
                </item>
                <item>
-                <widget class="QPushButton" name="load_scan_button">
-                 <property name="sizePolicy">
-                  <sizepolicy hsizetype="Preferred" vsizetype="Fixed">
-                   <horstretch>0</horstretch>
-                   <verstretch>0</verstretch>
-                  </sizepolicy>
-                 </property>
-                 <property name="maximumSize">
-                  <size>
-                   <width>200</width>
-                   <height>16777215</height>
-                  </size>
-                 </property>
-                 <property name="text">
-                  <string>Scan</string>
-                 </property>
-                </widget>
-               </item>
-               <item>
                 <spacer name="horizontalSpacer_6">
                  <property name="orientation">
                   <enum>Qt::Horizontal</enum>
@@ -2771,7 +2752,6 @@
   <tabstop>status_textedit</tabstop>
   <tabstop>p_filtered_image_radio</tabstop>
   <tabstop>load_disk_button</tabstop>
-  <tabstop>load_scan_button</tabstop>
  </tabstops>
  <resources>
   <include location="quadscan_res.qrc"/>

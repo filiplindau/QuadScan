@@ -470,7 +470,7 @@ class QuadScanGui(QtWidgets.QWidget):
         # self.charge_plot.sigRightClicked.connect(self.points_clicked)
         self.ui.fit_algo_combobox.currentIndexChanged.connect(self.set_algo)
         self.ui.load_disk_button.clicked.connect(self.load_data_disk)
-        self.ui.load_scan_button.clicked.connect(self.load_data_scan)
+        # self.ui.load_scan_button.clicked.connect(self.load_data_scan)
         self.ui.p_roi_cent_x_spinbox.editingFinished.connect(self.set_roi)
         self.ui.p_roi_cent_y_spinbox.editingFinished.connect(self.set_roi)
         self.ui.p_roi_size_w_spinbox.editingFinished.connect(self.set_roi)
